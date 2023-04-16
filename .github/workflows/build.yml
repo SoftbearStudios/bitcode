@@ -20,8 +20,14 @@ jobs:
         with:
           toolchain: nightly
           override: true
-          components: rustfmt, clippy
+          components: rustfmt, clippy, miri
       - name: Test (debug)
         run: cargo test
       - name: Test (release)
         run: cargo test --release
+      - name: Install Miri
+        run: cargo miri setup
+      - name: Test (miri)
+        run: cargo miri test
+      - name: Test (miri big-endian)
+        run: cargo miri test --target mips64-unknown-linux-gnuabi6

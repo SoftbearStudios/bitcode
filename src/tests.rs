@@ -62,6 +62,19 @@ fn fuzz_2() {
 }
 
 #[test]
+fn test_reddit() {
+    #[derive(Serialize)]
+    enum Variant {
+        Three = 3,
+        Zero = 0,
+        Two = 2,
+        One = 1,
+    }
+
+    assert_eq!(crate::serialize(&Variant::Three).unwrap().len(), 1);
+}
+
+#[test]
 fn test_negative_isize() {
     the_same_inner(-5isize);
 }
