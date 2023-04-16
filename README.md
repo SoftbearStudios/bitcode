@@ -1,0 +1,134 @@
+# Bitcode
+
+A bitwise encoder/decoder similar to [bincode](https://github.com/bincode-org/bincode).
+
+## Motivation
+
+We noticed relatively low entropy in data serialized with [bincode](https://github.com/bincode-org/bincode). This library attempts to shrink the serialized size without sacrificing too much speed (as would be the case with compression).
+
+Bitcode does not attempt to have a stable format, so we are free to optimize it.
+
+## Comparison with [bincode](https://github.com/bincode-org/bincode)
+
+### Features
+
+- Bitwise serialization
+- [Gamma](https://en.wikipedia.org/wiki/Elias_gamma_coding) encoded lengths and enum variant indices
+- Implemented in 100% safe Rust
+
+### Limitations
+
+- Doesn't support streaming APIs
+- Format is unstable between versions
+- Currently slow on big endian
+
+### Speed
+
+Aims to be no more than twice as slow as [bincode](https://github.com/bincode-org/bincode).
+
+### Size (bits)
+
+| Type            | Bitcode | Bincode | Bincode (Varint) |
+|-----------------|---------|---------|------------------|
+| bool            | 1       | 8       | 8                |
+| u8              | 8       | 8       | 8                |
+| i8              | 8       | 8       | 8                |
+| u16             | 16      | 16      | 8-24             |
+| i16             | 16      | 16      | 8-24             |
+| u32             | 32      | 32      | 8-40             |
+| i32             | 32      | 32      | 8-40             |
+| u64             | 64      | 64      | 8-72             |
+| i64             | 64      | 64      | 8-72             |
+| f32             | 32      | 32      | 32               |
+| f64             | 64      | 64      | 64               |
+| char            | 8-32    | 8-32    | 8-32             |
+| Option<()>      | 1       | 8       | 8                |
+| Result<(), ()>  | 1-3     | 32      | 8                |
+
+| Value           | Bitcode | Bincode | Bincode (Varint) |
+|-----------------|---------|---------|------------------|
+| [true; 4]       | 4       | 32      | 32               |
+| vec![(); 0]     | 1       | 64      | 8                |
+| vec![(); 1]     | 3       | 64      | 8                |
+| vec![(); 256]   | 17      | 64      | 24               |
+| vec![(); 65536] | 33      | 64      | 40               |
+| ""              | 1       | 64      | 8                |
+| "abcd"          | 37      | 96      | 40               |
+| "abcd1234"      | 71      | 128     | 72               |
+
+### Random Struct Benchmark
+
+The following data structure was used for benchmarking.
+```rust
+struct Data {
+    x: Option<f32>,
+    y: Option<i8>,
+    z: u16,
+    s: String,
+    e: DataEnum,
+}
+
+enum DataEnum {
+    Bar,
+    Baz(String),
+    Foo(Option<u8>),
+}
+```
+In the table below, **Size (bytes)** is the average size of a randomly generated `Data` struct.
+**Zero Bytes** are the percentage of bytes that are 0 in the output.
+If the result contains a large percentage of zero bytes, that is a sign that it could be compressed more.
+
+| Format                 | Size (bytes) | Zero Bytes |
+|------------------------|--------------|------------|
+| Bitcode                | 6.7          | 0.19%      |
+| Bincode                | 20.3         | 65.9%      |
+| Bincode (Varint)       | 10.9         | 27.7%      |
+| Bincode (Deflate Fast) | 8.4          | 0.88%      |
+| Bincode (Deflate Best) | 7.8          | 0.29%      |
+| ideal (max entropy)    |              | 0.39%      |
+
+### A note on enums
+
+Enum variants are currently encoded such that variants declared
+earlier will occupy fewer bits. It is advantageous to sort variant
+declarations from most common to least common.
+
+We hope to allow further customization in the future with a custom derive macro.
+
+## Testing
+
+### Fuzzing
+
+```
+cargo install cargo-fuzz
+cargo fuzz run fuzz
+```
+
+### 32-bit
+
+```
+sudo apt install gcc-multilib
+rustup target add i686-unknown-linux-gnu
+cargo test --target i686-unknown-linux-gnu
+```
+
+## Acknowledgement
+
+Some test cases were derived from [bincode](https://github.com/bincode-org/bincode) (see comment in `tests.rs`).
+
+## License
+
+Licensed under either of
+
+ * Apache License, Version 2.0
+   ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+ * MIT license
+   ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
+
+## Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
+dual licensed as above, without any additional terms or conditions.
