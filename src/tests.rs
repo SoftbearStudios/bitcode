@@ -1,5 +1,6 @@
 use crate::de::deserialize_with;
 use crate::de::read::{BitSliceImpl, DeVec};
+use crate::int_code::DynamicEncoding;
 use crate::ser::serialize_with;
 use crate::ser::write::{BitVecImpl, SerVec};
 use crate::{deserialize, E};
@@ -10,26 +11,30 @@ use std::fmt::Debug;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_test::*;
 
-fn the_same_inner<T: Clone + Debug + PartialEq + Serialize + DeserializeOwned>(t: T) {
+fn the_same_inner<T: Clone + Debug + PartialEq + Serialize + DeserializeOwned>(
+    t: T,
+    encoding: DynamicEncoding,
+) {
     let serialized = {
-        let a = serialize_with::<BitVecImpl>(&t).unwrap();
+        let a = serialize_with::<BitVecImpl>(&t, encoding).unwrap();
         #[cfg(target_endian = "little")]
         {
             // SerVec doesn't work on big endian.
-            let b = serialize_with::<SerVec>(&t).unwrap();
+            let b = serialize_with::<SerVec>(&t, encoding).unwrap();
             assert_eq!(a, b);
         }
         a
     };
 
-    let a: T = deserialize_with::<T, BitSliceImpl>(&serialized).expect("BitSliceImpl error");
+    let a: T =
+        deserialize_with::<T, BitSliceImpl>(&serialized, encoding).expect("BitSliceImpl error");
 
     assert_eq!(t, a);
 
     #[cfg(target_endian = "little")]
     {
         // DeVec does not work on big endian.
-        let b: T = deserialize_with::<T, DeVec>(&serialized).expect("DeVec error");
+        let b: T = deserialize_with::<T, DeVec>(&serialized, encoding).expect("DeVec error");
         assert_eq!(t, b);
         assert_eq!(a, b);
     }
@@ -38,30 +43,39 @@ fn the_same_inner<T: Clone + Debug + PartialEq + Serialize + DeserializeOwned>(t
     bytes.push(0);
     #[cfg(target_endian = "little")]
     assert_eq!(
-        deserialize_with::<T, DeVec>(&bytes),
+        deserialize_with::<T, DeVec>(&bytes, encoding),
         Err(E::ExpectedEof.e())
     );
     assert_eq!(
-        deserialize_with::<T, BitSliceImpl>(&bytes),
+        deserialize_with::<T, BitSliceImpl>(&bytes, encoding),
         Err(E::ExpectedEof.e())
     );
 
     let mut bytes = serialized.clone();
     if bytes.pop().is_some() {
         #[cfg(target_endian = "little")]
-        assert_eq!(deserialize_with::<T, DeVec>(&bytes), Err(E::Eof.e()));
-        assert_eq!(deserialize_with::<T, BitSliceImpl>(&bytes), Err(E::Eof.e()));
+        assert_eq!(
+            deserialize_with::<T, DeVec>(&bytes, encoding),
+            Err(E::Eof.e())
+        );
+        assert_eq!(
+            deserialize_with::<T, BitSliceImpl>(&bytes, encoding),
+            Err(E::Eof.e())
+        );
     }
 }
 
 fn the_same<T: Clone + Debug + PartialEq + Serialize + DeserializeOwned>(t: T) {
-    the_same_inner(t.clone());
     #[cfg(miri)]
     const END: usize = 2;
     #[cfg(not(miri))]
     const END: usize = 65;
-    for i in 0..END {
-        the_same_inner(vec![t.clone(); i]);
+
+    for encoding in DynamicEncoding::ALL {
+        the_same_inner(t.clone(), encoding);
+        for i in 0..END {
+            the_same_inner(vec![t.clone(); i], encoding);
+        }
     }
 }
 
@@ -91,7 +105,9 @@ fn test_reddit() {
 
 #[test]
 fn test_negative_isize() {
-    the_same_inner(-5isize);
+    for encoding in DynamicEncoding::ALL {
+        the_same_inner(-5isize, encoding);
+    }
 }
 
 #[test]
@@ -109,10 +125,12 @@ fn test_long_string() {
 #[test]
 #[cfg_attr(debug_assertions, ignore)]
 fn test_chars() {
-    for n in 0..=char::MAX as u32 {
-        if let Some(c) = char::from_u32(n) {
-            the_same_inner(c);
-            the_same_inner([c; 2]);
+    for encoding in DynamicEncoding::ALL {
+        for n in 0..=char::MAX as u32 {
+            if let Some(c) = char::from_u32(n) {
+                the_same_inner(c, encoding);
+                the_same_inner([c; 2], encoding);
+            }
         }
     }
 }
@@ -127,8 +145,10 @@ fn test_numbers() {
     the_same(5u16);
     the_same(5u32);
     the_same(5u64);
-    the_same(u64::MAX - 5);
-    the_same(u64::MAX);
+    the_same(u8::MAX);
+    the_same(u16::MAX);
+    the_same(u32::MAX - 1);
+    the_same(u64::MAX - 1);
     the_same(5usize);
     // signed positive
     the_same(5i8);
@@ -247,7 +267,7 @@ fn test_enum() {
     }
     the_same(TestEnum::NoArg);
     the_same(TestEnum::OneArg(4));
-    //the_same(TestEnum::Args(4, 5));
+    the_same(TestEnum::Args(4, 5));
     the_same(TestEnum::AnotherNoArg);
     the_same(TestEnum::StructLike { x: 4, y: 3.14159 });
     the_same(vec![
