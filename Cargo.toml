@@ -4,7 +4,7 @@ authors = [ "Cai Bear", "Finn Bear" ]
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/finnbear/bitcode/"
+repository = "https://github.com/SoftbearStudios/bitcode"
 description = "bitcode is a bitwise binary serializer"
 exclude = ["fuzz/"]
 
