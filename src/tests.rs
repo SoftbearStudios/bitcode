@@ -29,18 +29,18 @@ fn the_same_inner<T: Clone + Debug + PartialEq + Serialize + DeserializeOwned>(t
     bytes.push(0);
     assert_eq!(
         deserialize_with::<T, DeVec>(&bytes),
-        Err(E::ExpectedEOF.e())
+        Err(E::ExpectedEof.e())
     );
     assert_eq!(
         deserialize_with::<T, BitSliceImpl>(&bytes),
-        Err(E::ExpectedEOF.e())
+        Err(E::ExpectedEof.e())
     );
 
     let mut bytes = serialized.clone();
     if bytes.pop().is_some() {
-        assert_eq!(deserialize_with::<T, DeVec>(&bytes), Err(E::EOF.e()));
+        assert_eq!(deserialize_with::<T, DeVec>(&bytes), Err(E::Eof.e()));
 
-        assert_eq!(deserialize_with::<T, BitSliceImpl>(&bytes), Err(E::EOF.e()));
+        assert_eq!(deserialize_with::<T, BitSliceImpl>(&bytes), Err(E::Eof.e()));
     }
 }
 

@@ -50,18 +50,18 @@ mod bitvec_read {
                 Domain::Enclave(e) => e,
                 Domain::Region { head, body, tail } => {
                     if !body.is_empty() {
-                        return Err(E::ExpectedEOF.e());
+                        return Err(E::ExpectedEof.e());
                     }
-                    head.xor(tail).ok_or(E::ExpectedEOF.e())?
+                    head.xor(tail).ok_or(E::ExpectedEof.e())?
                 }
             };
             (e.into_bitslice().count_ones() == 0)
                 .then_some(())
-                .ok_or(E::ExpectedEOF.e())
+                .ok_or(E::ExpectedEof.e())
         }
 
         fn read_bits(&mut self, bits: usize) -> Result<Word> {
-            let slice = self.get(..bits).ok_or(E::EOF.e())?;
+            let slice = self.get(..bits).ok_or(E::Eof.e())?;
             *self = &self[bits..];
 
             let mut v = [0; 8];
@@ -70,14 +70,14 @@ mod bitvec_read {
         }
 
         fn read_bit(&mut self) -> Result<bool> {
-            let v = *self.get(0).ok_or(E::EOF.e())?;
+            let v = *self.get(0).ok_or(E::Eof.e())?;
             *self = &self[1..];
             Ok(v)
         }
 
         fn read_bytes(&mut self, len: usize) -> Result<Vec<u8>> {
             let bits = len * u8::BITS as usize;
-            let slice = self.get(..bits).ok_or(E::EOF.e())?;
+            let slice = self.get(..bits).ok_or(E::Eof.e())?;
             *self = &self[bits..];
 
             let mut vec = vec![0u8; len];
@@ -91,7 +91,7 @@ mod bitvec_read {
                 Err(E::Invalid("zeros").e())
             } else {
                 *self = &self[zeros..];
-                let next = *self.get(0).ok_or(E::EOF.e())?;
+                let next = *self.get(0).ok_or(E::Eof.e())?;
                 debug_assert!(next);
                 Ok(zeros)
             }
@@ -149,7 +149,7 @@ impl<'a> DeVec<'a> {
         let len = self.words.len();
         if read + 1 >= len {
             // TODO hint as unlikely.
-            Err(E::EOF.e())
+            Err(E::Eof.e())
         } else {
             Ok(())
         }
@@ -160,7 +160,7 @@ impl<'a> DeVec<'a> {
         let len = self.words.len() * WORD_BITS;
         if read > len {
             // TODO hint as unlikely.
-            Err(E::EOF.e())
+            Err(E::Eof.e())
         } else {
             Ok(())
         }
@@ -174,15 +174,15 @@ impl<'a> Read for DeVec<'a> {
         let bits_written = self.read % WORD_BITS;
 
         if bits_written != 0 && self.words[index] & !((1 << bits_written) - 1) != 0 {
-            return Err(E::ExpectedEOF.e());
+            return Err(E::ExpectedEof.e());
         }
 
         if bytes_read < self.bytes {
-            Err(E::ExpectedEOF.e())
+            Err(E::ExpectedEof.e())
         } else if bytes_read > self.bytes {
             // It is possible that we read more bytes than we have (bytes are rounded up to words).
             // We don't check this while deserializing to avoid degrading performance.
-            Err(E::EOF.e())
+            Err(E::Eof.e())
         } else {
             Ok(())
         }

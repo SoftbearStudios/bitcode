@@ -12,14 +12,12 @@
 //! ### Usage
 //!
 //! ```edition2021
-//! fn main() {
-//!     // The object that we will serialize.
-//!     let target: Vec<String> = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
+//! // The object that we will serialize.
+//! let target: Vec<String> = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
 //!
-//!     let encoded: Vec<u8> = bitcode::serialize(&target).unwrap();
-//!     let decoded: Vec<String> = bitcode::deserialize(&encoded).unwrap();
-//!     assert_eq!(target, decoded);
-//! }
+//! let encoded: Vec<u8> = bitcode::serialize(&target).unwrap();
+//! let decoded: Vec<String> = bitcode::deserialize(&encoded).unwrap();
+//! assert_eq!(target, decoded);
 //! ```
 
 // Actually required see https://doc.rust-lang.org/beta/unstable-book/library-features/test.html
@@ -92,7 +90,7 @@ impl Error {
     }
 
     pub(crate) fn same(&self, other: &Self) -> bool {
-        &self.0 == &other.0
+        self.0 == other.0
     }
 }
 
@@ -101,8 +99,8 @@ impl Error {
 pub(crate) enum E {
     #[cfg(debug_assertions)]
     Custom(String),
-    EOF,
-    ExpectedEOF,
+    Eof,
+    ExpectedEof,
     Invalid(&'static str),
     NotSupported(&'static str),
 }
@@ -132,8 +130,8 @@ impl Display for E {
         match self {
             #[cfg(debug_assertions)]
             Self::Custom(s) => write!(f, "custom: {s}"),
-            Self::EOF => write!(f, "eof"),
-            Self::ExpectedEOF => write!(f, "expected eof"),
+            Self::Eof => write!(f, "eof"),
+            Self::ExpectedEof => write!(f, "expected eof"),
             Self::Invalid(s) => write!(f, "invalid {s}"),
             Self::NotSupported(s) => write!(f, "{s} is not supported"),
         }

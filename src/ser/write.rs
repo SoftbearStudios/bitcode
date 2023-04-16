@@ -240,7 +240,7 @@ fn read_0_to_7_bytes_into_word(mut bytes: &[u8]) -> Word {
         ret |= (u16::from_le_bytes(*b2) as Word) << shift;
         shift += u16::BITS;
     }
-    if let Some(&b) = bytes.get(0) {
+    if let Some(&b) = bytes.first() {
         ret |= (b as Word) << shift;
     }
     ret
@@ -260,7 +260,7 @@ impl WriteWith for SerVec {
         let words = &self.words[..div_ceil(self.len, Word::BITS as usize)];
 
         // Create new allocation since Vec<u64> can't be converted to Vec<u8>.
-        let mut bytes: Vec<_> = words.into_iter().flat_map(|v| v.to_le_bytes()).collect();
+        let mut bytes: Vec<_> = words.iter().flat_map(|v| v.to_le_bytes()).collect();
         bytes.truncate(div_ceil(self.len, u8::BITS as usize));
         bytes
     }

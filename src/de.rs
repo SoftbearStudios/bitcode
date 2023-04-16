@@ -20,8 +20,8 @@ pub(crate) fn deserialize_from<'a, T: Deserialize<'a>>(r: impl Read) -> Result<T
 
     let r = d.data.finish();
     if let Err(e) = &r {
-        if e.same(&E::EOF.e()) {
-            return Err(E::EOF.e());
+        if e.same(&E::Eof.e()) {
+            return Err(E::Eof.e());
         }
     }
 
