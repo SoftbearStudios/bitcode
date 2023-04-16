@@ -33,6 +33,6 @@ jobs:
       - name: Install Miri
         run: cargo miri setup
       - name: Test (miri)
-        run: cargo miri test
+        run: RUSTFLAGS="-Zmiri-permissive-provenance" cargo miri test
       - name: Test (miri big-endian)
-        run: cargo miri test --target mips64-unknown-linux-gnuabi6
+        run: RUSTFLAGS="-Zmiri-permissive-provenance" cargo miri test --target mips64-unknown-linux-gnuabi6
