@@ -117,8 +117,7 @@ fn test_chars() {
     }
 }
 
-// Everything below this comment
-// was derived from bincode:
+// Everything below this comment was derived from bincode:
 // https://github.com/bincode-org/bincode/blob/v1.x/tests/test.rs
 
 #[test]
