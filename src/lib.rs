@@ -421,6 +421,7 @@ mod tests2 {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn comparison1() {
         let ref data = random_data(10000);
 
@@ -458,6 +459,7 @@ mod tests2 {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn comparison2() {
         fn compare<T: Serialize + Clone>(name: &str, r: RangeInclusive<T>) {
             fn measure<T: Serialize + Clone>(t: T) -> [usize; 3] {
