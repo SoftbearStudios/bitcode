@@ -20,19 +20,22 @@ jobs:
         with:
           toolchain: nightly
           override: true
-          target: i686-unknown-linux-gnu
-          components: rustfmt, clippy, miri
+          components: rustfmt, miri
+      - name: Lint
+        run: cargo fmt --check
       - name: Test (debug)
         run: cargo test
       - name: Test (release)
         run: cargo test --release
-      - name: Install GCC multilib
-        run: sudo apt install gcc-multilib
+      - name: Install i686 and GCC multilib
+        run: rustup target add i686-unknown-linux-gnu && sudo apt update && sudo apt install -y gcc-multilib
       - name: Test (32-bit)
         run: cargo test --target i686-unknown-linux-gnu
-      #- name: Install Miri
-      #  run: cargo miri setup
-      #- name: Test (miri)
-      #  run: MIRIFLAGS="-Zmiri-permissive-provenance" cargo miri test
-      #- name: Test (miri big-endian)
-      #  run: MIRIFLAGS="-Zmiri-permissive-provenance" cargo miri test --target mips64-unknown-linux-gnuabi6
+      - name: Setup Miri
+        run: cargo miri setup
+      - name: Test (miri)
+        run: MIRIFLAGS="-Zmiri-permissive-provenance" cargo miri test
+      - name: Setup Miri (big-endian)
+        run: rustup target add mips64-unknown-linux-gnuabi64 && cargo miri setup --target mips64-unknown-linux-gnuabi64
+      - name: Test (miri big-endian)
+        run: MIRIFLAGS="-Zmiri-permissive-provenance" cargo miri test --target mips64-unknown-linux-gnuabi64

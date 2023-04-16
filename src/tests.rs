@@ -12,21 +12,31 @@ use wasm_bindgen_test::*;
 
 fn the_same_inner<T: Clone + Debug + PartialEq + Serialize + DeserializeOwned>(t: T) {
     let serialized = {
-        let a = serialize_with::<SerVec>(&t).unwrap();
-        let b = serialize_with::<BitVecImpl>(&t).unwrap();
-        assert_eq!(a, b);
+        let a = serialize_with::<BitVecImpl>(&t).unwrap();
+        #[cfg(target_endian = "little")]
+        {
+            // SerVec doesn't work on big endian.
+            let b = serialize_with::<SerVec>(&t).unwrap();
+            assert_eq!(a, b);
+        }
         a
     };
 
-    let a: T = deserialize_with::<T, DeVec>(&serialized).expect("DeVec error");
-    let b: T = deserialize_with::<T, BitSliceImpl>(&serialized).expect("BitSliceImpl error");
+    let a: T = deserialize_with::<T, BitSliceImpl>(&serialized).expect("BitSliceImpl error");
 
     assert_eq!(t, a);
-    assert_eq!(t, b);
-    assert_eq!(a, b);
+
+    #[cfg(target_endian = "little")]
+    {
+        // DeVec does not work on big endian.
+        let b: T = deserialize_with::<T, DeVec>(&serialized).expect("DeVec error");
+        assert_eq!(t, b);
+        assert_eq!(a, b);
+    }
 
     let mut bytes = serialized.clone();
     bytes.push(0);
+    #[cfg(target_endian = "little")]
     assert_eq!(
         deserialize_with::<T, DeVec>(&bytes),
         Err(E::ExpectedEof.e())
@@ -38,15 +48,19 @@ fn the_same_inner<T: Clone + Debug + PartialEq + Serialize + DeserializeOwned>(t
 
     let mut bytes = serialized.clone();
     if bytes.pop().is_some() {
+        #[cfg(target_endian = "little")]
         assert_eq!(deserialize_with::<T, DeVec>(&bytes), Err(E::Eof.e()));
-
         assert_eq!(deserialize_with::<T, BitSliceImpl>(&bytes), Err(E::Eof.e()));
     }
 }
 
 fn the_same<T: Clone + Debug + PartialEq + Serialize + DeserializeOwned>(t: T) {
     the_same_inner(t.clone());
-    for i in 0..65 {
+    #[cfg(miri)]
+    const END: usize = 2;
+    #[cfg(not(miri))]
+    const END: usize = 65;
+    for i in 0..END {
         the_same_inner(vec![t.clone(); i]);
     }
 }
