@@ -337,71 +337,85 @@ mod tests2 {
     }
 
     #[bench]
+    #[cfg_attr(miri, ignore)]
     fn bench_bitcode_small(b: &mut Bencher) {
         bench_serialize_string(b, bitcode_serialize, 5)
     }
 
     #[bench]
+    #[cfg_attr(miri, ignore)]
     fn bench_bincode_small(b: &mut Bencher) {
         bench_serialize_string(b, bincode_serialize, 5)
     }
 
     #[bench]
+    #[cfg_attr(miri, ignore)]
     fn bench_bitcode_large(b: &mut Bencher) {
         bench_serialize_string(b, bitcode_serialize, 10000)
     }
 
     #[bench]
+    #[cfg_attr(miri, ignore)]
     fn bench_bincode_large(b: &mut Bencher) {
         bench_serialize_string(b, bincode_serialize, 10000)
     }
 
     #[bench]
+    #[cfg_attr(miri, ignore)]
     fn bench_bitcode_serialize(b: &mut Bencher) {
         bench_serialize(b, bitcode_serialize)
     }
 
     #[bench]
+    #[cfg_attr(miri, ignore)]
     fn bench_bitcode_deserialize(b: &mut Bencher) {
         bench_deserialize(b, bitcode_serialize, bitcode_deserialize)
     }
 
     #[bench]
+    #[cfg_attr(miri, ignore)]
     fn bench_bincode_serialize(b: &mut Bencher) {
         bench_serialize(b, bincode_serialize)
     }
 
     #[bench]
+    #[cfg_attr(miri, ignore)]
     fn bench_bincode_deserialize(b: &mut Bencher) {
         bench_deserialize(b, bincode_serialize, bincode_deserialize)
     }
 
     #[bench]
+    #[cfg_attr(miri, ignore)]
     fn bench_bincode_varint_serialize(b: &mut Bencher) {
         bench_serialize(b, bincode_varint_serialize)
     }
 
     #[bench]
+    #[cfg_attr(miri, ignore)]
     fn bench_bincode_varint_deserialize(b: &mut Bencher) {
         bench_deserialize(b, bincode_varint_serialize, bincode_varint_deserialize)
     }
 
     #[bench]
+    #[cfg_attr(miri, ignore)]
     fn bench_bincode_flate2_fast_serialize(b: &mut Bencher) {
         bench_serialize(b, bincode_flate2_fast_serialize)
     }
 
     #[bench]
+    #[cfg_attr(miri, ignore)]
     fn bench_bincode_flate2_fast_deserialize(b: &mut Bencher) {
         bench_deserialize(b, bincode_flate2_fast_serialize, bincode_flate2_deserialize)
     }
 
     #[bench]
+    #[cfg_attr(miri, ignore)]
     fn bench_bincode_flate2_best_serialize(b: &mut Bencher) {
         bench_serialize(b, bincode_flate2_best_serialize)
     }
 
     #[bench]
+    #[cfg_attr(miri, ignore)]
     fn bench_bincode_flate2_best_deserialize(b: &mut Bencher) {
         bench_deserialize(b, bincode_flate2_best_serialize, bincode_flate2_deserialize)
     }

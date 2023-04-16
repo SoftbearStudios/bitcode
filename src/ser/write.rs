@@ -266,7 +266,7 @@ impl WriteWith for SerVec {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests {
     use super::*;
     use test::{black_box, Bencher};
