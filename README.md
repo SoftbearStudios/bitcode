@@ -1,5 +1,7 @@
 # Bitcode
 
+[![Build](https://github.com/SoftbearStudios/bitcode/actions/workflows/build.yml/badge.svg)](https://github.com/SoftbearStudios/bitcode/actions/workflows/build.yml)
+
 A bitwise encoder/decoder similar to [bincode](https://github.com/bincode-org/bincode).
 
 ## Motivation
