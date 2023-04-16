@@ -294,6 +294,16 @@ mod tests2 {
             .unwrap()
     }
 
+    #[inline(never)]
+    fn postcard_serialize(v: &(impl Serialize + ?Sized)) -> Vec<u8> {
+        postcard::to_allocvec(v).unwrap()
+    }
+
+    #[inline(never)]
+    fn postcard_deserialize<T: DeserializeOwned>(buf: &[u8]) -> T {
+        postcard::from_bytes(buf).unwrap()
+    }
+
     #[test]
     fn deserialize() {
         let data = vec![Data {
@@ -420,6 +430,18 @@ mod tests2 {
         bench_deserialize(b, bincode_flate2_best_serialize, bincode_flate2_deserialize)
     }
 
+    #[bench]
+    #[cfg_attr(miri, ignore)]
+    fn bench_postcard_serialize(b: &mut Bencher) {
+        bench_serialize(b, postcard_serialize)
+    }
+
+    #[bench]
+    #[cfg_attr(miri, ignore)]
+    fn bench_postcard_deserialize(b: &mut Bencher) {
+        bench_deserialize(b, postcard_serialize, postcard_deserialize)
+    }
+
     #[test]
     #[cfg_attr(miri, ignore)]
     fn comparison1() {
@@ -451,6 +473,7 @@ mod tests2 {
             "Bincode (Deflate Best)",
             bincode_flate2_best_serialize(data),
         );
+        print_results("Postcard", postcard_serialize(data));
 
         println!(
             "| ideal (max entropy)    |              | {:.2}%      |",
@@ -462,13 +485,14 @@ mod tests2 {
     #[cfg_attr(miri, ignore)]
     fn comparison2() {
         fn compare<T: Serialize + Clone>(name: &str, r: RangeInclusive<T>) {
-            fn measure<T: Serialize + Clone>(t: T) -> [usize; 3] {
+            fn measure<T: Serialize + Clone>(t: T) -> [usize; 4] {
                 const COUNT: usize = 8;
                 let many: [T; COUNT] = std::array::from_fn(|_| t.clone());
-                let bitcode = 8 * bitcode_serialize(&many).len() / COUNT;
-                let bincode = 8 * bincode_serialize(&many).len() / COUNT;
-                let bincode_varint = 8 * bincode_varint_serialize(&many).len() / COUNT;
-                [bitcode, bincode, bincode_varint]
+                let bitcode = bitcode_serialize(&many).len();
+                let bincode = bincode_serialize(&many).len();
+                let bincode_varint = bincode_varint_serialize(&many).len();
+                let postcard = postcard_serialize(&many).len();
+                [bitcode, bincode, bincode_varint, postcard].map(|b| 8 * b / COUNT)
             }
 
             let lo = measure(r.start().clone());
@@ -485,15 +509,18 @@ mod tests2 {
                     }
                 })
                 .collect();
-            println!("| {name:<15} | {:<7} | {:<7} | {:<16} |", v[0], v[1], v[2]);
+            println!(
+                "| {name:<15} | {:<7} | {:<7} | {:<16} | {:<8} |",
+                v[0], v[1], v[2], v[3]
+            );
         }
 
         fn compare_one<T: Serialize + Clone>(name: &str, t: T) {
             compare(name, t.clone()..=t);
         }
 
-        println!("| Type            | Bitcode | Bincode | Bincode (Varint) |");
-        println!("|-----------------|---------|---------|------------------|");
+        println!("| Type            | Bitcode | Bincode | Bincode (Varint) | Postcard |");
+        println!("|-----------------|---------|---------|------------------|----------|");
         compare("bool", false..=true);
         compare("u8", 0u8..=u8::MAX);
         compare("i8", 0i8..=i8::MAX);
@@ -510,8 +537,8 @@ mod tests2 {
         compare("Result<(), ()>", Ok(())..=Err(()));
 
         println!();
-        println!("| Value           | Bitcode | Bincode | Bincode (Varint) |");
-        println!("|-----------------|---------|---------|------------------|");
+        println!("| Value           | Bitcode | Bincode | Bincode (Varint) | Postcard |");
+        println!("|-----------------|---------|---------|------------------|----------|");
         compare_one("[true; 4]", [true; 4]);
         compare_one("vec![(); 0]", vec![(); 0]);
         compare_one("vec![(); 1]", vec![(); 1]);

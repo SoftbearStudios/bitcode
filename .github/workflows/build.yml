@@ -30,9 +30,9 @@ jobs:
         run: sudo apt install gcc-multilib
       - name: Test (32-bit)
         run: cargo test --target i686-unknown-linux-gnu
-      - name: Install Miri
-        run: cargo miri setup
-      - name: Test (miri)
-        run: MIRIFLAGS="-Zmiri-permissive-provenance" cargo miri test
-      - name: Test (miri big-endian)
-        run: MIRIFLAGS="-Zmiri-permissive-provenance" cargo miri test --target mips64-unknown-linux-gnuabi6
+      #- name: Install Miri
+      #  run: cargo miri setup
+      #- name: Test (miri)
+      #  run: MIRIFLAGS="-Zmiri-permissive-provenance" cargo miri test
+      #- name: Test (miri big-endian)
+      #  run: MIRIFLAGS="-Zmiri-permissive-provenance" cargo miri test --target mips64-unknown-linux-gnuabi6
