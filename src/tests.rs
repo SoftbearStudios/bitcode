@@ -64,6 +64,7 @@ fn fuzz_2() {
 #[test]
 fn test_reddit() {
     #[derive(Serialize)]
+    #[allow(dead_code)]
     enum Variant {
         Three = 3,
         Zero = 0,
