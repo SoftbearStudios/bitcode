@@ -20,11 +20,16 @@ jobs:
         with:
           toolchain: nightly
           override: true
+          target: i686-unknown-linux-gnu
           components: rustfmt, clippy, miri
       - name: Test (debug)
         run: cargo test
       - name: Test (release)
         run: cargo test --release
+      - name: Install GCC multilib
+        run: sudo apt install gcc-multilib
+      - name: Test (32-bit)
+        run: cargo test --target i686-unknown-linux-gnu
       - name: Install Miri
         run: cargo miri setup
       - name: Test (miri)
