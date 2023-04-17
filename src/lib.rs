@@ -26,6 +26,9 @@ extern crate core;
 #[cfg(test)]
 extern crate test;
 
+pub use crate::int_code::{
+    BoundedGammaEncoding, DefaultNumericEncoding, DynamicEncoding, FullGammaEncoding,
+};
 use de::{deserialize_with, read::ReadWithImpl};
 use ser::{serialize_with, write::WriteWithImpl};
 use serde::{Deserialize, Serialize};
@@ -34,10 +37,15 @@ use std::fmt::{self, Display, Formatter};
 #[cfg(all(test, not(miri)))]
 mod benches;
 mod de;
+mod int_code;
 mod nightly;
 mod ser;
 #[cfg(test)]
 mod tests;
+
+pub trait NumericEncoding: int_code::NumericEncoding {}
+
+impl<T: int_code::NumericEncoding> NumericEncoding for T {}
 
 /// Serializes a `T:` [`Serialize`] into a [`Vec<u8>`].
 ///
@@ -46,7 +54,15 @@ pub fn serialize<T: ?Sized>(t: &T) -> Result<Vec<u8>>
 where
     T: Serialize,
 {
-    serialize_with::<WriteWithImpl>(t)
+    serialize_with::<WriteWithImpl>(t, DefaultNumericEncoding)
+}
+
+pub fn serialize_with_encoding<T, N>(t: &T, encoding: N) -> Result<Vec<u8>>
+where
+    T: Serialize + ?Sized,
+    N: NumericEncoding,
+{
+    serialize_with::<WriteWithImpl>(t, encoding)
 }
 
 /// Deserializes a [`&[u8]`][`prim@slice`] into an instance of `T:` [`Deserialize`].
@@ -56,7 +72,15 @@ pub fn deserialize<'a, T>(bytes: &'a [u8]) -> Result<T>
 where
     T: Deserialize<'a>,
 {
-    deserialize_with::<'a, T, ReadWithImpl>(bytes)
+    deserialize_with::<'a, T, ReadWithImpl>(bytes, DefaultNumericEncoding)
+}
+
+pub fn deserialize_with_encoding<'a, T, N>(encoding: N, bytes: &'a [u8]) -> Result<T>
+where
+    T: Deserialize<'a>,
+    N: NumericEncoding,
+{
+    deserialize_with::<'a, T, ReadWithImpl>(bytes, encoding)
 }
 
 /// (De)serialization errors.

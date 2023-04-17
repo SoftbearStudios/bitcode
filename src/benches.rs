@@ -1,3 +1,4 @@
+use crate::{BoundedGammaEncoding, FullGammaEncoding};
 use bincode::Options;
 use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
@@ -73,12 +74,28 @@ fn random_data(n: usize) -> Vec<Data> {
     (0..n).map(|_| rng.gen()).collect()
 }
 
-fn bitcode_serialize(v: &(impl Serialize + ?Sized)) -> Vec<u8> {
+fn bitcode_default_serialize(v: &(impl Serialize + ?Sized)) -> Vec<u8> {
     crate::serialize(v).unwrap()
 }
 
-fn bitcode_deserialize<T: DeserializeOwned>(v: &[u8]) -> T {
+fn bitcode_default_deserialize<T: DeserializeOwned>(v: &[u8]) -> T {
     crate::deserialize(v).unwrap()
+}
+
+fn bitcode_full_gamma_serialize(v: &(impl Serialize + ?Sized)) -> Vec<u8> {
+    crate::serialize_with_encoding(v, FullGammaEncoding).unwrap()
+}
+
+fn bitcode_full_gamma_deserialize<T: DeserializeOwned>(v: &[u8]) -> T {
+    crate::deserialize_with_encoding(FullGammaEncoding, v).unwrap()
+}
+
+fn bitcode_bounded_serialize(v: &(impl Serialize + ?Sized)) -> Vec<u8> {
+    crate::serialize_with_encoding(v, BoundedGammaEncoding).unwrap()
+}
+
+fn bitcode_bounded_deserialize<T: DeserializeOwned>(v: &[u8]) -> T {
+    crate::deserialize_with_encoding(BoundedGammaEncoding, v).unwrap()
 }
 
 fn bincode_fixint_serialize(v: &(impl Serialize + ?Sized)) -> Vec<u8> {
@@ -180,7 +197,9 @@ macro_rules! bench {
 }
 
 bench!(
-    bitcode,
+    bitcode_default,
+    bitcode_full_gamma,
+    bitcode_bounded,
     bincode_fixint,
     bincode_varint,
     bincode_lz4,
@@ -206,7 +225,9 @@ fn comparison1() {
 
     println!("| Format                 | Size (bytes) | Zero Bytes |");
     println!("|------------------------|--------------|------------|");
-    print_results("Bitcode", bitcode_serialize(data));
+    print_results("Bitcode", bitcode_default_serialize(data));
+    print_results("Bitcode Full", bitcode_full_gamma_serialize(data));
+    print_results("Bitcode Bounded", bitcode_bounded_serialize(data));
     print_results("Bincode", bincode_fixint_serialize(data));
     print_results("Bincode (Varint)", bincode_varint_serialize(data));
 
@@ -233,14 +254,18 @@ fn comparison1() {
 #[test]
 fn comparison2() {
     fn compare<T: Serialize + Clone>(name: &str, r: RangeInclusive<T>) {
-        fn measure<T: Serialize + Clone>(t: T) -> [usize; 4] {
+        fn measure<T: Serialize + Clone>(t: T) -> [usize; 6] {
             const COUNT: usize = 8;
             let many: [T; COUNT] = std::array::from_fn(|_| t.clone());
-            let bitcode = bitcode_serialize(&many).len();
-            let bincode = bincode_fixint_serialize(&many).len();
-            let bincode_varint = bincode_varint_serialize(&many).len();
-            let postcard = postcard_serialize(&many).len();
-            [bitcode, bincode, bincode_varint, postcard].map(|b| 8 * b / COUNT)
+            [
+                bitcode_default_serialize(&many).len(),
+                bitcode_full_gamma_serialize(&many).len(),
+                bitcode_bounded_serialize(&many).len(),
+                bincode_fixint_serialize(&many).len(),
+                bincode_varint_serialize(&many).len(),
+                postcard_serialize(&many).len(),
+            ]
+            .map(|b| 8 * b / COUNT)
         }
 
         let lo = measure(r.start().clone());
@@ -253,13 +278,13 @@ fn comparison2() {
                 if lo == hi {
                     format!("{lo}")
                 } else {
-                    format!("{lo}-{hi}")
+                    format!("{}-{}", usize::min(lo, hi), usize::max(lo, hi))
                 }
             })
             .collect();
         println!(
-            "| {name:<15} | {:<7} | {:<7} | {:<16} | {:<8} |",
-            v[0], v[1], v[2], v[3]
+            "| {name:<20} | {:<15} | {:<12} | {:<15} | {:<7} | {:<16} | {:<8} |",
+            v[0], v[1], v[2], v[3], v[4], v[5],
         );
     }
 
@@ -267,17 +292,19 @@ fn comparison2() {
         compare(name, t.clone()..=t);
     }
 
-    println!("| Type            | Bitcode | Bincode | Bincode (Varint) | Postcard |");
-    println!("|-----------------|---------|---------|------------------|----------|");
+    println!("| Type                 | Bitcode Default | Bitcode Full | Bitcode Bounded | Bincode | Bincode (Varint) | Postcard |");
+    println!("|----------------------|-----------------|--------------|-----------------|---------|------------------|----------|");
     compare("bool", false..=true);
     compare("u8", 0u8..=u8::MAX);
-    compare("i8", 0i8..=i8::MAX);
     compare("u16", 0u16..=u16::MAX);
-    compare("i16", 0i16..=i16::MAX);
-    compare("u32", 0u32..=u32::MAX);
-    compare("i32", 0i32..=i32::MAX);
-    compare("u64", 0u64..=u64::MAX);
-    compare("i64", 0i64..=i64::MAX);
+    // The FullGammaEncoding don't support the max values.
+    compare("u32", 0u32..=u32::MAX - 1);
+    compare("u64", 0u64..=u64::MAX - 1);
+    // The worst case for signed integers are the negative values.
+    compare("i8", (i8::MIN + 1)..=0i8);
+    compare("i16", (i16::MIN + 1)..=0i16);
+    compare("i32", (i32::MIN + 1)..=0i32);
+    compare("i64", (i64::MIN + 1)..=0i64);
     compare_one("f32", 0f32);
     compare_one("f64", 0f64);
     compare("char", (0 as char)..=char::MAX);
@@ -285,13 +312,17 @@ fn comparison2() {
     compare("Result<(), ()>", Ok(())..=Err(()));
 
     println!();
-    println!("| Value           | Bitcode | Bincode | Bincode (Varint) | Postcard |");
-    println!("|-----------------|---------|---------|------------------|----------|");
+    println!("| Type                 | Bitcode Default | Bitcode Full | Bitcode Bounded | Bincode | Bincode (Varint) | Postcard |");
+    println!("|----------------------|-----------------|--------------|-----------------|---------|------------------|----------|");
     compare_one("[true; 4]", [true; 4]);
     compare_one("vec![(); 0]", vec![(); 0]);
     compare_one("vec![(); 1]", vec![(); 1]);
     compare_one("vec![(); 256]", vec![(); 256]);
     compare_one("vec![(); 65536]", vec![(); 65536]);
+    compare_one("vec![1234u64; 0]", vec![1234u64; 0]);
+    compare_one("vec![1234u64; 1]", vec![1234u64; 1]);
+    compare_one("vec![1234u64; 256]", vec![1234u64; 256]);
+    compare_one("vec![1234u64; 65536]", vec![1234u64; 65536]);
     compare_one(r#""""#, "");
     compare_one(r#""abcd""#, "abcd");
     compare_one(r#""abcd1234""#, "abcd1234");
