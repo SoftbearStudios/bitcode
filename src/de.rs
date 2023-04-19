@@ -152,16 +152,18 @@ impl<'de, R: Read> Deserializer<'de> for &mut BitcodeDeserializer<R> {
     where
         V: Visitor<'de>,
     {
-        let mut buf = [0; 4];
-        buf[0] = self.read_u8()?;
+        let first = self.read_u8()?;
+        let len = utf8_char_width(first);
 
-        let len = utf8_char_width(buf[0]);
-        if len > 1 {
-            let bits = self.reader.read_bits((len - 1) * u8::BITS as usize)?;
-            buf[1..len].copy_from_slice(&bits.to_le_bytes()[0..len - 1]);
+        let bytes = if len > 1 {
+            let remaining = self.reader.read_bits((len - 1) * u8::BITS as usize)?;
+            first as u32 | (remaining as u32) << u8::BITS
+        } else {
+            first as u32
         }
+        .to_le_bytes();
 
-        let s = std::str::from_utf8(&buf[..len]).map_err(|_| E::Invalid("char").e())?;
+        let s = std::str::from_utf8(&bytes[..len]).map_err(|_| E::Invalid("char").e())?;
         debug_assert_eq!(s.as_bytes().len(), len);
         debug_assert_eq!(s.chars().count(), 1);
         visitor.visit_char(s.chars().next().unwrap())

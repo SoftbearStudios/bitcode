@@ -106,8 +106,9 @@ impl<W: Write> Serializer for &mut BitcodeSerializer<W> {
 
     fn serialize_char(self, v: char) -> Result<Self::Ok> {
         let mut buf = [0; 4];
-        let string = v.encode_utf8(&mut buf);
-        self.writer.write_bytes(string.as_bytes());
+        let n = v.encode_utf8(&mut buf).len();
+        self.writer
+            .write_bits(u32::from_le_bytes(buf) as u64, n * u8::BITS as usize);
         Ok(())
     }
 
