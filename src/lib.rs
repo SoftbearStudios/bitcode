@@ -26,16 +26,23 @@ extern crate core;
 #[cfg(test)]
 extern crate test;
 
-use de::{deserialize_with, read::ReadWithImpl};
-use ser::{serialize_with, write::WriteWithImpl};
+pub use buffer::Buffer;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display, Formatter};
 
-#[cfg(all(test, not(miri)))]
-mod benches;
+mod buffer;
 mod de;
 mod nightly;
+mod read;
 mod ser;
+mod word;
+mod word_buffer;
+mod write;
+
+#[cfg(all(test, not(miri)))]
+mod benches;
+#[cfg(test)]
+mod bit_buffer;
 #[cfg(test)]
 mod tests;
 
@@ -46,7 +53,7 @@ pub fn serialize<T: ?Sized>(t: &T) -> Result<Vec<u8>>
 where
     T: Serialize,
 {
-    serialize_with::<WriteWithImpl>(t)
+    Ok(Buffer::new().serialize(t)?.to_vec())
 }
 
 /// Deserializes a [`&[u8]`][`prim@slice`] into an instance of `T:` [`Deserialize`].
@@ -56,7 +63,34 @@ pub fn deserialize<'a, T>(bytes: &'a [u8]) -> Result<T>
 where
     T: Deserialize<'a>,
 {
-    deserialize_with::<'a, T, ReadWithImpl>(bytes)
+    Buffer::new().deserialize(bytes)
+}
+
+impl Buffer {
+    /// Serializes a `T:` [`Serialize`] into a [`&[u8]`][`prim@slice`]. Can reuse the buffer's
+    /// allocations.
+    ///
+    /// Even if you call `to_vec` on the [`&[u8]`][`prim@slice`], it's still more efficient than
+    /// [`serialize`].
+    ///
+    /// **Warning:** The format is subject to change between versions.
+    pub fn serialize<T: ?Sized>(&mut self, t: &T) -> Result<&[u8]>
+    where
+        T: Serialize,
+    {
+        ser::serialize_internal(&mut self.0, t)
+    }
+
+    /// Deserializes a [`&[u8]`][`prim@slice`] into an instance of `T:` [`Deserialize`]. Can reuse
+    /// the buffer's allocations.
+    ///
+    /// **Warning:** The format is subject to change between versions.
+    pub fn deserialize<'a, T>(&mut self, bytes: &'a [u8]) -> Result<T>
+    where
+        T: Deserialize<'a>,
+    {
+        de::deserialize_internal(&mut self.0, bytes)
+    }
 }
 
 /// (De)serialization errors.

@@ -22,7 +22,6 @@ Bitcode does not attempt to have a stable format, so we are free to optimize it.
 
 - Doesn't support streaming APIs
 - Format is unstable between versions
-- Currently slow on big endian
 
 ## Benchmarks vs. [bincode](https://github.com/bincode-org/bincode) and [postcard](https://github.com/jamesmunns/postcard)
 

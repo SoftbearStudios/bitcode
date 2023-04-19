@@ -1,43 +1,47 @@
 use crate::nightly::utf8_char_width;
+use crate::read::Read;
 use crate::{Error, Result, E};
 use serde::de::{
     DeserializeSeed, EnumAccess, IntoDeserializer, MapAccess, SeqAccess, VariantAccess, Visitor,
 };
 use serde::{Deserialize, Deserializer};
 
-pub(crate) mod read;
-use read::{Read, ReadWith};
-
-pub(crate) fn deserialize_with<'a, T: Deserialize<'a>, R: ReadWith<'a>>(
-    bytes: &'a [u8],
+pub fn deserialize_internal<'a, T: Deserialize<'a>>(
+    r: &mut (impl Read + Default),
+    bytes: &[u8],
 ) -> Result<T> {
-    deserialize_from(R::from_inner(bytes))
-}
+    r.start_read(bytes);
 
-pub(crate) fn deserialize_from<'a, T: Deserialize<'a>>(r: impl Read) -> Result<T> {
-    let mut d = BitcodeDeserializer { data: r };
-    let result = T::deserialize(&mut d);
+    // We take the reader and replace it if no error occurred.
+    let mut d = BitcodeDeserializer {
+        reader: std::mem::take(r),
+    };
+    let deserialize_result = T::deserialize(&mut d);
 
-    let r = d.data.finish();
-    if let Err(e) = &r {
+    // WordBuffer can read slightly more than the input without realizing it (for performance).
+    let finish_result = d.reader.finish_read();
+    if let Err(e) = &finish_result {
         if e.same(&E::Eof.e()) {
             return Err(E::Eof.e());
         }
     }
 
-    let t = result?;
-    r?;
+    let t = deserialize_result?;
+    finish_result?;
+
+    // No error occurred so we can replace the reader.
+    *r = d.reader;
     Ok(t)
 }
 
 struct BitcodeDeserializer<R> {
-    data: R,
+    reader: R,
 }
 
 macro_rules! read_int {
     ($name:ident, $a:ty) => {
         fn $name(&mut self) -> Result<$a> {
-            self.data.read_bits(<$a>::BITS as usize).map(|v| v as $a)
+            self.reader.read_bits(<$a>::BITS as usize).map(|v| v as $a)
         }
     };
 }
@@ -49,33 +53,41 @@ impl<R: Read> BitcodeDeserializer<R> {
     read_int!(read_u64, u64);
 
     fn read_bool(&mut self) -> Result<bool> {
-        self.data.read_bit()
+        self.reader.read_bit()
     }
 
     fn read_len(&mut self) -> Result<usize> {
         let max_zeros = (usize::BITS - 1) as usize;
-        let zeros = self
-            .data
+        let zero_bits = self
+            .reader
             .read_zeros(max_zeros)
             .map_err(|e| e.map_invalid("length"))?;
 
-        let integer_bits = zeros + 1;
-        let v = self.data.read_bits(integer_bits)?;
+        let integer_bits = zero_bits + 1;
+        let rotated = self.reader.read_bits(integer_bits)?;
 
-        let lz = u64::BITS as usize - integer_bits;
-        let v = (v << lz).reverse_bits() as u64;
+        // Rotate bits mod `integer_bits` instead of reversing since it's faster.
+        // 0000bbb1 -> 00001bbb
+        let v = (rotated as u64 >> 1) | (1 << (integer_bits - 1));
 
         // Gamma can't encode 0 so sub 1 (see serialize_len for more details).
         Ok((v - 1) as usize)
     }
 
-    #[inline(never)] // Removing this makes bench_bitcode_deserialize 27% slower.
-    fn read_len_and_bytes(&mut self) -> Result<Vec<u8>> {
+    #[inline]
+    fn read_len_and_bytes_inner(&mut self) -> Result<&[u8]> {
         let len = self.read_len()?;
-        if len > isize::MAX as usize / u8::MAX as usize {
-            return Err(E::Invalid("length").e());
-        }
-        self.data.read_bytes(len)
+        self.reader.read_bytes(len)
+    }
+
+    #[inline]
+    fn read_len_and_bytes(&mut self) -> Result<&[u8]> {
+        self.read_len_and_bytes_inner()
+    }
+
+    #[inline(never)] // Removing this makes bench_bitcode_deserialize 27% slower.
+    fn read_len_and_byte_buf(&mut self) -> Result<Vec<u8>> {
+        Ok(self.read_len_and_bytes_inner()?.to_owned())
     }
 
     fn read_variant_index(&mut self) -> Result<u32> {
@@ -103,7 +115,7 @@ impl<'de, R: Read> Deserializer<'de> for &mut BitcodeDeserializer<R> {
     where
         V: Visitor<'de>,
     {
-        return Err(E::NotSupported("deserialize_any").e());
+        Err(E::NotSupported("deserialize_any").e())
     }
 
     fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value>
@@ -145,7 +157,7 @@ impl<'de, R: Read> Deserializer<'de> for &mut BitcodeDeserializer<R> {
 
         let len = utf8_char_width(buf[0]);
         if len > 1 {
-            let bits = self.data.read_bits((len - 1) * u8::BITS as usize)?;
+            let bits = self.reader.read_bits((len - 1) * u8::BITS as usize)?;
             buf[1..len].copy_from_slice(&bits.to_le_bytes()[0..len - 1]);
         }
 
@@ -159,14 +171,15 @@ impl<'de, R: Read> Deserializer<'de> for &mut BitcodeDeserializer<R> {
     where
         V: Visitor<'de>,
     {
-        self.deserialize_string(visitor)
+        let bytes = self.read_len_and_bytes()?;
+        visitor.visit_str(std::str::from_utf8(bytes).map_err(|_| E::Invalid("utf8").e())?)
     }
 
     fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        let bytes = self.read_len_and_bytes()?;
+        let bytes = self.read_len_and_byte_buf()?;
         visitor.visit_string(String::from_utf8(bytes).map_err(|_| E::Invalid("utf8").e())?)
     }
 
@@ -174,14 +187,14 @@ impl<'de, R: Read> Deserializer<'de> for &mut BitcodeDeserializer<R> {
     where
         V: Visitor<'de>,
     {
-        self.deserialize_byte_buf(visitor)
+        visitor.visit_bytes(self.read_len_and_bytes()?)
     }
 
     fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        visitor.visit_byte_buf(self.read_len_and_bytes()?)
+        visitor.visit_byte_buf(self.read_len_and_byte_buf()?)
     }
 
     fn deserialize_option<V>(self, visitor: V) -> Result<V::Value>
@@ -241,6 +254,9 @@ impl<'de, R: Read> Deserializer<'de> for &mut BitcodeDeserializer<R> {
             where
                 T: DeserializeSeed<'de>,
             {
+                if std::mem::size_of::<T>() == 0 {
+                    guard_zst(self.len)?;
+                }
                 if self.len > 0 {
                     self.len -= 1;
                     let value = DeserializeSeed::deserialize(seed, &mut *self.deserializer)?;
@@ -290,6 +306,9 @@ impl<'de, R: Read> Deserializer<'de> for &mut BitcodeDeserializer<R> {
             where
                 K: DeserializeSeed<'de>,
             {
+                if std::mem::size_of::<K>() == 0 {
+                    guard_zst(self.len)?;
+                }
                 if self.len > 0 {
                     self.len -= 1;
                     let key = DeserializeSeed::deserialize(seed, &mut *self.deserializer)?;
@@ -362,18 +381,27 @@ impl<'de, R: Read> Deserializer<'de> for &mut BitcodeDeserializer<R> {
     where
         V: Visitor<'de>,
     {
-        return Err(E::NotSupported("deserialize_identifier").e());
+        Err(E::NotSupported("deserialize_identifier").e())
     }
 
     fn deserialize_ignored_any<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        return Err(E::NotSupported("deserialize_ignored_any").e());
+        Err(E::NotSupported("deserialize_ignored_any").e())
     }
 
     fn is_human_readable(&self) -> bool {
         false
+    }
+}
+
+// Guards against Vec<()> with huge len taking forever.
+fn guard_zst(len: usize) -> Result<()> {
+    if len > 1 << 16 {
+        Err(E::Invalid("too many zst").e())
+    } else {
+        Ok(())
     }
 }
 

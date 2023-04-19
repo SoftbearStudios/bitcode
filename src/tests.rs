@@ -1,78 +1,121 @@
-use crate::de::deserialize_with;
-use crate::de::read::{BitSliceImpl, DeVec};
-use crate::ser::serialize_with;
-use crate::ser::write::{BitVecImpl, SerVec};
-use crate::{deserialize, E};
+use crate::bit_buffer::BitBuffer;
+use crate::de::deserialize_internal;
+use crate::ser::serialize_internal;
+use crate::word_buffer::WordBuffer;
+use crate::{deserialize, Buffer, E};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Debug;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen_test::*;
 
-fn the_same_inner<T: Clone + Debug + PartialEq + Serialize + DeserializeOwned>(t: T) {
+#[test]
+fn test_buffer_with_capacity() {
+    assert_eq!(Buffer::with_capacity(0).capacity(), 0);
+
+    let mut buf = Buffer::with_capacity(1016);
+    let enough_cap = buf.capacity();
+    let bytes = buf.serialize(&"a".repeat(997 + 16)).unwrap();
+    assert_eq!(bytes.len(), enough_cap);
+    assert_eq!(buf.capacity(), enough_cap);
+
+    let mut buf = Buffer::with_capacity(1016);
+    let small_cap = buf.capacity();
+    let bytes = buf.serialize(&"a".repeat(997 + 19)).unwrap();
+    assert_ne!(bytes.len(), small_cap);
+    assert_ne!(buf.capacity(), small_cap);
+}
+
+fn the_same_inner<T: Clone + Debug + PartialEq + Serialize + DeserializeOwned>(
+    t: T,
+    buf: &mut Buffer,
+) {
     let serialized = {
-        let a = serialize_with::<BitVecImpl>(&t).unwrap();
-        #[cfg(target_endian = "little")]
-        {
-            // SerVec doesn't work on big endian.
-            let b = serialize_with::<SerVec>(&t).unwrap();
-            assert_eq!(a, b);
-        }
+        let a = serialize_internal(&mut BitBuffer::default(), &t)
+            .unwrap()
+            .to_vec();
+        let b = serialize_internal(&mut WordBuffer::default(), &t)
+            .unwrap()
+            .to_vec();
+        assert_eq!(a, b);
+
+        let c = buf.serialize(&t).unwrap().to_vec();
+        assert_eq!(a, c);
         a
     };
 
-    let a: T = deserialize_with::<T, BitSliceImpl>(&serialized).expect("BitSliceImpl error");
+    let a: T =
+        deserialize_internal(&mut BitBuffer::default(), &serialized).expect("BitBuffer error");
+    let b: T =
+        deserialize_internal(&mut WordBuffer::default(), &serialized).expect("WordBuffer error");
+    let c: T = buf
+        .deserialize(&serialized)
+        .expect("Buffer::deserialize error");
 
     assert_eq!(t, a);
-
-    #[cfg(target_endian = "little")]
-    {
-        // DeVec does not work on big endian.
-        let b: T = deserialize_with::<T, DeVec>(&serialized).expect("DeVec error");
-        assert_eq!(t, b);
-        assert_eq!(a, b);
-    }
+    assert_eq!(t, b);
+    assert_eq!(t, c);
 
     let mut bytes = serialized.clone();
     bytes.push(0);
-    #[cfg(target_endian = "little")]
     assert_eq!(
-        deserialize_with::<T, DeVec>(&bytes),
+        deserialize_internal::<T>(&mut BitBuffer::default(), &bytes),
         Err(E::ExpectedEof.e())
     );
     assert_eq!(
-        deserialize_with::<T, BitSliceImpl>(&bytes),
+        deserialize_internal::<T>(&mut WordBuffer::default(), &bytes),
         Err(E::ExpectedEof.e())
     );
 
     let mut bytes = serialized.clone();
     if bytes.pop().is_some() {
-        #[cfg(target_endian = "little")]
-        assert_eq!(deserialize_with::<T, DeVec>(&bytes), Err(E::Eof.e()));
-        assert_eq!(deserialize_with::<T, BitSliceImpl>(&bytes), Err(E::Eof.e()));
+        assert_eq!(
+            deserialize_internal::<T>(&mut BitBuffer::default(), &bytes),
+            Err(E::Eof.e())
+        );
+        assert_eq!(
+            deserialize_internal::<T>(&mut WordBuffer::default(), &bytes),
+            Err(E::Eof.e())
+        );
     }
 }
 
+fn the_same_once<T: Clone + Debug + PartialEq + Serialize + DeserializeOwned>(t: T) {
+    the_same_inner(t, &mut Buffer::new());
+}
+
 fn the_same<T: Clone + Debug + PartialEq + Serialize + DeserializeOwned>(t: T) {
-    the_same_inner(t.clone());
+    let mut buf = Buffer::new();
+    the_same_inner(t.clone(), &mut buf);
     #[cfg(miri)]
     const END: usize = 2;
     #[cfg(not(miri))]
     const END: usize = 65;
     for i in 0..END {
-        the_same_inner(vec![t.clone(); i]);
+        the_same_inner(vec![t.clone(); i], &mut buf);
     }
 }
 
 #[test]
-fn fuzz_1() {
+fn fuzz1() {
     assert!(deserialize::<Vec<i64>>(&[64]).is_err());
 }
 
 #[test]
-fn fuzz_2() {
+fn fuzz2() {
     assert!(deserialize::<Vec<u8>>(&[0, 0, 0, 1]).is_err());
+}
+
+#[test]
+fn fuzz3() {
+    use bitvec::prelude::*;
+
+    #[rustfmt::skip]
+    let bits = bitvec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    let mut bits2 = BitVec::<u8, Lsb0>::new();
+    bits2.extend_from_bitslice(&bits);
+    let bytes = bits2.as_raw_slice();
+
+    assert!(deserialize::<Vec<()>>(bytes).is_err());
 }
 
 #[test]
@@ -91,7 +134,7 @@ fn test_reddit() {
 
 #[test]
 fn test_negative_isize() {
-    the_same_inner(-5isize);
+    the_same_once(-5isize);
 }
 
 #[test]
@@ -107,12 +150,22 @@ fn test_long_string() {
 }
 
 #[test]
+fn test_array_string() {
+    use arrayvec::ArrayString;
+    let short = ArrayString::<5>::from("abcde").unwrap();
+    the_same(short);
+
+    let long = ArrayString::<150>::from(&"abcde".repeat(30)).unwrap();
+    the_same(long);
+}
+
+#[test]
 #[cfg_attr(debug_assertions, ignore)]
 fn test_chars() {
     for n in 0..=char::MAX as u32 {
         if let Some(c) = char::from_u32(n) {
-            the_same_inner(c);
-            the_same_inner([c; 2]);
+            the_same_once(c);
+            the_same_once([c; 2]);
         }
     }
 }

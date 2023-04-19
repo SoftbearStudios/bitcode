@@ -1,3 +1,4 @@
+use crate::Buffer;
 use bincode::Options;
 use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
@@ -12,12 +13,15 @@ use serde::{Deserialize, Serialize};
 use std::ops::RangeInclusive;
 use test::{black_box, Bencher};
 
+// type StringImpl = arrayvec::ArrayString<16>;
+type StringImpl = String;
+
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 struct Data {
     x: Option<f32>,
     y: Option<i8>,
     z: u16,
-    s: String,
+    s: StringImpl,
     e: DataEnum,
 }
 
@@ -32,11 +36,14 @@ impl Distribution<Data> for rand::distributions::Standard {
             x: rng.gen_bool(0.15).then(|| rng.gen()),
             y: rng.gen_bool(0.3).then(|| rng.gen()),
             z: rng.gen(),
-            s: rng
-                .sample_iter(Alphanumeric)
-                .take(n)
-                .map(char::from)
-                .collect(),
+            s: StringImpl::try_from(
+                rng.sample_iter(Alphanumeric)
+                    .take(n)
+                    .map(char::from)
+                    .collect::<String>()
+                    .as_str(),
+            )
+            .unwrap(),
             e: rng.gen(),
         }
     }
@@ -46,7 +53,7 @@ impl Distribution<Data> for rand::distributions::Standard {
 enum DataEnum {
     #[default]
     Bar,
-    Baz(String),
+    Baz(StringImpl),
     Foo(Option<u8>),
 }
 
@@ -57,10 +64,14 @@ impl Distribution<DataEnum> for rand::distributions::Standard {
         } else if rng.gen_bool(0.5) {
             let n = gen_len(rng);
             DataEnum::Baz(
-                rng.sample_iter(Alphanumeric)
-                    .take(n)
-                    .map(char::from)
-                    .collect(),
+                StringImpl::try_from(
+                    rng.sample_iter(Alphanumeric)
+                        .take(n)
+                        .map(char::from)
+                        .collect::<String>()
+                        .as_str(),
+                )
+                .unwrap(),
             )
         } else {
             DataEnum::Foo(rng.gen_bool(0.5).then(|| rng.gen()))
@@ -159,6 +170,52 @@ fn bench_deserialize(b: &mut Bencher, ser: fn(&[Data]) -> Vec<u8>, de: fn(&[u8])
     b.iter(|| {
         black_box(de(black_box(serialized_data)));
     })
+}
+
+#[bench]
+fn bench_bitcode_buffer_serialize(b: &mut Bencher) {
+    let data = bench_data();
+    let mut buf = Buffer::new();
+    buf.serialize(&data).unwrap();
+    let initial_cap = buf.capacity();
+    b.iter(|| {
+        black_box(buf.serialize(black_box(&data)).unwrap());
+    });
+    assert_eq!(buf.capacity(), initial_cap);
+}
+
+#[bench]
+fn bench_bitcode_buffer_deserialize(b: &mut Bencher) {
+    let data = bench_data();
+    let ref bytes = crate::serialize(&data).unwrap();
+    let mut buf = Buffer::new();
+    assert_eq!(buf.deserialize::<Vec<Data>>(bytes).unwrap(), data);
+    let initial_cap = buf.capacity();
+    b.iter(|| {
+        black_box(buf.deserialize::<Vec<Data>>(black_box(bytes)).unwrap());
+    });
+    assert_eq!(buf.capacity(), initial_cap);
+}
+
+#[bench]
+fn bench_bitcode_long_string_serialize(b: &mut Bencher) {
+    let data = "abcde12345".repeat(1000);
+    let mut buf = Buffer::new();
+    buf.serialize(&data).unwrap();
+    b.iter(|| {
+        black_box(buf.serialize(black_box(&data)).unwrap());
+    });
+}
+
+#[bench]
+fn bench_bitcode_long_string_deserialize(b: &mut Bencher) {
+    let data = "abcde12345".repeat(1000);
+    let mut buf = Buffer::new();
+    let bytes = buf.serialize(&data).unwrap().to_vec();
+    assert_eq!(buf.deserialize::<String>(&bytes).unwrap(), data);
+    b.iter(|| {
+        black_box(buf.deserialize::<String>(black_box(&bytes)).unwrap());
+    });
 }
 
 macro_rules! bench {
