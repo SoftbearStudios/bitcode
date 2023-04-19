@@ -1,8 +1,8 @@
 use crate::bit_buffer::BitBuffer;
-use crate::de::deserialize_internal;
+use crate::de::{deserialize_internal, ZST_LIMIT};
 use crate::ser::serialize_internal;
 use crate::word_buffer::WordBuffer;
-use crate::{deserialize, Buffer, E};
+use crate::{Buffer, E};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -97,12 +97,12 @@ fn the_same<T: Clone + Debug + PartialEq + Serialize + DeserializeOwned>(t: T) {
 
 #[test]
 fn fuzz1() {
-    assert!(deserialize::<Vec<i64>>(&[64]).is_err());
+    assert!(crate::deserialize::<Vec<i64>>(&[64]).is_err());
 }
 
 #[test]
 fn fuzz2() {
-    assert!(deserialize::<Vec<u8>>(&[0, 0, 0, 1]).is_err());
+    assert!(crate::deserialize::<Vec<u8>>(&[0, 0, 0, 1]).is_err());
 }
 
 #[test]
@@ -115,7 +115,7 @@ fn fuzz3() {
     bits2.extend_from_bitslice(&bits);
     let bytes = bits2.as_raw_slice();
 
-    assert!(deserialize::<Vec<()>>(bytes).is_err());
+    assert!(crate::deserialize::<Vec<()>>(bytes).is_err());
 }
 
 #[test]
@@ -157,6 +157,19 @@ fn test_array_string() {
 
     let long = ArrayString::<150>::from(&"abcde".repeat(30)).unwrap();
     the_same(long);
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore)]
+fn test_zst() {
+    fn is_ok<T: Serialize + DeserializeOwned>(v: Vec<T>) -> bool {
+        let ser = crate::serialize(&v).unwrap();
+        crate::deserialize::<Vec<T>>(&ser).is_ok()
+    }
+    assert!(is_ok(vec![0u8; ZST_LIMIT]));
+    assert!(is_ok(vec![0u8; ZST_LIMIT]));
+    assert!(!is_ok(vec![(); ZST_LIMIT + 1]));
+    assert!(is_ok(vec![0u8; ZST_LIMIT + 1]));
 }
 
 #[test]

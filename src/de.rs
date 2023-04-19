@@ -254,7 +254,7 @@ impl<'de, R: Read> Deserializer<'de> for &mut BitcodeDeserializer<R> {
             where
                 T: DeserializeSeed<'de>,
             {
-                if std::mem::size_of::<T>() == 0 {
+                if std::mem::size_of::<T::Value>() == 0 {
                     guard_zst(self.len)?;
                 }
                 if self.len > 0 {
@@ -306,7 +306,7 @@ impl<'de, R: Read> Deserializer<'de> for &mut BitcodeDeserializer<R> {
             where
                 K: DeserializeSeed<'de>,
             {
-                if std::mem::size_of::<K>() == 0 {
+                if std::mem::size_of::<K::Value>() == 0 {
                     guard_zst(self.len)?;
                 }
                 if self.len > 0 {
@@ -396,9 +396,11 @@ impl<'de, R: Read> Deserializer<'de> for &mut BitcodeDeserializer<R> {
     }
 }
 
+pub(crate) const ZST_LIMIT: usize = 1 << 16;
+
 // Guards against Vec<()> with huge len taking forever.
 fn guard_zst(len: usize) -> Result<()> {
-    if len > 1 << 16 {
+    if len > ZST_LIMIT {
         Err(E::Invalid("too many zst").e())
     } else {
         Ok(())
