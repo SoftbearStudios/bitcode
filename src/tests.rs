@@ -1,4 +1,3 @@
-use crate::bit_buffer::BitBuffer;
 use crate::code::{decode_internal, encode_internal};
 use crate::serde::de::deserialize_internal;
 use crate::serde::ser::serialize_internal;
@@ -9,6 +8,9 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Debug;
+
+#[cfg(not(miri))]
+use crate::bit_buffer::BitBuffer;
 
 #[test]
 fn test_buffer_with_capacity() {
@@ -35,33 +37,41 @@ macro_rules! impl_the_same {
                 buf: &mut Buffer,
             ) {
                 let serialized = {
-                    let a = [<$ser _internal>](&mut BitBuffer::default(), &t)
+                    let a = [<$ser _internal>](&mut WordBuffer::default(), &t)
                         .unwrap()
                         .to_vec();
-                    let b = [<$ser _internal>](&mut WordBuffer::default(), &t)
-                        .unwrap()
-                        .to_vec();
+                    let b = buf.$ser(&t).unwrap().to_vec();
                     assert_eq!(a, b);
 
-                    let c = buf.$ser(&t).unwrap().to_vec();
-                    assert_eq!(a, c);
+                    #[cfg(not(miri))]
+                    {
+                        let c = [<$ser _internal>](&mut BitBuffer::default(), &t)
+                            .unwrap()
+                            .to_vec();
+                        assert_eq!(a, c);
+                    }
                     a
                 };
 
                 let a: T =
-                    [<$de _internal>](&mut BitBuffer::default(), &serialized).expect("BitBuffer error");
-                let b: T =
-                    [<$de _internal>](&mut WordBuffer::default(), &serialized).expect("WordBuffer error");
-                let c: T = buf
+                [<$de _internal>](&mut WordBuffer::default(), &serialized).expect("WordBuffer error");
+                let b: T = buf
                     .$de(&serialized)
                     .expect("Buffer::deserialize error");
 
                 assert_eq!(t, a);
                 assert_eq!(t, b);
-                assert_eq!(t, c);
+
+                #[cfg(not(miri))]
+                {
+                    let c: T =
+                        [<$de _internal>](&mut BitBuffer::default(), &serialized).expect("BitBuffer error");
+                    assert_eq!(t, c);
+                }
 
                 let mut bytes = serialized.clone();
                 bytes.push(0);
+                #[cfg(not(miri))]
                 assert_eq!(
                     [<$de _internal>]::<T>(&mut BitBuffer::default(), &bytes),
                     Err(E::ExpectedEof.e())
@@ -73,6 +83,7 @@ macro_rules! impl_the_same {
 
                 let mut bytes = serialized.clone();
                 if bytes.pop().is_some() {
+                    #[cfg(not(miri))]
                     assert_eq!(
                         [<$de _internal>]::<T>(&mut BitBuffer::default(), &bytes),
                         Err(E::Eof.e())
