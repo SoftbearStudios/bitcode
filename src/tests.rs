@@ -211,6 +211,7 @@ fn test_array_string() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)]
 fn test_zst() {
     use crate::guard::ZST_LIMIT;
     fn is_ok<T: Serialize + DeserializeOwned + Encode + Decode>(v: Vec<T>) -> bool {

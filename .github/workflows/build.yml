@@ -25,8 +25,6 @@ jobs:
         run: cargo fmt --check
       - name: Test (debug)
         run: cargo test
-      - name: Test (release)
-        run: cargo test --release
       - name: Install i686 and GCC multilib
         run: rustup target add i686-unknown-linux-gnu && sudo apt update && sudo apt install -y gcc-multilib
       - name: Test (32-bit)
