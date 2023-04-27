@@ -15,6 +15,7 @@ serde = { version ="1.0", features=["derive"] }
 
 [dependencies.bitcode]
 path = ".."
+features = ["serde"]
 
 # Prevent this from interfering with workspaces
 [workspace]

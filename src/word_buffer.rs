@@ -351,9 +351,14 @@ impl Read for WordBuffer {
         }
     }
 
-    fn read_bits(&mut self, bits: usize) -> Result<Word> {
-        self.reserve_read_1_to_64(bits)?;
-        Ok(self.read_reserved_bits(bits))
+    fn advance(&mut self, bits: usize) -> Result<()> {
+        self.index += bits;
+        Ok(())
+    }
+
+    fn peek_bits(&mut self) -> Result<Word> {
+        self.reserve_read_1_to_64(64)?;
+        Ok(self.peek_reserved_bits(64))
     }
 
     fn read_bit(&mut self) -> Result<bool> {
@@ -366,6 +371,11 @@ impl Read for WordBuffer {
         let bit_remainder = bit_index % WORD_BITS;
 
         Ok((self.words[index] & (1 << bit_remainder)) != 0)
+    }
+
+    fn read_bits(&mut self, bits: usize) -> Result<Word> {
+        self.reserve_read_1_to_64(bits)?;
+        Ok(self.read_reserved_bits(bits))
     }
 
     #[inline]
@@ -415,17 +425,8 @@ impl Read for WordBuffer {
         Ok(&bytemuck::cast_slice(&self.read_bytes_buf)[..len])
     }
 
-    fn read_zeros(&mut self, max: usize) -> Result<usize> {
-        let max_plus_one = max + 1;
-        self.reserve_read_1_to_64(max_plus_one)?;
-
-        let zeros = self.peek_reserved_bits(max_plus_one).trailing_zeros() as usize;
-        self.index += zeros;
-        if zeros < max_plus_one {
-            Ok(zeros)
-        } else {
-            Err(E::Invalid("zeros").e())
-        }
+    fn reserve_bits(&self, bits: usize) -> Result<()> {
+        self.reserve_read_bytes(bits / u8::BITS as usize)
     }
 }
 

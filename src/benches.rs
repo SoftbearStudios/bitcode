@@ -1,4 +1,5 @@
 use crate::Buffer;
+use crate::{Decode, Encode};
 use bincode::Options;
 use flate2::read::DeflateDecoder;
 use flate2::write::DeflateEncoder;
@@ -10,14 +11,14 @@ use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::ops::RangeInclusive;
 use test::{black_box, Bencher};
 
 // type StringImpl = arrayvec::ArrayString<16>;
 type StringImpl = String;
 
-#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default, PartialEq, Encode, Decode, Serialize, Deserialize)]
 struct Data {
+    #[bitcode_hint(expected_range = "0.0..1.0")]
     x: Option<f32>,
     y: Option<i8>,
     z: u16,
@@ -49,9 +50,10 @@ impl Distribution<Data> for rand::distributions::Standard {
     }
 }
 
-#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default, PartialEq, Encode, Decode, Serialize, Deserialize)]
 enum DataEnum {
     #[default]
+    #[bitcode_hint(frequency = 10)]
     Bar,
     Baz(StringImpl),
     Foo(Option<u8>),
@@ -84,12 +86,20 @@ fn random_data(n: usize) -> Vec<Data> {
     (0..n).map(|_| rng.gen()).collect()
 }
 
+fn bitcode_encode(v: &(impl Encode + ?Sized)) -> Vec<u8> {
+    crate::encode(v).unwrap()
+}
+
+fn bitcode_decode<T: Decode>(v: &[u8]) -> T {
+    crate::decode(v).unwrap()
+}
+
 fn bitcode_serialize(v: &(impl Serialize + ?Sized)) -> Vec<u8> {
-    crate::serialize(v).unwrap()
+    crate::serde::serialize(v).unwrap()
 }
 
 fn bitcode_deserialize<T: DeserializeOwned>(v: &[u8]) -> T {
-    crate::deserialize(v).unwrap()
+    crate::serde::deserialize(v).unwrap()
 }
 
 fn bincode_fixint_serialize(v: &(impl Serialize + ?Sized)) -> Vec<u8> {
@@ -187,7 +197,7 @@ fn bench_bitcode_buffer_serialize(b: &mut Bencher) {
 #[bench]
 fn bench_bitcode_buffer_deserialize(b: &mut Bencher) {
     let data = bench_data();
-    let ref bytes = crate::serialize(&data).unwrap();
+    let ref bytes = crate::serde::serialize(&data).unwrap();
     let mut buf = Buffer::new();
     assert_eq!(buf.deserialize::<Vec<Data>>(bytes).unwrap(), data);
     let initial_cap = buf.capacity();
@@ -219,24 +229,31 @@ fn bench_bitcode_long_string_deserialize(b: &mut Bencher) {
 }
 
 macro_rules! bench {
-    ($($name:ident),*) => {
+    ($serialize:ident, $deserialize:ident, $($name:ident),*) => {
         paste! {
             $(
                 #[bench]
-                fn [<bench_ $name _serialize>] (b: &mut Bencher) {
-                    bench_serialize(b, [<$name _serialize>])
+                fn [<bench_ $name _$serialize>] (b: &mut Bencher) {
+                    bench_serialize(b, [<$name _ $serialize>])
                 }
 
                 #[bench]
-                fn [<bench_ $name _deserialize>] (b: &mut Bencher) {
-                    bench_deserialize(b, [<$name _serialize>], [<$name _deserialize>])
+                fn [<bench_ $name _$deserialize>] (b: &mut Bencher) {
+                    bench_deserialize(b, [<$name _ $serialize>], [<$name _ $deserialize>])
                 }
             )*
         }
     }
 }
 
+mod derive {
+    use super::*;
+    bench!(encode, decode, bitcode);
+}
+
 bench!(
+    serialize,
+    deserialize,
     bitcode,
     bincode_fixint,
     bincode_varint,
@@ -246,110 +263,129 @@ bench!(
     postcard
 );
 
-#[test]
-fn comparison1() {
-    let ref data = random_data(10000);
+#[cfg(all(test, debug_assertions))]
+mod tests {
+    use super::*;
 
-    let print_results = |name: &'static str, b: Vec<u8>| {
-        let zeros = 100.0 * b.iter().filter(|&&b| b == 0).count() as f32 / b.len() as f32;
-        let precision = 2 - (zeros.log10().ceil() as usize).min(1);
+    #[test]
+    fn comparison1() {
+        let ref data = random_data(10000);
+        let print_results = |name: &'static str, b: Vec<u8>| {
+            let zeros = 100.0 * b.iter().filter(|&&b| b == 0).count() as f32 / b.len() as f32;
+            let precision = 2 - (zeros.log10().ceil() as usize).min(1);
+
+            println!(
+                "| {name:<22} | {:<12.1} | {zeros:>4.1$}%      |",
+                b.len() as f32 / data.len() as f32,
+                precision,
+            );
+        };
+
+        println!("| Format                 | Size (bytes) | Zero Bytes |");
+        println!("|------------------------|--------------|------------|");
+        print_results("Bitcode (derive)", bitcode_encode(data));
+        print_results("Bitcode (serde)", bitcode_serialize(data));
+        print_results("Bincode", bincode_fixint_serialize(data));
+        print_results("Bincode (varint)", bincode_varint_serialize(data));
+
+        // These use varint since it makes the result smaller and actually speeds up compression.
+        print_results("Bincode (LZ4)", bincode_lz4_serialize(data));
+        print_results(
+            "Bincode (Deflate Fast)",
+            bincode_flate2_fast_serialize(data),
+        );
+        print_results(
+            "Bincode (Deflate Best)",
+            bincode_flate2_best_serialize(data),
+        );
+
+        // TODO compressed postcard.
+        print_results("Postcard", postcard_serialize(data));
 
         println!(
-            "| {name:<22} | {:<12.1} | {zeros:>4.1$}%      |",
-            b.len() as f32 / data.len() as f32,
-            precision,
+            "| ideal (max entropy)    |              | {:.2}%      |",
+            100.0 / 255.0
         );
-    };
+    }
 
-    println!("| Format                 | Size (bytes) | Zero Bytes |");
-    println!("|------------------------|--------------|------------|");
-    print_results("Bitcode", bitcode_serialize(data));
-    print_results("Bincode", bincode_fixint_serialize(data));
-    print_results("Bincode (Varint)", bincode_varint_serialize(data));
+    #[test]
+    fn comparison2() {
+        use std::ops::RangeInclusive;
 
-    // These use varint since it makes the result smaller and actually speeds up compression.
-    print_results("Bincode (LZ4)", bincode_lz4_serialize(data));
-    print_results(
-        "Bincode (Deflate Fast)",
-        bincode_flate2_fast_serialize(data),
-    );
-    print_results(
-        "Bincode (Deflate Best)",
-        bincode_flate2_best_serialize(data),
-    );
+        fn compare<T: Encode + Serialize + Clone>(name: &str, r: RangeInclusive<T>) {
+            fn measure<T: Encode + Serialize + Clone>(t: T) -> [usize; 5] {
+                const COUNT: usize = 8;
+                let many: [T; COUNT] = std::array::from_fn(|_| t.clone());
+                [
+                    bitcode_encode(&many).len(),
+                    bitcode_serialize(&many).len(),
+                    bincode_fixint_serialize(&many).len(),
+                    bincode_varint_serialize(&many).len(),
+                    postcard_serialize(&many).len(),
+                ]
+                .map(|b| 8 * b / COUNT)
+            }
 
-    // TODO compressed postcard.
-    print_results("Postcard", postcard_serialize(data));
+            let lo = measure(r.start().clone());
+            let hi = measure(r.end().clone());
 
-    println!(
-        "| ideal (max entropy)    |              | {:.2}%      |",
-        100.0 / 255.0
-    );
-}
-
-#[test]
-fn comparison2() {
-    fn compare<T: Serialize + Clone>(name: &str, r: RangeInclusive<T>) {
-        fn measure<T: Serialize + Clone>(t: T) -> [usize; 4] {
-            const COUNT: usize = 8;
-            let many: [T; COUNT] = std::array::from_fn(|_| t.clone());
-            let bitcode = bitcode_serialize(&many).len();
-            let bincode = bincode_fixint_serialize(&many).len();
-            let bincode_varint = bincode_varint_serialize(&many).len();
-            let postcard = postcard_serialize(&many).len();
-            [bitcode, bincode, bincode_varint, postcard].map(|b| 8 * b / COUNT)
+            let v: Vec<_> = lo
+                .into_iter()
+                .zip(hi)
+                .map(|(lo, hi)| {
+                    if lo == hi {
+                        format!("{lo}")
+                    } else {
+                        format!("{lo}-{hi}")
+                    }
+                })
+                .collect();
+            println!(
+                "| {name:<19} | {:<16} | {:<15} | {:<7} | {:<16} | {:<8} |",
+                v[0], v[1], v[2], v[3], v[4],
+            );
         }
 
-        let lo = measure(r.start().clone());
-        let hi = measure(r.end().clone());
+        fn compare_one<T: Encode + Serialize + Clone>(name: &str, t: T) {
+            compare(name, t.clone()..=t);
+        }
 
-        let v: Vec<_> = lo
-            .into_iter()
-            .zip(hi)
-            .map(|(lo, hi)| {
-                if lo == hi {
-                    format!("{lo}")
-                } else {
-                    format!("{lo}-{hi}")
-                }
-            })
-            .collect();
-        println!(
-            "| {name:<15} | {:<7} | {:<7} | {:<16} | {:<8} |",
-            v[0], v[1], v[2], v[3]
-        );
+        #[derive(Clone, Encode, Decode, Serialize, Deserialize)]
+        enum Enum {
+            A,
+            B,
+            C,
+            D,
+        }
+
+        println!("| Type                | Bitcode (derive) | Bitcode (serde) | Bincode | Bincode (varint) | Postcard |");
+        println!("|---------------------|------------------|-----------------|---------|------------------|----------|");
+        compare("bool", false..=true);
+        compare("u8", 0u8..=u8::MAX);
+        compare("i8", 0i8..=i8::MAX);
+        compare("u16", 0u16..=u16::MAX);
+        compare("i16", 0i16..=i16::MAX);
+        compare("u32", 0u32..=u32::MAX);
+        compare("i32", 0i32..=i32::MAX);
+        compare("u64", 0u64..=u64::MAX);
+        compare("i64", 0i64..=i64::MAX);
+        compare_one("f32", 0f32);
+        compare_one("f64", 0f64);
+        compare("char", (0 as char)..=char::MAX);
+        compare("Option<()>", None..=Some(()));
+        compare("Result<(), ()>", Ok(())..=Err(()));
+        compare("enum { A, B, C, D }", Enum::A..=Enum::D);
+
+        println!();
+        println!("| Value               | Bitcode (derive) | Bitcode (serde) | Bincode | Bincode (varint) | Postcard |");
+        println!("|---------------------|------------------|-----------------|---------|------------------|----------|");
+        compare_one("[true; 4]", [true; 4]);
+        compare_one("vec![(); 0]", vec![(); 0]);
+        compare_one("vec![(); 1]", vec![(); 1]);
+        compare_one("vec![(); 256]", vec![(); 256]);
+        compare_one("vec![(); 65536]", vec![(); 65536]);
+        compare_one(r#""""#, "");
+        compare_one(r#""abcd""#, "abcd");
+        compare_one(r#""abcd1234""#, "abcd1234");
     }
-
-    fn compare_one<T: Serialize + Clone>(name: &str, t: T) {
-        compare(name, t.clone()..=t);
-    }
-
-    println!("| Type            | Bitcode | Bincode | Bincode (Varint) | Postcard |");
-    println!("|-----------------|---------|---------|------------------|----------|");
-    compare("bool", false..=true);
-    compare("u8", 0u8..=u8::MAX);
-    compare("i8", 0i8..=i8::MAX);
-    compare("u16", 0u16..=u16::MAX);
-    compare("i16", 0i16..=i16::MAX);
-    compare("u32", 0u32..=u32::MAX);
-    compare("i32", 0i32..=i32::MAX);
-    compare("u64", 0u64..=u64::MAX);
-    compare("i64", 0i64..=i64::MAX);
-    compare_one("f32", 0f32);
-    compare_one("f64", 0f64);
-    compare("char", (0 as char)..=char::MAX);
-    compare("Option<()>", None..=Some(()));
-    compare("Result<(), ()>", Ok(())..=Err(()));
-
-    println!();
-    println!("| Value           | Bitcode | Bincode | Bincode (Varint) | Postcard |");
-    println!("|-----------------|---------|---------|------------------|----------|");
-    compare_one("[true; 4]", [true; 4]);
-    compare_one("vec![(); 0]", vec![(); 0]);
-    compare_one("vec![(); 1]", vec![(); 1]);
-    compare_one("vec![(); 256]", vec![(); 256]);
-    compare_one("vec![(); 65536]", vec![(); 65536]);
-    compare_one(r#""""#, "");
-    compare_one(r#""abcd""#, "abcd");
-    compare_one(r#""abcd1234""#, "abcd1234");
 }

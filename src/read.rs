@@ -1,21 +1,37 @@
 use crate::word::Word;
-use crate::Result;
+use crate::{Result, E};
 
 /// Abstracts over reading bits from a buffer.
 pub trait Read {
     /// Copies `bytes` to be read.
     fn start_read(&mut self, bytes: &[u8]);
-    /// Check for errors such as [`E::Eof`][`crate::E::Eof`] and
-    /// [`E::ExpectedEof`][`crate::E::ExpectedEof`].
+    /// Check for errors such as Eof and ExpectedEof
     fn finish_read(&self) -> Result<()>;
-    /// Reads up to 64 bits. `bits` must be in range `1..=64`.
-    fn read_bits(&mut self, bits: usize) -> Result<Word>;
+    /// Overrides decoding errors with Eof since the reader might allow reading slightly past the
+    /// end. Only WordBuffer currently does this.
+    fn finish_read_with_result<T>(&self, decode_result: Result<T>) -> Result<T> {
+        let finish_result = self.finish_read();
+        if let Err(e) = &finish_result {
+            if e.same(&E::Eof.e()) {
+                return Err(E::Eof.e());
+            }
+        }
+        let t = decode_result?;
+        finish_result?;
+        Ok(t)
+    }
+    /// Advances any amount of bits. May or may not return EOF.
+    fn advance(&mut self, bits: usize) -> Result<()>;
+    /// Peeks 64 bits without reading them. Bits after EOF are zeroed.
+    fn peek_bits(&mut self) -> Result<Word>;
     // Reads 1 bit.
     fn read_bit(&mut self) -> Result<bool>;
+    /// Reads up to 64 bits. `bits` must be in range `1..=64`.
+    fn read_bits(&mut self, bits: usize) -> Result<Word>;
     /// Reads `len` bytes.
     fn read_bytes(&mut self, len: usize) -> Result<&[u8]>;
-    /// Reads as many zeros as possible up to `max`. `max` must be in range `1..=63`.
-    fn read_zeros(&mut self, max: usize) -> Result<usize>;
+    /// Ensures that at least `bits` remain. Never underreports remaining bits.
+    fn reserve_bits(&self, bits: usize) -> Result<()>;
 }
 
 #[cfg(all(test, not(miri)))]
@@ -23,7 +39,6 @@ mod tests {
     use crate::bit_buffer::BitBuffer;
     use crate::nightly::div_ceil;
     use crate::read::Read;
-    use crate::word::*;
     use crate::word_buffer::WordBuffer;
     use paste::paste;
     use test::{black_box, Bencher};
@@ -85,21 +100,6 @@ mod tests {
         });
     }
 
-    fn bench_read_zeros<T: Read + Default>(b: &mut Bencher) {
-        let bytes = vec![1 << 7; TIMES];
-        let mut buf = T::default();
-        buf.start_read(&bytes);
-
-        b.iter(|| {
-            let buf = black_box(&mut buf);
-            buf.start_read(black_box(&bytes));
-            for _ in 0..black_box(TIMES) {
-                black_box(buf.read_zeros(black_box(WORD_BITS - 1)).unwrap());
-                buf.read_bit().unwrap();
-            }
-        });
-    }
-
     macro_rules! bench_read_bits {
         ($name:ident, $T:ty, $n:literal) => {
             paste! {
@@ -133,11 +133,6 @@ mod tests {
                 #[bench]
                 fn [<bench_ $name _read_bit1>](b: &mut Bencher) {
                     bench_read_bit::<$T>(b);
-                }
-
-                #[bench]
-                fn [<bench_ $name _read_zeros>](b: &mut Bencher) {
-                    bench_read_zeros::<$T>(b);
                 }
             }
 

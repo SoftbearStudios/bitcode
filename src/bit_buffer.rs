@@ -92,16 +92,30 @@ impl Read for BitBuffer {
             .ok_or_else(|| E::ExpectedEof.e())
     }
 
+    fn advance(&mut self, bits: usize) -> Result<()> {
+        self.read_slice(bits)?;
+        Ok(())
+    }
+
+    fn peek_bits(&mut self) -> Result<Word> {
+        let slice = &self.bits[self.read..];
+        let bits = slice.len().min(64);
+
+        let mut v = [0; 8];
+        BitSlice::<u8, Lsb0>::from_slice_mut(&mut v)[..bits].copy_from_bitslice(&slice[..bits]);
+        Ok(Word::from_le_bytes(v))
+    }
+
+    fn read_bit(&mut self) -> Result<bool> {
+        Ok(self.read_slice(1)?[0])
+    }
+
     fn read_bits(&mut self, bits: usize) -> Result<Word> {
         let slice = self.read_slice(bits)?;
 
         let mut v = [0; 8];
         BitSlice::<u8, Lsb0>::from_slice_mut(&mut v)[..bits].copy_from_bitslice(slice);
         Ok(Word::from_le_bytes(v))
-    }
-
-    fn read_bit(&mut self) -> Result<bool> {
-        Ok(self.read_slice(1)?[0])
     }
 
     fn read_bytes(&mut self, len: usize) -> Result<&[u8]> {
@@ -123,15 +137,11 @@ impl Read for BitBuffer {
         Ok(&self.tmp[..len])
     }
 
-    fn read_zeros(&mut self, max: usize) -> Result<usize> {
-        let zeros = self.bits[self.read..].leading_zeros();
-        if zeros > max {
-            Err(E::Invalid("zeros").e())
+    fn reserve_bits(&self, bits: usize) -> Result<()> {
+        if bits <= self.bits[self.read..].len() {
+            Ok(())
         } else {
-            self.read += zeros;
-            let next = *self.bits.get(self.read).ok_or_else(|| E::Eof.e())?;
-            debug_assert!(next);
-            Ok(zeros)
+            Err(E::Eof.e())
         }
     }
 }

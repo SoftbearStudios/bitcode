@@ -1,6 +1,6 @@
-use crate::nightly::ilog2;
+use crate::encoding::{Encoding, Fixed, Gamma};
 use crate::write::Write;
-use crate::{Error, Result, E};
+use crate::{Encode, Error, Result, E};
 use serde::ser::{
     SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
     SerializeTupleStruct, SerializeTupleVariant,
@@ -8,78 +8,55 @@ use serde::ser::{
 use serde::{Serialize, Serializer};
 
 pub fn serialize_internal<'a>(
-    w: &'a mut (impl Write + Default),
+    writer: &'a mut impl Write,
     t: &(impl Serialize + ?Sized),
 ) -> Result<&'a [u8]> {
-    w.start_write();
-
-    // We take the writer and replace it if no error occurred.
-    let mut s = BitcodeSerializer {
-        writer: std::mem::take(w),
-    };
-    t.serialize(&mut s)?;
-    *w = s.writer;
-
-    Ok(w.finish_write())
+    writer.start_write();
+    serialize_compat(Fixed, writer, t)?;
+    Ok(writer.finish_write())
 }
 
-#[derive(Default)]
-struct BitcodeSerializer<W> {
-    writer: W,
+pub fn serialize_compat(
+    encoding: impl Encoding,
+    writer: &mut impl Write,
+    t: &(impl Serialize + ?Sized),
+) -> Result<()> {
+    t.serialize(BitcodeSerializer { encoding, writer })
 }
 
-impl<W: Write> BitcodeSerializer<W> {
-    fn serialize_len(&mut self, len: usize) -> Result<()> {
-        // https://en.wikipedia.org/wiki/Elias_gamma_coding
-        // Gamma can't encode 0 so add 1. We don't support usize::MAX because it would add more code
-        // and it's only useful for ZST.
-        let v = len
-            .checked_add(1)
-            .ok_or_else(|| E::NotSupported("len must be < usize::MAX").e())?;
+struct BitcodeSerializer<'a, C, W> {
+    encoding: C,
+    writer: &'a mut W,
+}
 
-        let zero_bits = ilog2(v) as usize;
-        let integer_bits = zero_bits + 1;
-        let gamma_bits = integer_bits + zero_bits;
-
-        if gamma_bits < 64 {
-            // Rotate bits mod `integer_bits` instead of reversing since it's faster.
-            // 00001bbb -> 0000bbb1
-            let rotated = ((v as u64) << 1 & !(1 << integer_bits)) | 1;
-            let gamma = rotated << zero_bits;
-            self.writer.write_bits(gamma, gamma_bits);
-        } else {
-            // `zero_bits` + `integer_bits` won't fit in a single call to write_bits.
-            // This only happens if v is larger than u32::MAX so we mark it as #[cold].
-            #[cold]
-            fn slow(me: &mut BitcodeSerializer<impl Write>, v: usize) {
-                let zero_bits = ilog2(v) as usize;
-                me.writer.write_bits(0, zero_bits);
-
-                let integer_bits = zero_bits + 1;
-                let rotated = ((v as u64) << 1 & !(1 << integer_bits)) | 1;
-                me.writer.write_bits(rotated, integer_bits);
-            }
-            slow(self, v);
+macro_rules! reborrow {
+    ($e:expr) => {
+        BitcodeSerializer {
+            encoding: $e.encoding,
+            writer: &mut *$e.writer,
         }
-        Ok(())
-    }
-
-    fn serialize_variant_index(&mut self, variant_index: u32) -> Result<()> {
-        self.serialize_len(variant_index as usize)
     }
 }
 
-macro_rules! serialize_int {
-    ($name:ident, $a:ty, $b:ty) => {
+impl<C: Encoding, W: Write> BitcodeSerializer<'_, C, W> {
+    fn serialize_len(self, len: usize) -> Result<()> {
+        len.encode(Gamma, self.writer)
+    }
+
+    fn serialize_variant_index(self, variant_index: u32) -> Result<()> {
+        variant_index.encode(Gamma, self.writer)
+    }
+}
+
+macro_rules! impl_ser {
+    ($name:ident, $a:ty) => {
         fn $name(self, v: $a) -> Result<Self::Ok> {
-            self.writer
-                .write_bits((v as $b).into(), <$b>::BITS as usize);
-            Ok(())
+            v.encode(self.encoding, self.writer)
         }
     };
 }
 
-impl<W: Write> Serializer for &mut BitcodeSerializer<W> {
+impl<C: Encoding, W: Write> Serializer for BitcodeSerializer<'_, C, W> {
     type Ok = ();
     type Error = Error;
     type SerializeSeq = Self;
@@ -90,56 +67,36 @@ impl<W: Write> Serializer for &mut BitcodeSerializer<W> {
     type SerializeStruct = Self;
     type SerializeStructVariant = Self;
 
-    fn serialize_bool(self, v: bool) -> Result<Self::Ok> {
-        self.writer.write_bit(v);
-        Ok(())
-    }
+    impl_ser!(serialize_bool, bool);
+    impl_ser!(serialize_i8, i8);
+    impl_ser!(serialize_i16, i16);
+    impl_ser!(serialize_i32, i32);
+    impl_ser!(serialize_i64, i64);
+    impl_ser!(serialize_u8, u8);
+    impl_ser!(serialize_u16, u16);
+    impl_ser!(serialize_u32, u32);
+    impl_ser!(serialize_u64, u64);
+    impl_ser!(serialize_f32, f32);
+    impl_ser!(serialize_f64, f64);
+    impl_ser!(serialize_char, char);
+    impl_ser!(serialize_str, &str);
 
-    serialize_int!(serialize_i8, i8, u8);
-    serialize_int!(serialize_i16, i16, u16);
-    serialize_int!(serialize_i32, i32, u32);
-    serialize_int!(serialize_i64, i64, u64);
-    serialize_int!(serialize_u8, u8, u8);
-    serialize_int!(serialize_u16, u16, u16);
-    serialize_int!(serialize_u32, u32, u32);
-    serialize_int!(serialize_u64, u64, u64);
-
-    fn serialize_char(self, v: char) -> Result<Self::Ok> {
-        let mut buf = [0; 4];
-        let n = v.encode_utf8(&mut buf).len();
-        self.writer
-            .write_bits(u32::from_le_bytes(buf) as u64, n * u8::BITS as usize);
-        Ok(())
-    }
-
-    fn serialize_f32(self, v: f32) -> Result<Self::Ok> {
-        self.serialize_u32(v.to_bits())
-    }
-
-    fn serialize_f64(self, v: f64) -> Result<Self::Ok> {
-        self.serialize_u64(v.to_bits())
-    }
-
-    fn serialize_str(self, v: &str) -> Result<Self::Ok> {
-        self.serialize_bytes(v.as_bytes())
-    }
-
-    #[inline(never)] // Removing this makes bench_bitcode_serialize 7% slower.
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok> {
-        self.serialize_len(v.len())?;
+        reborrow!(self).serialize_len(v.len())?;
         self.writer.write_bytes(v);
         Ok(())
     }
 
     fn serialize_none(self) -> Result<Self::Ok> {
-        self.serialize_bool(false)
+        self.writer.write_bit(false);
+        Ok(())
     }
 
     fn serialize_some<T: ?Sized>(self, value: &T) -> Result<Self::Ok>
     where
         T: Serialize,
     {
-        self.serialize_bool(true)?;
+        self.writer.write_bit(true);
         value.serialize(self)
     }
 
@@ -177,13 +134,13 @@ impl<W: Write> Serializer for &mut BitcodeSerializer<W> {
     where
         T: Serialize,
     {
-        self.serialize_variant_index(variant_index)?;
+        reborrow!(self).serialize_variant_index(variant_index)?;
         value.serialize(self)
     }
 
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq> {
         let len = len.expect("sequence must have len");
-        self.serialize_len(len)?;
+        reborrow!(self).serialize_len(len)?;
         Ok(self)
     }
 
@@ -206,13 +163,13 @@ impl<W: Write> Serializer for &mut BitcodeSerializer<W> {
         _variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeTupleVariant> {
-        self.serialize_variant_index(variant_index)?;
+        reborrow!(self).serialize_variant_index(variant_index)?;
         Ok(self)
     }
 
     fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap> {
         let len = len.expect("sequence must have len");
-        self.serialize_len(len)?;
+        reborrow!(self).serialize_len(len)?;
         Ok(self)
     }
 
@@ -227,7 +184,7 @@ impl<W: Write> Serializer for &mut BitcodeSerializer<W> {
         _variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeStructVariant> {
-        self.serialize_variant_index(variant_index)?;
+        reborrow!(self).serialize_variant_index(variant_index)?;
         Ok(self)
     }
 
@@ -248,10 +205,10 @@ macro_rules! ok_error_end {
 
 macro_rules! impl_seq {
     ($tr:ty, $fun:ident) => {
-        impl<W: Write> $tr for &mut BitcodeSerializer<W> {
+        impl<C: Encoding, W: Write> $tr for BitcodeSerializer<'_, C, W> {
             ok_error_end!();
             fn $fun<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<()> {
-                value.serialize(&mut **self)
+                value.serialize(reborrow!(self))
             }
         }
     };
@@ -263,13 +220,13 @@ impl_seq!(SerializeTupleVariant, serialize_field);
 
 macro_rules! impl_struct {
     ($tr:ty) => {
-        impl<W: Write> $tr for &mut BitcodeSerializer<W> {
+        impl<C: Encoding, W: Write> $tr for BitcodeSerializer<'_, C, W> {
             ok_error_end!();
             fn serialize_field<T: ?Sized>(&mut self, _key: &'static str, value: &T) -> Result<()>
             where
                 T: Serialize,
             {
-                value.serialize(&mut **self)
+                value.serialize(reborrow!(self))
             }
 
             fn skip_field(&mut self, _key: &'static str) -> Result<()> {
@@ -281,19 +238,19 @@ macro_rules! impl_struct {
 impl_struct!(SerializeStruct);
 impl_struct!(SerializeStructVariant);
 
-impl<W: Write> SerializeMap for &mut BitcodeSerializer<W> {
+impl<C: Encoding, W: Write> SerializeMap for BitcodeSerializer<'_, C, W> {
     ok_error_end!();
     fn serialize_key<T: ?Sized>(&mut self, key: &T) -> Result<()>
     where
         T: Serialize,
     {
-        key.serialize(&mut **self)
+        key.serialize(reborrow!(self))
     }
 
     fn serialize_value<T: ?Sized>(&mut self, value: &T) -> Result<()>
     where
         T: Serialize,
     {
-        value.serialize(&mut **self)
+        value.serialize(reborrow!(self))
     }
 }

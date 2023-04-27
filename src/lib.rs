@@ -1,4 +1,5 @@
 #![cfg_attr(test, feature(test))]
+#![cfg_attr(doc, feature(doc_cfg))]
 #![forbid(unsafe_code)]
 
 //! Bitcode is a crate for encoding and decoding using a tinier
@@ -12,12 +13,90 @@
 //! ### Usage
 //!
 //! ```edition2021
-//! // The object that we will serialize.
+//! // The object that we will encode.
 //! let target: Vec<String> = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
 //!
-//! let encoded: Vec<u8> = bitcode::serialize(&target).unwrap();
-//! let decoded: Vec<String> = bitcode::deserialize(&encoded).unwrap();
+//! let encoded: Vec<u8> = bitcode::encode(&target).unwrap();
+//! let decoded: Vec<String> = bitcode::decode(&encoded).unwrap();
 //! assert_eq!(target, decoded);
+//! ```
+//!
+//! ### Advanced Usage
+//!
+//! Bitcode has several hints that can be applied.
+//! Hints may have an effect on the encoded length.
+//! Most importantly hints will never cause errors if they don't hold true.
+//!
+//! ```edition2021
+//! // We mark enum variants that are more likely with a higher frequency.
+//! // This allows bitcode to use shorter encodings for them.
+//! #[derive(Copy, Clone, bitcode::Encode, bitcode::Decode)]
+//! enum Fruit {
+//!     #[bitcode_hint(frequency = 10)]
+//!     Apple,
+//!     #[bitcode_hint(frequency = 5)]
+//!     Banana,
+//!     // Unspecified frequencies are 1.
+//!     Blueberry,
+//!     Lime,
+//!     Lychee,
+//!     Watermelon,
+//! }
+//!
+//! // A cart full of 16 apples takes 2 bytes to encode (1 bit per Apple).
+//! let apple_cart: usize = bitcode::encode(&[Fruit::Apple; 16]).unwrap().len();
+//! assert_eq!(apple_cart, 2);
+//!
+//! // A cart full of 16 bananas takes 4 bytes to encode (2 bits per Banana).
+//! let banana_cart: usize = bitcode::encode(&[Fruit::Banana; 16]).unwrap().len();
+//! assert_eq!(banana_cart, 4);
+//!
+//! // A cart full of 16 blueberries takes 8 bytes to encode (4 bits per Blueberry).
+//! let blueberry_cart: usize = bitcode::encode(&[Fruit::Blueberry; 16]).unwrap().len();
+//! assert_eq!(blueberry_cart, 8);
+//! ```
+//!
+//! ```edition2021
+//! // We expect most user ages to be in the interval [10, 100), so we specify that as the expected
+//! // range. If we're right most of the time, users will take fewer bits to encode.
+//! #[derive(bitcode::Encode, bitcode::Decode)]
+//! struct User {
+//!     #[bitcode_hint(expected_range = "10..100")]
+//!     age: u32
+//! }
+//!
+//! // A user with an age inside the expected range takes up to a byte to encode.
+//! let expected_age: usize = bitcode::encode(&User { age: 42 }).unwrap().len();
+//! assert_eq!(expected_age, 1);
+//!
+//! // A user with an age outside the expected range more than 4 bytes to encode.
+//! let unexpected_age: usize = bitcode::encode(&User { age: 31415926 }).unwrap().len();
+//! assert!(unexpected_age > 4);
+//! ```
+//!
+//! ```edition2021
+//! // We expect that most posts won't have that many views or likes, but some can. By using gamma
+//! // encoding, posts with fewer views/likes will take fewer bits to encode.
+//! #[derive(bitcode::Encode, bitcode::Decode)]
+//! #[bitcode_hint(gamma)]
+//! struct Post {
+//!     views: u64,
+//!     likes: u64,
+//! }
+//!
+//! // An average post just takes 1 byte to encode.
+//! let average_post = bitcode::encode(&Post {
+//!     views: 4,
+//!     likes: 1,
+//! }).unwrap().len();
+//! assert_eq!(average_post, 1);
+//!
+//! // A popular post takes 11 bytes to encode, luckily these posts are rare.
+//! let popular_post = bitcode::encode(&Post {
+//!     views: 27182818,
+//!     likes: 161803,
+//! }).unwrap().len();
+//! assert_eq!(popular_post, 11)
 //! ```
 
 // Actually required see https://doc.rust-lang.org/beta/unstable-book/library-features/test.html
@@ -26,74 +105,96 @@ extern crate core;
 #[cfg(test)]
 extern crate test;
 
+// Fixes derive macro in tests/doc tests.
+extern crate self as bitcode;
+
 pub use buffer::Buffer;
-use serde::{Deserialize, Serialize};
+pub use code::{Decode, Encode};
 use std::fmt::{self, Display, Formatter};
 
+#[cfg(feature = "derive")]
+pub use bitcode_derive::{Decode, Encode};
+
+#[cfg(any(test, feature = "serde"))]
+pub use crate::serde::{deserialize, serialize};
+
 mod buffer;
-mod de;
+mod code;
+mod code_impls;
+mod encoding;
+mod guard;
 mod nightly;
 mod read;
-mod ser;
 mod word;
 mod word_buffer;
 mod write;
+
+#[cfg(feature = "derive")]
+#[doc(hidden)]
+pub mod __private;
+
+#[cfg(any(test, feature = "serde"))]
+mod serde;
 
 #[cfg(all(test, not(miri)))]
 mod benches;
 #[cfg(test)]
 mod bit_buffer;
-#[cfg(test)]
+#[cfg(all(test, debug_assertions))]
 mod tests;
 
-/// Serializes a `T:` [`Serialize`] into a [`Vec<u8>`].
+/// Encodes a `T:` [`Encode`] into a [`Vec<u8>`].
+///
+/// Won't ever return `Err` unless using `#[bitcode(with_serde)]`.
 ///
 /// **Warning:** The format is subject to change between versions.
-pub fn serialize<T: ?Sized>(t: &T) -> Result<Vec<u8>>
+pub fn encode<T: ?Sized>(t: &T) -> Result<Vec<u8>>
 where
-    T: Serialize,
+    T: Encode,
 {
-    Ok(Buffer::new().serialize(t)?.to_vec())
+    Ok(Buffer::new().encode(t)?.to_vec())
 }
 
-/// Deserializes a [`&[u8]`][`prim@slice`] into an instance of `T:` [`Deserialize`].
+/// Decodes a [`&[u8]`][`prim@slice`] into an instance of `T:` [`Decode`].
 ///
 /// **Warning:** The format is subject to change between versions.
-pub fn deserialize<'a, T>(bytes: &'a [u8]) -> Result<T>
+pub fn decode<T>(bytes: &[u8]) -> Result<T>
 where
-    T: Deserialize<'a>,
+    T: Decode,
 {
-    Buffer::new().deserialize(bytes)
+    Buffer::new().decode(bytes)
 }
 
 impl Buffer {
-    /// Serializes a `T:` [`Serialize`] into a [`&[u8]`][`prim@slice`]. Can reuse the buffer's
+    /// Encodes a `T:` [`Encode`] into a [`&[u8]`][`prim@slice`]. Can reuse the buffer's
     /// allocations.
     ///
+    /// Won't ever return `Err` unless using `#[bitcode(with_serde)]`.
+    ///
     /// Even if you call `to_vec` on the [`&[u8]`][`prim@slice`], it's still more efficient than
-    /// [`serialize`].
+    /// [`encode`].
     ///
     /// **Warning:** The format is subject to change between versions.
-    pub fn serialize<T: ?Sized>(&mut self, t: &T) -> Result<&[u8]>
+    pub fn encode<T: ?Sized>(&mut self, t: &T) -> Result<&[u8]>
     where
-        T: Serialize,
+        T: Encode,
     {
-        ser::serialize_internal(&mut self.0, t)
+        code::encode_internal(&mut self.0, t)
     }
 
-    /// Deserializes a [`&[u8]`][`prim@slice`] into an instance of `T:` [`Deserialize`]. Can reuse
+    /// Decodes a [`&[u8]`][`prim@slice`] into an instance of `T:` [`Decode`]. Can reuse
     /// the buffer's allocations.
     ///
     /// **Warning:** The format is subject to change between versions.
-    pub fn deserialize<'a, T>(&mut self, bytes: &'a [u8]) -> Result<T>
+    pub fn decode<T>(&mut self, bytes: &[u8]) -> Result<T>
     where
-        T: Deserialize<'a>,
+        T: Decode,
     {
-        de::deserialize_internal(&mut self.0, bytes)
+        code::decode_internal(&mut self.0, bytes)
     }
 }
 
-/// (De)serialization errors.
+/// Decoding / (De)serialization errors.
 ///
 /// # Debug mode
 ///
@@ -115,6 +216,7 @@ type ErrorImpl = E;
 impl Error {
     /// Replaces an invalid message. E.g. read_variant_index calls read_len but converts
     /// `E::Invalid("length")` to `E::Invalid("variant index")`.
+    #[cfg(any(test, feature = "serde"))]
     pub(crate) fn map_invalid(self, _s: &'static str) -> Self {
         #[cfg(debug_assertions)]
         return Self(match self.0 {
@@ -133,11 +235,12 @@ impl Error {
 /// Inner error that can be converted to [`Error`] with [`E::e`].
 #[derive(Debug, PartialEq)]
 pub(crate) enum E {
-    #[cfg(debug_assertions)]
+    #[allow(unused)] // Only used by serde feature.
     Custom(String),
     Eof,
     ExpectedEof,
     Invalid(&'static str),
+    #[allow(unused)] // Only used by serde feature.
     NotSupported(&'static str),
 }
 
@@ -164,7 +267,6 @@ impl Display for Error {
 impl Display for E {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            #[cfg(debug_assertions)]
             Self::Custom(s) => write!(f, "custom: {s}"),
             Self::Eof => write!(f, "eof"),
             Self::ExpectedEof => write!(f, "expected eof"),
@@ -175,27 +277,3 @@ impl Display for E {
 }
 
 impl std::error::Error for Error {}
-
-impl serde::ser::Error for Error {
-    fn custom<T>(_msg: T) -> Self
-    where
-        T: Display,
-    {
-        #[cfg(debug_assertions)]
-        return Self(E::Custom(_msg.to_string()));
-        #[cfg(not(debug_assertions))]
-        Self(())
-    }
-}
-
-impl serde::de::Error for Error {
-    fn custom<T>(_msg: T) -> Self
-    where
-        T: Display,
-    {
-        #[cfg(debug_assertions)]
-        return Self(E::Custom(_msg.to_string()));
-        #[cfg(not(debug_assertions))]
-        Self(())
-    }
-}

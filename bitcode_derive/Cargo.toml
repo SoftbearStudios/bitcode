@@ -1,0 +1,17 @@
+[package]
+name = "bitcode_derive"
+authors = [ "Cai Bear", "Finn Bear" ]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/SoftbearStudios/bitcode/"
+description = "Implementation of #[derive(Encode, Decode)] for bitcode"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+packagemerge = "0.1"
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0.3", features = [ "extra-traits" ] }

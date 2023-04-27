@@ -12,9 +12,11 @@ pub fn div_ceil(me: usize, rhs: usize) -> usize {
 }
 
 #[inline]
-pub fn ilog2(me: usize) -> u32 {
-    assert_ne!(me, 0);
-    usize::BITS - 1 - me.leading_zeros()
+pub const fn ilog2_u64(me: u64) -> u32 {
+    if me == 0 {
+        panic!("log2 on zero")
+    }
+    u64::BITS - 1 - me.leading_zeros()
 }
 
 #[inline]

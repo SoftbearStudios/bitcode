@@ -1,8 +1,10 @@
 use crate::bit_buffer::BitBuffer;
-use crate::de::{deserialize_internal, ZST_LIMIT};
-use crate::ser::serialize_internal;
+use crate::code::{decode_internal, encode_internal};
+use crate::serde::de::deserialize_internal;
+use crate::serde::ser::serialize_internal;
 use crate::word_buffer::WordBuffer;
-use crate::{Buffer, E};
+use crate::{Buffer, Decode, Encode, E};
+use paste::paste;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -25,84 +27,105 @@ fn test_buffer_with_capacity() {
     assert_ne!(buf.capacity(), small_cap);
 }
 
-fn the_same_inner<T: Clone + Debug + PartialEq + Serialize + DeserializeOwned>(
-    t: T,
-    buf: &mut Buffer,
-) {
-    let serialized = {
-        let a = serialize_internal(&mut BitBuffer::default(), &t)
-            .unwrap()
-            .to_vec();
-        let b = serialize_internal(&mut WordBuffer::default(), &t)
-            .unwrap()
-            .to_vec();
-        assert_eq!(a, b);
+macro_rules! impl_the_same {
+    ($ser_trait:ident, $de_trait:ident, $ser:ident, $de:ident) => {
+        paste! {
+            fn [< the_same_ $ser>] <T: Clone + Debug + PartialEq + $ser_trait + $de_trait>(
+                t: T,
+                buf: &mut Buffer,
+            ) {
+                let serialized = {
+                    let a = [<$ser _internal>](&mut BitBuffer::default(), &t)
+                        .unwrap()
+                        .to_vec();
+                    let b = [<$ser _internal>](&mut WordBuffer::default(), &t)
+                        .unwrap()
+                        .to_vec();
+                    assert_eq!(a, b);
 
-        let c = buf.serialize(&t).unwrap().to_vec();
-        assert_eq!(a, c);
-        a
-    };
+                    let c = buf.$ser(&t).unwrap().to_vec();
+                    assert_eq!(a, c);
+                    a
+                };
 
-    let a: T =
-        deserialize_internal(&mut BitBuffer::default(), &serialized).expect("BitBuffer error");
-    let b: T =
-        deserialize_internal(&mut WordBuffer::default(), &serialized).expect("WordBuffer error");
-    let c: T = buf
-        .deserialize(&serialized)
-        .expect("Buffer::deserialize error");
+                let a: T =
+                    [<$de _internal>](&mut BitBuffer::default(), &serialized).expect("BitBuffer error");
+                let b: T =
+                    [<$de _internal>](&mut WordBuffer::default(), &serialized).expect("WordBuffer error");
+                let c: T = buf
+                    .$de(&serialized)
+                    .expect("Buffer::deserialize error");
 
-    assert_eq!(t, a);
-    assert_eq!(t, b);
-    assert_eq!(t, c);
+                assert_eq!(t, a);
+                assert_eq!(t, b);
+                assert_eq!(t, c);
 
-    let mut bytes = serialized.clone();
-    bytes.push(0);
-    assert_eq!(
-        deserialize_internal::<T>(&mut BitBuffer::default(), &bytes),
-        Err(E::ExpectedEof.e())
-    );
-    assert_eq!(
-        deserialize_internal::<T>(&mut WordBuffer::default(), &bytes),
-        Err(E::ExpectedEof.e())
-    );
+                let mut bytes = serialized.clone();
+                bytes.push(0);
+                assert_eq!(
+                    [<$de _internal>]::<T>(&mut BitBuffer::default(), &bytes),
+                    Err(E::ExpectedEof.e())
+                );
+                assert_eq!(
+                    [<$de _internal>]::<T>(&mut WordBuffer::default(), &bytes),
+                    Err(E::ExpectedEof.e())
+                );
 
-    let mut bytes = serialized.clone();
-    if bytes.pop().is_some() {
-        assert_eq!(
-            deserialize_internal::<T>(&mut BitBuffer::default(), &bytes),
-            Err(E::Eof.e())
-        );
-        assert_eq!(
-            deserialize_internal::<T>(&mut WordBuffer::default(), &bytes),
-            Err(E::Eof.e())
-        );
+                let mut bytes = serialized.clone();
+                if bytes.pop().is_some() {
+                    assert_eq!(
+                        [<$de _internal>]::<T>(&mut BitBuffer::default(), &bytes),
+                        Err(E::Eof.e())
+                    );
+                    assert_eq!(
+                        [<$de _internal>]::<T>(&mut WordBuffer::default(), &bytes),
+                        Err(E::Eof.e())
+                    );
+                }
+            }
+        }
     }
 }
 
-fn the_same_once<T: Clone + Debug + PartialEq + Serialize + DeserializeOwned>(t: T) {
-    the_same_inner(t, &mut Buffer::new());
+impl_the_same!(Serialize, DeserializeOwned, serialize, deserialize);
+impl_the_same!(Encode, Decode, encode, decode);
+
+fn the_same_once<T: Clone + Debug + PartialEq + Encode + Decode + Serialize + DeserializeOwned>(
+    t: T,
+) {
+    let mut buf = Buffer::new();
+    the_same_serialize(t.clone(), &mut buf);
+    the_same_encode(t.clone(), &mut buf);
 }
 
-fn the_same<T: Clone + Debug + PartialEq + Serialize + DeserializeOwned>(t: T) {
+fn the_same<T: Clone + Debug + PartialEq + Encode + Decode + Serialize + DeserializeOwned>(t: T) {
+    the_same_once(t.clone());
+
     let mut buf = Buffer::new();
-    the_same_inner(t.clone(), &mut buf);
+
     #[cfg(miri)]
     const END: usize = 2;
     #[cfg(not(miri))]
     const END: usize = 65;
     for i in 0..END {
-        the_same_inner(vec![t.clone(); i], &mut buf);
+        let input = vec![t.clone(); i];
+        the_same_serialize(input.clone(), &mut buf);
+        the_same_encode(input, &mut buf);
     }
 }
 
 #[test]
 fn fuzz1() {
-    assert!(crate::deserialize::<Vec<i64>>(&[64]).is_err());
+    let bytes = &[64];
+    assert!(crate::decode::<Vec<i64>>(bytes).is_err());
+    assert!(crate::serde::deserialize::<Vec<i64>>(bytes).is_err());
 }
 
 #[test]
 fn fuzz2() {
-    assert!(crate::deserialize::<Vec<u8>>(&[0, 0, 0, 1]).is_err());
+    let bytes = &[0, 0, 0, 1];
+    assert!(crate::decode::<Vec<u8>>(bytes).is_err());
+    assert!(crate::serde::deserialize::<Vec<u8>>(bytes).is_err());
 }
 
 #[test]
@@ -115,7 +138,8 @@ fn fuzz3() {
     bits2.extend_from_bitslice(&bits);
     let bytes = bits2.as_raw_slice();
 
-    assert!(crate::deserialize::<Vec<()>>(bytes).is_err());
+    assert!(crate::decode::<Vec<()>>(bytes).is_err());
+    assert!(crate::serde::deserialize::<Vec<()>>(bytes).is_err());
 }
 
 #[test]
@@ -129,12 +153,7 @@ fn test_reddit() {
         One = 1,
     }
 
-    assert_eq!(crate::serialize(&Variant::Three).unwrap().len(), 1);
-}
-
-#[test]
-fn test_negative_isize() {
-    the_same_once(-5isize);
+    assert_eq!(crate::serde::serialize(&Variant::Three).unwrap().len(), 1);
 }
 
 #[test]
@@ -152,19 +171,54 @@ fn test_long_string() {
 #[test]
 fn test_array_string() {
     use arrayvec::ArrayString;
-    let short = ArrayString::<5>::from("abcde").unwrap();
+
+    // Serialize one field has with serde.
+    #[derive(Clone, Debug, PartialEq, Encode, Decode, Serialize, Deserialize)]
+    struct MyStruct1<const N: usize> {
+        #[bitcode(with_serde)]
+        inner: ArrayString<N>,
+        #[bitcode_hint(gamma)]
+        foo: i32,
+    }
+
+    let short = MyStruct1 {
+        inner: ArrayString::<5>::from("abcde").unwrap(),
+        foo: 5,
+    };
     the_same(short);
 
-    let long = ArrayString::<150>::from(&"abcde".repeat(30)).unwrap();
+    // Serialize whole struct with serde.
+    #[derive(Clone, Debug, PartialEq, Encode, Decode, Serialize, Deserialize)]
+    #[bitcode(with_serde)]
+    struct MyStruct2<const N: usize> {
+        inner: ArrayString<N>,
+    }
+
+    let long = MyStruct2 {
+        inner: ArrayString::<150>::from(&"abcde".repeat(30)).unwrap(),
+    };
     the_same(long);
+
+    // Serialize whole variant with serde.
+    #[derive(Clone, Debug, PartialEq, Encode, Decode, Serialize, Deserialize)]
+    enum MyEnum<const N: usize> {
+        #[bitcode(with_serde)]
+        A(ArrayString<N>),
+    }
+
+    let medium = MyEnum::A(ArrayString::<25>::from(&"abcde".repeat(5)).unwrap());
+    the_same(medium);
 }
 
 #[test]
-#[cfg_attr(debug_assertions, ignore)]
 fn test_zst() {
-    fn is_ok<T: Serialize + DeserializeOwned>(v: Vec<T>) -> bool {
+    use crate::guard::ZST_LIMIT;
+    fn is_ok<T: Serialize + DeserializeOwned + Encode + Decode>(v: Vec<T>) -> bool {
         let ser = crate::serialize(&v).unwrap();
-        crate::deserialize::<Vec<T>>(&ser).is_ok()
+        let a = crate::deserialize::<Vec<T>>(&ser).is_ok();
+        let b = crate::decode::<Vec<T>>(&ser).is_ok();
+        assert_eq!(a, b);
+        b
     }
     assert!(is_ok(vec![0u8; ZST_LIMIT]));
     assert!(is_ok(vec![0u8; ZST_LIMIT]));
@@ -173,12 +227,32 @@ fn test_zst() {
 }
 
 #[test]
-#[cfg_attr(debug_assertions, ignore)]
 fn test_chars() {
-    for n in 0..=char::MAX as u32 {
-        if let Some(c) = char::from_u32(n) {
-            the_same_once(c);
-            the_same_once([c; 2]);
+    #[cfg(not(miri))]
+    const STEP: usize = char::MAX as usize / 1000;
+
+    #[cfg(miri)]
+    const STEP: usize = char::MAX as usize / 100;
+
+    let chars = (0..=char::MAX as u32)
+        .step_by(STEP)
+        .filter_map(char::from_u32)
+        .collect::<Vec<_>>();
+    the_same_once(chars);
+}
+
+#[test]
+fn test_expected_range() {
+    #[derive(PartialEq, Debug, Clone, Serialize, Deserialize, Encode, Decode)]
+    struct LargeU64(#[bitcode_hint(expected_range = "10..1000000000")] u64);
+
+    let mut i = 0;
+    loop {
+        the_same(LargeU64(i));
+        if let Some(new) = i.checked_add(1).and_then(|i| i.checked_mul(2)) {
+            i = new;
+        } else {
+            break;
         }
     }
 }
@@ -235,7 +309,7 @@ fn test_tuple() {
 
 #[test]
 fn test_basic_struct() {
-    #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+    #[derive(Encode, Decode, Serialize, Deserialize, PartialEq, Debug, Clone)]
     struct Easy {
         x: isize,
         s: String,
@@ -250,13 +324,13 @@ fn test_basic_struct() {
 
 #[test]
 fn test_nested_struct() {
-    #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+    #[derive(Encode, Decode, Serialize, Deserialize, PartialEq, Debug, Clone)]
     struct Easy {
         x: isize,
         s: String,
         y: usize,
     }
-    #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+    #[derive(Encode, Decode, Serialize, Deserialize, PartialEq, Debug, Clone)]
     struct Nest {
         f: Easy,
         b: usize,
@@ -280,7 +354,7 @@ fn test_nested_struct() {
 
 #[test]
 fn test_struct_newtype() {
-    #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+    #[derive(Encode, Decode, Serialize, Deserialize, PartialEq, Debug, Clone)]
     struct NewtypeStr(usize);
 
     the_same(NewtypeStr(5));
@@ -288,7 +362,7 @@ fn test_struct_newtype() {
 
 #[test]
 fn test_struct_tuple() {
-    #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+    #[derive(Encode, Decode, Serialize, Deserialize, PartialEq, Debug, Clone)]
     struct TubStr(usize, String, f32);
 
     the_same(TubStr(5, "hello".to_string(), 3.2));
@@ -303,7 +377,7 @@ fn test_option() {
 
 #[test]
 fn test_enum() {
-    #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+    #[derive(Encode, Decode, Serialize, Deserialize, PartialEq, Debug, Clone)]
     enum TestEnum {
         NoArg,
         OneArg(usize),
