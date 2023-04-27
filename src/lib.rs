@@ -125,6 +125,7 @@ mod encoding;
 mod guard;
 mod nightly;
 mod read;
+mod register_buffer;
 mod word;
 mod word_buffer;
 mod write;

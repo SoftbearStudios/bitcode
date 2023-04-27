@@ -152,10 +152,6 @@ impl Write for WordBuffer {
         &bytemuck::cast_slice(written_words)[..div_ceil(self.index, u8::BITS as usize)]
     }
 
-    fn write_bits(&mut self, word: Word, bits: usize) {
-        self.write_bits_inner(word, bits, Self::alloc_index_plus_one);
-    }
-
     fn write_bit(&mut self, v: bool) {
         let bit_index = self.index;
         self.index += 1;
@@ -168,6 +164,10 @@ impl Write for WordBuffer {
         } else {
             &mut self.alloc_index_plus_one(index)[0]
         } |= (v as Word) << bit_remainder;
+    }
+
+    fn write_bits(&mut self, word: Word, bits: usize) {
+        self.write_bits_inner(word, bits, Self::alloc_index_plus_one);
     }
 
     #[inline(always)] // Improves perf (regular #[inline] isn't enough).

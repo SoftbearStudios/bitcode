@@ -1,6 +1,7 @@
 use crate::code::{Decode, Encode};
 use crate::encoding::prelude::*;
 use crate::encoding::{Fixed, Gamma};
+use crate::register_buffer::RegisterBuffer;
 
 #[derive(Copy, Clone)]
 pub struct ExpectNormalizedFloat;
@@ -17,16 +18,18 @@ macro_rules! impl_float {
             let sign_bit = 1 << (<$i>::BITS - 1);
 
             let bits = v.to_bits();
-            let sign = bits & sign_bit != 0;
+            let sign = bits & sign_bit;
             let bits_without_sign = bits & !sign_bit;
             let exp = (bits_without_sign >> mantissa_bits) as u32;
-            let gamma_exp = (exp_bias - 1).wrapping_sub(exp) as $exp_type;
+            let gamma_exp = (exp_bias - 1).wrapping_sub(exp);
 
-            if !sign && gamma_exp < MAX_GAMMA_EXP as $exp_type {
+            if (sign | gamma_exp as $i) < MAX_GAMMA_EXP as $i {
+                let mut register_buffer = RegisterBuffer::default();
                 let mantissa = bits as $i & !(<$i>::MAX << mantissa_bits);
 
-                (gamma_exp).encode(Gamma, writer).unwrap();
-                writer.write_bits(mantissa.into(), mantissa_bits);
+                (gamma_exp as $exp_type).encode(Gamma, &mut register_buffer).unwrap();
+                register_buffer.write_bits(mantissa.into(), mantissa_bits);
+                register_buffer.write_to(writer);
             } else {
                 #[cold]
                 fn cold(writer: &mut impl Write, v: $t) {
@@ -37,22 +40,27 @@ macro_rules! impl_float {
             }
         }
 
+        #[inline(never)] // Inlining makes it slightly slower.
         fn $read(self, reader: &mut impl Read) -> Result<$t> {
             let mantissa_bits = $mantissa as usize;
             let exp_bias = $exp_bias as u32;
 
-            let gamma_exp = $exp_type::decode(Gamma, reader)?;
-            if gamma_exp < MAX_GAMMA_EXP as $exp_type {
-                let mantissa = reader.read_bits(mantissa_bits)? as $i;
-                let exp = (exp_bias - 1) - gamma_exp as u32;
+            let mut register_buffer = RegisterBuffer::peek_reader(reader)?;
 
+            let gamma_exp = $exp_type::decode(Gamma, &mut register_buffer)?;
+            if gamma_exp < MAX_GAMMA_EXP as $exp_type {
+                let mantissa = register_buffer.read_bits(mantissa_bits)? as $i;
+                register_buffer.advance_reader(reader)?;
+
+                let exp = (exp_bias - 1) - gamma_exp as u32;
                 Ok(<$t>::from_bits(exp as $i << mantissa_bits | mantissa))
             } else {
                 #[cold]
-                fn cold(reader: &mut impl Read) -> Result<$t> {
+                fn cold(reader: &mut impl Read, register_buffer: &RegisterBuffer) -> Result<$t> {
+                    register_buffer.advance_reader(reader)?;
                     <$t>::decode(Fixed, reader)
                 }
-                cold(reader)
+                cold(reader, &register_buffer)
             }
         }
     }
@@ -63,7 +71,59 @@ impl Encoding for ExpectNormalizedFloat {
     impl_float!(write_f64, read_f64, f64, u64, 52, 1023, u16);
 }
 
-#[cfg(all(test, debug_assertions, not(miri)))]
+#[cfg(test)]
+mod benches {
+    use crate::buffer::WithCapacity;
+    use crate::encoding::prelude::test_prelude::*;
+    use crate::encoding::ExpectNormalizedFloat;
+    use crate::word_buffer::WordBuffer;
+    use rand::prelude::*;
+    use test::{black_box, Bencher};
+
+    fn bench_floats() -> Vec<f32> {
+        let mut rng = rand_chacha::ChaCha20Rng::from_seed(Default::default());
+        (0..1000).map(|_| rng.gen()).collect()
+    }
+
+    #[bench]
+    fn bench_encode_normalized_floats(b: &mut Bencher) {
+        let mut buf = WordBuffer::with_capacity(4000);
+        let floats = bench_floats();
+
+        b.iter(|| {
+            let buf = black_box(&mut buf);
+            let floats = black_box(floats.as_slice());
+
+            buf.start_write();
+            for v in floats {
+                v.encode(ExpectNormalizedFloat, buf).unwrap();
+            }
+        })
+    }
+
+    #[bench]
+    fn bench_decode_normalized_floats(b: &mut Bencher) {
+        let floats = bench_floats();
+        let mut buf = WordBuffer::default();
+        buf.start_write();
+        for &v in &floats {
+            v.encode(ExpectNormalizedFloat, &mut buf).unwrap();
+        }
+        let bytes = buf.finish_write().to_owned();
+
+        b.iter(|| {
+            let buf = black_box(&mut buf);
+
+            buf.start_read(black_box(bytes.as_slice()));
+            for &v in &floats {
+                let decoded = f32::decode(ExpectNormalizedFloat, buf).unwrap();
+                assert_eq!(decoded, v);
+            }
+        })
+    }
+}
+
+#[cfg(all(test, debug_assertions))]
 mod tests {
     macro_rules! impl_test {
         ($t:ty, $i:ty) => {
