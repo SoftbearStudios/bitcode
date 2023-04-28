@@ -11,6 +11,7 @@ use syn::{Attribute, DataEnum, Expr, Lit, Meta, Path, Result, Token};
 enum BitcodeAttr {
     Encoding(Encoding),
     Frequency(f64),
+    Recursive,
     WithSerde,
 }
 
@@ -55,6 +56,7 @@ impl BitcodeAttr {
                 }
                 _ => err(&nested, "unknown hint"),
             },
+            "recursive" if matches!(nested, Meta::Path(_)) => Ok(Self::Recursive),
             "with_serde" if matches!(nested, Meta::Path(_)) => Ok(Self::WithSerde),
             _ => err(&nested, "unknown attribute"),
         }
@@ -74,6 +76,16 @@ impl BitcodeAttr {
                         return err(nested, "duplicate");
                     }
                     *frequency = Some(w);
+                } else {
+                    return err(nested, "can only apply frequency to enum variants");
+                }
+            }
+            Self::Recursive => {
+                if let AttrType::Derive { recursive, .. } = &mut attrs.attr_type {
+                    if *recursive {
+                        return err(nested, "duplicate");
+                    }
+                    *recursive = true;
                 } else {
                     return err(nested, "can only apply frequency to enum variants");
                 }
@@ -113,17 +125,18 @@ impl Encoding {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct BitcodeAttrs {
     attr_type: AttrType,
     encoding: Option<Encoding>,
     with_serde: bool,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 enum AttrType {
-    #[default]
-    Derive,
+    Derive {
+        recursive: bool,
+    },
     Variant {
         derive_attrs: Box<BitcodeAttrs>,
         frequency: Option<f64>,
@@ -134,11 +147,27 @@ enum AttrType {
 }
 
 impl BitcodeAttrs {
+    fn new(attr_type: AttrType) -> Self {
+        Self {
+            attr_type,
+            encoding: None,
+            with_serde: false,
+        }
+    }
+
     fn parent(&self) -> Option<&Self> {
         match &self.attr_type {
-            AttrType::Derive => None,
+            AttrType::Derive { .. } => None,
             AttrType::Variant { derive_attrs, .. } => Some(derive_attrs),
             AttrType::Field { parent_attrs, .. } => Some(parent_attrs),
+        }
+    }
+
+    pub fn is_recursive(&self) -> bool {
+        match &self.attr_type {
+            AttrType::Derive { recursive, .. } => *recursive,
+            AttrType::Variant { derive_attrs, .. } => derive_attrs.is_recursive(),
+            AttrType::Field { parent_attrs, .. } => parent_attrs.is_recursive(),
         }
     }
 
@@ -160,42 +189,31 @@ impl BitcodeAttrs {
             .or_else(|| self.parent().and_then(|p| p.most_specific_encoding()))
     }
 
-    pub fn get_encoding(&self) -> TokenStream {
+    pub fn get_encoding(&self) -> Option<TokenStream> {
         let encoding = self.most_specific_encoding();
-        if let Some(e) = encoding {
-            let encoding = e.to_tokens();
-            quote! { #encoding }
-        } else {
-            quote! { encoding }
-        }
+        encoding.map(|e| e.to_tokens())
     }
 
     pub fn parse_derive(attrs: &[Attribute]) -> Result<Self> {
-        let mut ret = Self::default();
+        let mut ret = Self::new(AttrType::Derive { recursive: false });
         ret.parse_inner(attrs)?;
         Ok(ret)
     }
 
     pub fn parse_variant(attrs: &[Attribute], derive_attrs: &Self) -> Result<Self> {
-        let mut ret = Self {
-            attr_type: AttrType::Variant {
-                derive_attrs: Box::new(derive_attrs.clone()),
-                frequency: None,
-            },
-            ..Default::default()
-        };
+        let mut ret = Self::new(AttrType::Variant {
+            derive_attrs: Box::new(derive_attrs.clone()),
+            frequency: None,
+        });
         ret.parse_inner(attrs)?;
         Ok(ret)
     }
 
     /// `parent_attrs` is either derive or variant attrs.
     pub fn parse_field(attrs: &[Attribute], parent_attrs: &Self) -> Result<Self> {
-        let mut ret = Self {
-            attr_type: AttrType::Field {
-                parent_attrs: Box::new(parent_attrs.clone()),
-            },
-            ..Default::default()
-        };
+        let mut ret = Self::new(AttrType::Field {
+            parent_attrs: Box::new(parent_attrs.clone()),
+        });
         ret.parse_inner(attrs)?;
         Ok(ret)
     }
@@ -281,13 +299,14 @@ impl VariantEncoding {
 
     pub fn encode_variants(
         &self,
-        mut encode: impl FnMut(usize, TokenStream) -> Result<TokenStream>,
+        // variant_index, before_fields, variant_bits
+        mut encode: impl FnMut(usize, TokenStream, usize) -> Result<TokenStream>,
     ) -> Result<TokenStream> {
         // if variant_count is 0 or 1 no encoding is required.
         Ok(match self.variant_count {
             0 => quote! {},
             1 => {
-                let encode_variant = encode(0, quote! {})?;
+                let encode_variant = encode(0, quote! {}, 0)?;
                 quote! {
                     match self {
                         #encode_variant
@@ -306,6 +325,7 @@ impl VariantEncoding {
                             quote! {
                                 writer.write_bits(#code, #bits);
                             },
+                            bits,
                         )
                     })
                     .collect();
@@ -322,7 +342,8 @@ impl VariantEncoding {
 
     pub fn decode_variants(
         &self,
-        mut decode: impl FnMut(usize, TokenStream) -> Result<TokenStream>,
+        // variant_index, before_fields, variant_bits
+        mut decode: impl FnMut(usize, TokenStream, usize) -> Result<TokenStream>,
     ) -> Result<TokenStream> {
         // if variant_count is 0 or 1 no encoding is required.
         Ok(match self.variant_count {
@@ -333,7 +354,7 @@ impl VariantEncoding {
                 }
             }
             1 => {
-                let decode_variant = decode(0, quote! {})?;
+                let decode_variant = decode(0, quote! {}, 0)?;
                 quote! {
                     Ok({#decode_variant})
                 }
@@ -345,7 +366,7 @@ impl VariantEncoding {
                         let mask = prefix_code.format_mask();
                         let code = prefix_code.format_code();
                         let bits = prefix_code.bits;
-                        let decode_variant = decode(i, quote! {})?;
+                        let decode_variant = decode(i, quote! {}, bits)?;
 
                         Ok(quote! {
                             b if b & #mask == #code => {

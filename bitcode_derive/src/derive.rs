@@ -1,9 +1,65 @@
 use crate::attribute::{BitcodeAttrs, VariantEncoding};
 use crate::bound::FieldBounds;
-use crate::err;
+use crate::{err, private};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use syn::{parse_quote, Data, DeriveInput, Field, Fields, Generics, Path, Result, Type};
+
+struct Output {
+    body: TokenStream,
+    bit_bounds: BitBounds,
+}
+
+struct BitBounds {
+    min_bits: TokenStream,
+    max_bits: TokenStream,
+}
+
+impl BitBounds {
+    fn zero() -> Self {
+        Self::new(0, 0)
+    }
+
+    fn unbounded() -> Self {
+        Self::new(0, usize::MAX)
+    }
+
+    fn new(min: usize, max: usize) -> Self {
+        Self {
+            min_bits: quote! { #min },
+            max_bits: quote! { #max },
+        }
+    }
+
+    fn add(&mut self, other: Self) {
+        let a_min = &self.min_bits;
+        let a_max = &self.max_bits;
+        let b_min = &other.min_bits;
+        let b_max = &other.max_bits;
+
+        *self = Self {
+            min_bits: quote! { #a_min + #b_min },
+            max_bits: quote! { (#a_max).saturating_add(#b_max) },
+        };
+    }
+
+    fn or(&mut self, other: Self) {
+        let a_min = &self.min_bits;
+        let a_max = &self.max_bits;
+        let b_min = &other.min_bits;
+        let b_max = &other.max_bits;
+        let private = private();
+
+        *self = Self {
+            min_bits: quote! { #private::min(#a_min, #b_min) },
+            max_bits: quote! { #private::max(#a_max, #b_max) },
+        };
+    }
+}
+
+pub fn unwrap_encoding(encoding: Option<TokenStream>) -> TokenStream {
+    encoding.unwrap_or_else(|| quote! { encoding })
+}
 
 /// Derive code shared between Encode and Decode.
 pub trait Derive {
@@ -15,7 +71,8 @@ pub trait Derive {
         &self,
         with_serde: bool,
         field_name: TokenStream,
-        encoding: TokenStream,
+        field_type: &Type,
+        encoding: Option<TokenStream>,
     ) -> (TokenStream, Path);
 
     fn struct_impl(&self, destructure_fields: TokenStream, do_fields: TokenStream) -> TokenStream;
@@ -49,9 +106,10 @@ pub trait Derive {
                 let encoding = field_attrs.get_encoding();
 
                 let field_name = field_name(i, &field);
+                let field_type = &field.ty;
 
                 let (field_impl, bound) =
-                    self.field_impl(field_attrs.with_serde(), field_name, encoding);
+                    self.field_impl(field_attrs.with_serde(), field_name, &field_type, encoding);
                 bounds.add_field_bound(field.clone(), bound);
                 Ok(field_impl)
             })
@@ -64,25 +122,35 @@ pub trait Derive {
         let mut bounds = FieldBounds::default();
 
         let ident = input.ident;
-        let body = match input.data {
+        let output = match input.data {
             _ if attrs.with_serde() => {
-                let (with_serde_impl, bound) = self.serde_impl();
+                let (body, bound) = self.serde_impl();
                 add_type_bound(&mut generics, parse_quote!(Self), bound);
-                with_serde_impl
+
+                Output {
+                    body,
+                    bit_bounds: BitBounds::unbounded(),
+                }
             }
             Data::Struct(data_struct) => {
                 let destructure_fields = destructure_fields(&data_struct.fields);
                 let do_fields = self.field_impls(&data_struct.fields, &attrs, &mut bounds)?;
-                self.struct_impl(destructure_fields, do_fields)
+                let body = self.struct_impl(destructure_fields, do_fields);
+                let bit_bounds = field_bit_bounds(&data_struct.fields, &attrs);
+
+                Output { body, bit_bounds }
             }
             Data::Enum(data_enum) => {
                 let variant_encoding = VariantEncoding::parse_data_enum(&data_enum, &attrs)?;
-                let variant_impls =
-                    (if self.is_encode() {
-                        VariantEncoding::encode_variants
-                    } else {
-                        VariantEncoding::decode_variants
-                    })(&variant_encoding, |variant_index, before_fields| {
+                let mut enum_bit_bounds: Option<BitBounds> = None;
+
+                let variant_impls = (if self.is_encode() {
+                    VariantEncoding::encode_variants
+                } else {
+                    VariantEncoding::decode_variants
+                })(
+                    &variant_encoding,
+                    |variant_index, before_fields, bits| {
                         let variant = &data_enum.variants[variant_index];
                         let attrs = BitcodeAttrs::parse_variant(&variant.attrs, &attrs).unwrap();
                         let variant_name = &variant.ident;
@@ -94,13 +162,32 @@ pub trait Derive {
                             Self::#variant_name #destructure_fields
                         };
 
-                        Ok(self.variant_impl(before_fields, field_impls, destructure_variant))
-                    })?;
+                        let body =
+                            self.variant_impl(before_fields, field_impls, destructure_variant);
+                        let mut variant_bit_bounds = field_bit_bounds(&variant.fields, &attrs);
+
+                        // Bits to encode variant index.
+                        variant_bit_bounds.add(BitBounds::new(bits, bits));
+
+                        if let Some(enum_bit_bounds) = &mut enum_bit_bounds {
+                            enum_bit_bounds.or(variant_bit_bounds);
+                        } else {
+                            enum_bit_bounds = Some(variant_bit_bounds)
+                        }
+
+                        Ok(body)
+                    },
+                )?;
 
                 let stream_trait = self.stream_trait_ident();
-                quote! {
+                let body = quote! {
                     use #stream_trait as _;
                     #variant_impls
+                };
+
+                Output {
+                    body,
+                    bit_bounds: enum_bit_bounds.unwrap_or_else(BitBounds::zero),
                 }
             }
             Data::Union(u) => err(&u.union_token, "unions are not supported")?,
@@ -110,9 +197,19 @@ pub trait Derive {
 
         let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
         let trait_ident = self.trait_ident();
-        let impl_trait_fn = self.trait_fn_impl(body);
+
+        let bit_bounds = self.is_encode().then(|| {
+            let BitBounds { min_bits, max_bits } = output.bit_bounds;
+            quote! {
+                const MIN_BITS: usize = #min_bits;
+                const MAX_BITS: usize = #max_bits;
+            }
+        });
+        let impl_trait_fn = self.trait_fn_impl(output.body);
+
         Ok(quote! {
             impl #impl_generics #trait_ident for #ident #ty_generics #where_clause {
+                #bit_bounds
                 #impl_trait_fn
             }
         })
@@ -137,6 +234,42 @@ fn destructure_fields(fields: &Fields) -> TokenStream {
         },
         Fields::Unit => quote! {},
     }
+}
+
+fn field_bit_bounds(fields: &Fields, parent_attrs: &BitcodeAttrs) -> BitBounds {
+    let mut recursive_max_bits = quote! { 0usize };
+    let min_bits: TokenStream = fields
+        .iter()
+        .map(|field| {
+            let ty = &field.ty;
+            let field_attrs = BitcodeAttrs::parse_field(&field.attrs, parent_attrs).unwrap();
+
+            // Encodings can make our bounds inaccurate and serde types can't give us bounds.
+            let unknown_bounds = field_attrs.get_encoding().is_some() || field_attrs.with_serde();
+            let BitBounds { min_bits, max_bits } = if unknown_bounds {
+                BitBounds::unbounded()
+            } else {
+                let max_bits = if field_attrs.is_recursive() {
+                    quote! { usize::MAX }
+                } else {
+                    quote! { <#ty>::MAX_BITS }
+                };
+                BitBounds {
+                    min_bits: quote! {<#ty>::MIN_BITS },
+                    max_bits,
+                }
+            };
+
+            recursive_max_bits = quote! { #recursive_max_bits.saturating_add(#max_bits) };
+            let min = quote! { #min_bits + };
+            min
+        })
+        .collect();
+
+    let min_bits = quote! { #min_bits 0 };
+    let max_bits = quote! { #recursive_max_bits };
+
+    BitBounds { min_bits, max_bits }
 }
 
 fn field_name(i: usize, field: &Field) -> TokenStream {

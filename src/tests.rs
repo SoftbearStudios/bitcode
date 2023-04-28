@@ -399,7 +399,7 @@ fn test_enum() {
     }
     the_same(TestEnum::NoArg);
     the_same(TestEnum::OneArg(4));
-    //the_same(TestEnum::Args(4, 5));
+    the_same(TestEnum::Args(4, 5));
     the_same(TestEnum::AnotherNoArg);
     the_same(TestEnum::StructLike { x: 4, y: 3.14159 });
     the_same(vec![

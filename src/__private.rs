@@ -2,7 +2,9 @@
 
 pub use crate::code::*;
 pub use crate::encoding::*;
+pub use crate::nightly::{max, min};
 pub use crate::read::Read;
+pub use crate::register_buffer::RegisterBuffer;
 pub use crate::write::Write;
 pub use crate::Error;
 
@@ -25,6 +27,7 @@ mod tests {
     use crate::{Decode, Encode};
 
     #[derive(Debug, PartialEq, Encode, Decode)]
+    #[bitcode(recursive)]
     struct Recursive {
         a: Option<Box<Recursive>>,
         b: Option<Box<Self>>,

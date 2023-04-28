@@ -1,8 +1,8 @@
-use crate::derive::Derive;
+use crate::derive::{unwrap_encoding, Derive};
 use crate::private;
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{parse_quote, Path};
+use syn::{parse_quote, Path, Type};
 
 pub struct Decode;
 
@@ -21,9 +21,11 @@ impl Derive for Decode {
         &self,
         with_serde: bool,
         field_name: TokenStream,
-        encoding: TokenStream,
+        _field_type: &Type,
+        encoding: Option<TokenStream>,
     ) -> (TokenStream, Path) {
         let private = private();
+        let encoding = unwrap_encoding(encoding);
         if with_serde {
             (
                 quote! {

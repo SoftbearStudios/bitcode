@@ -1,8 +1,8 @@
-use crate::derive::Derive;
+use crate::derive::{unwrap_encoding, Derive};
 use crate::private;
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{parse_quote, Path};
+use syn::{parse_quote, Path, Type};
 
 pub struct Encode;
 
@@ -21,20 +21,37 @@ impl Derive for Encode {
         &self,
         with_serde: bool,
         field_name: TokenStream,
-        encoding: TokenStream,
+        field_type: &Type,
+        encoding: Option<TokenStream>,
     ) -> (TokenStream, Path) {
         let private = private();
         if with_serde {
+            let encoding = unwrap_encoding(encoding);
             (
+                // Field is using serde making MAX_BITS unknown so we flush the current register
+                // buffer and write directly to the writer. See optimized_enc! macro in code.rs.
                 quote! {
+                    flush!();
                     #private::serialize_compat(#encoding, writer, #field_name)?;
                 },
                 parse_quote!(#private::Serialize),
             )
+        } else if let Some(encoding) = encoding {
+            (
+                // Field has an encoding making MAX_BITS unknown so we flush the current register
+                // buffer and write directly to the writer. See optimized_enc! macro in code.rs.
+                quote! {
+                    flush!();
+                    #private::Encode::encode(#field_name, #encoding, writer)?;
+                },
+                parse_quote!(#private::Encode),
+            )
         } else {
             (
+                // Field has a known MAX_BITS. enc! will evaluate if it can fit within the current
+                // register buffer. See optimized_enc! macro in code.rs.
                 quote! {
-                    #private::Encode::encode(#field_name, #encoding, writer)?;
+                    enc!(#field_name, #field_type);
                 },
                 parse_quote!(#private::Encode),
             )
@@ -81,7 +98,9 @@ impl Derive for Encode {
         quote! {
             #[inline]
             fn encode(&self, encoding: impl #private::Encoding, writer: &mut impl #private::Write) -> #private::Result<()> {
+                #private::optimized_enc!(encoding, writer);
                 #body
+                end_enc!();
                 Ok(())
             }
         }

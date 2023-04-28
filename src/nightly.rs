@@ -31,3 +31,21 @@ pub fn utf8_char_width(b: u8) -> usize {
         4
     }
 }
+
+/// <usize as Ord>::min isn't const yet.
+pub const fn min(a: usize, b: usize) -> usize {
+    if a < b {
+        a
+    } else {
+        b
+    }
+}
+
+/// <usize as Ord>::max isn't const yet.
+pub const fn max(a: usize, b: usize) -> usize {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}

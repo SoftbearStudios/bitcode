@@ -12,19 +12,24 @@ pub struct RegisterBuffer {
 }
 
 impl RegisterBuffer {
-    pub fn write_to(&self, writer: &mut impl Write) {
-        writer.write_bits(self.value, self.index)
+    /// Writes the contents of the buffer to `writer` and clears the buffer.
+    pub fn flush(&mut self, writer: &mut impl Write) {
+        debug_assert!(self.index <= 64, "too many bits written to RegisterBuffer");
+        writer.write_bits(self.value, self.index);
+        *self = Self::default();
     }
 
-    pub fn peek_reader(reader: &mut impl Read) -> Result<Self> {
+    pub(crate) fn peek_reader(reader: &mut impl Read) -> Result<Self> {
         Ok(Self {
             value: reader.peek_bits()?,
             index: 0,
         })
     }
 
-    pub fn advance_reader(&self, reader: &mut impl Read) -> Result<()> {
-        reader.advance(self.index)
+    pub(crate) fn advance_reader(&mut self, reader: &mut impl Read) -> Result<()> {
+        reader.advance(self.index)?;
+        *self = Self::default();
+        Ok(())
     }
 }
 

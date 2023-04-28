@@ -29,7 +29,7 @@ macro_rules! impl_float {
 
                 (gamma_exp as $exp_type).encode(Gamma, &mut register_buffer).unwrap();
                 register_buffer.write_bits(mantissa.into(), mantissa_bits);
-                register_buffer.write_to(writer);
+                register_buffer.flush(writer);
             } else {
                 #[cold]
                 fn cold(writer: &mut impl Write, v: $t) {
@@ -56,11 +56,11 @@ macro_rules! impl_float {
                 Ok(<$t>::from_bits(exp as $i << mantissa_bits | mantissa))
             } else {
                 #[cold]
-                fn cold(reader: &mut impl Read, register_buffer: &RegisterBuffer) -> Result<$t> {
+                fn cold(reader: &mut impl Read, mut register_buffer: RegisterBuffer) -> Result<$t> {
                     register_buffer.advance_reader(reader)?;
                     <$t>::decode(Fixed, reader)
                 }
-                cold(reader, &register_buffer)
+                cold(reader, register_buffer)
             }
         }
     }

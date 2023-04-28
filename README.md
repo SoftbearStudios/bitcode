@@ -31,6 +31,7 @@ Bitcode does not attempt to have a stable format, so we are free to optimize it.
 
 - Doesn't support streaming APIs
 - Format is unstable between versions
+- When using `#[feature = "derive"]` structs/enums that are recursive must be labeled with `#[bitcode(recursive)]` or you will get a compile error
 
 ## Benchmarks vs. [bincode](https://github.com/bincode-org/bincode) and [postcard](https://github.com/jamesmunns/postcard)
 

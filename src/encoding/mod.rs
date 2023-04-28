@@ -11,6 +11,10 @@ pub use gamma::Gamma;
 use prelude::*;
 
 pub trait Encoding: Copy {
+    fn is_fixed(self) -> bool {
+        false
+    }
+
     fn zigzag(self) -> bool {
         false
     }
@@ -43,4 +47,8 @@ pub trait Encoding: Copy {
 #[derive(Copy, Clone)]
 pub struct Fixed;
 
-impl Encoding for Fixed {}
+impl Encoding for Fixed {
+    fn is_fixed(self) -> bool {
+        true
+    }
+}
