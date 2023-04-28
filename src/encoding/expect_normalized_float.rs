@@ -123,7 +123,7 @@ mod benches {
     }
 }
 
-#[cfg(all(test, debug_assertions))]
+#[cfg(all(test, debug_assertions, not(miri)))]
 mod tests {
     macro_rules! impl_test {
         ($t:ty, $i:ty) => {
