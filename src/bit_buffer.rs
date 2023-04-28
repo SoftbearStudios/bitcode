@@ -38,13 +38,13 @@ impl Write for BitBuffer {
         self.bits.as_raw_slice()
     }
 
+    fn write_bit(&mut self, v: bool) {
+        self.bits.push(v);
+    }
+
     fn write_bits(&mut self, word: Word, bits: usize) {
         self.bits
             .extend_from_bitslice(&BitSlice::<u8, Lsb0>::from_slice(&word.to_le_bytes())[..bits]);
-    }
-
-    fn write_bit(&mut self, v: bool) {
-        self.bits.push(v);
     }
 
     fn write_bytes(&mut self, bytes: &[u8]) {

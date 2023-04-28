@@ -5,12 +5,13 @@ pub use crate::word::*;
 pub use crate::write::Write;
 pub(crate) use crate::{Result, E};
 
-#[cfg(all(debug_assertions, test))]
+#[cfg(all(test))]
 pub mod test_prelude {
     pub use super::*;
     pub use crate::{Decode, Encode};
     pub use std::fmt::Debug;
 
+    #[cfg(all(test, debug_assertions))]
     pub fn test_encoding_inner<
         B: Read + Write + Default,
         V: Encode + Decode + Debug + PartialEq,
@@ -29,6 +30,7 @@ pub mod test_prelude {
         buffer.finish_read().unwrap();
     }
 
+    #[cfg(all(test, debug_assertions))]
     pub fn test_encoding<V: Encode + Decode + Copy + Debug + PartialEq>(
         encoding: impl Encoding,
         value: V,

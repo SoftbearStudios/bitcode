@@ -6,11 +6,11 @@ pub trait Write {
     fn start_write(&mut self);
     /// Returns the written bytes.
     fn finish_write(&mut self) -> &[u8];
+    /// Writes a bit.
+    fn write_bit(&mut self, v: bool);
     /// Writes up to 64 bits. The index of `word`'s most significant 1 must be < `bits`.
     /// `bits` must be in range `0..=64`.
     fn write_bits(&mut self, word: Word, bits: usize);
-    /// Writes a bit.
-    fn write_bit(&mut self, v: bool);
     /// Writes bytes.
     fn write_bytes(&mut self, bytes: &[u8]);
 }

@@ -260,7 +260,7 @@ fn test_expected_range() {
 
     let mut i = 0;
     loop {
-        the_same(LargeU64(i));
+        the_same_once(LargeU64(i));
         if let Some(new) = i.checked_add(1).and_then(|i| i.checked_mul(2)) {
             i = new;
         } else {
