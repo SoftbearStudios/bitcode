@@ -6,7 +6,7 @@ members = [
 [package]
 name = "bitcode"
 authors = [ "Cai Bear", "Finn Bear" ]
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/SoftbearStudios/bitcode"
@@ -35,6 +35,9 @@ serde = { version = "1.0.159", features = [ "derive" ] }
 derive = [ "bitcode_derive" ]
 serde = [ "dep:serde" ]
 default = [ "derive" ]
+
+[package.metadata.docs.rs]
+features = ["serde"]
 
 [profile.bench]
 lto = true
