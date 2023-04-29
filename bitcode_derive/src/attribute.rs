@@ -51,7 +51,7 @@ impl BitcodeAttr {
                             }
                             _ => return err(expr_lit, "expected str"),
                         })),
-                        _ => return err(&name_value, "unknown hint"),
+                        _ => err(&name_value, "unknown hint"),
                     }
                 }
                 _ => err(&nested, "unknown hint"),
@@ -110,7 +110,7 @@ enum Encoding {
 }
 
 impl Encoding {
-    fn to_tokens(&self) -> TokenStream {
+    fn tokens(&self) -> TokenStream {
         let private = private();
         match self {
             Self::Fixed => quote! { #private::Fixed },
@@ -191,7 +191,7 @@ impl BitcodeAttrs {
 
     pub fn get_encoding(&self) -> Option<TokenStream> {
         let encoding = self.most_specific_encoding();
-        encoding.map(|e| e.to_tokens())
+        encoding.map(|e| e.tokens())
     }
 
     pub fn parse_derive(attrs: &[Attribute]) -> Result<Self> {
@@ -271,7 +271,7 @@ impl VariantEncoding {
                 .iter()
                 .map(|variant| {
                     if let AttrType::Variant { frequency, .. } =
-                        BitcodeAttrs::parse_variant(&variant.attrs, &attrs)?.attr_type
+                        BitcodeAttrs::parse_variant(&variant.attrs, attrs)?.attr_type
                     {
                         Ok(frequency.unwrap_or(1.0))
                     } else {

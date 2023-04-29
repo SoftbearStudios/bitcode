@@ -4,7 +4,6 @@ use crate::write::Write;
 use crate::Result;
 
 /// A buffer that can only hold 64 bits, but only uses registers instead of load/store.
-/// Can currently only read up to 63 bits at a time.
 #[derive(Default)]
 pub struct RegisterBuffer {
     value: Word,
@@ -19,14 +18,17 @@ impl RegisterBuffer {
         *self = Self::default();
     }
 
-    pub(crate) fn peek_reader(reader: &mut impl Read) -> Result<Self> {
-        Ok(Self {
-            value: reader.peek_bits()?,
-            index: 0,
-        })
+    /// Advances by the amount read from the buffer and refills the buffer.
+    pub fn refill(&mut self, reader: &mut impl Read) -> Result<()> {
+        self.advance_reader(reader)?;
+        self.value = reader.peek_bits()?;
+        self.index = 0;
+        Ok(())
     }
 
-    pub(crate) fn advance_reader(&mut self, reader: &mut impl Read) -> Result<()> {
+    /// Only advances the reader. Doesn't refill the buffer.
+    pub fn advance_reader(&mut self, reader: &mut impl Read) -> Result<()> {
+        debug_assert!(self.index <= 64, "too many bits read from RegisterBuffer");
         reader.advance(self.index)?;
         *self = Self::default();
         Ok(())
@@ -66,8 +68,6 @@ impl Read for RegisterBuffer {
     }
 
     fn advance(&mut self, bits: usize) -> Result<()> {
-        debug_assert!(bits != 64);
-        self.value >>= bits;
         self.index += bits;
         Ok(())
     }
@@ -81,7 +81,8 @@ impl Read for RegisterBuffer {
     }
 
     fn read_bits(&mut self, bits: usize) -> Result<Word> {
-        let v = self.value & (Word::MAX >> (WORD_BITS - bits));
+        debug_assert!(self.index < 64);
+        let v = (self.value >> self.index) & (Word::MAX >> (WORD_BITS - bits));
 
         self.advance(bits)?;
         Ok(v)

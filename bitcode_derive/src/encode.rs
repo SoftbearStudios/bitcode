@@ -28,7 +28,7 @@ impl Derive for Encode {
         if with_serde {
             let encoding = unwrap_encoding(encoding);
             (
-                // Field is using serde making MAX_BITS unknown so we flush the current register
+                // Field is using serde making ENCODE_MAX unknown so we flush the current register
                 // buffer and write directly to the writer. See optimized_enc! macro in code.rs.
                 quote! {
                     flush!();
@@ -38,7 +38,7 @@ impl Derive for Encode {
             )
         } else if let Some(encoding) = encoding {
             (
-                // Field has an encoding making MAX_BITS unknown so we flush the current register
+                // Field has an encoding making ENCODE_MAX unknown so we flush the current register
                 // buffer and write directly to the writer. See optimized_enc! macro in code.rs.
                 quote! {
                     flush!();
@@ -48,7 +48,7 @@ impl Derive for Encode {
             )
         } else {
             (
-                // Field has a known MAX_BITS. enc! will evaluate if it can fit within the current
+                // Field has a known ENCODE_MAX. enc! will evaluate if it can fit within the current
                 // register buffer. See optimized_enc! macro in code.rs.
                 quote! {
                     enc!(#field_name, #field_type);
@@ -91,6 +91,14 @@ impl Derive for Encode {
     fn trait_ident(&self) -> TokenStream {
         let private = private();
         quote! { #private::Encode }
+    }
+
+    fn min_bits(&self) -> TokenStream {
+        quote! { ENCODE_MIN }
+    }
+
+    fn max_bits(&self) -> TokenStream {
+        quote! { ENCODE_MAX }
     }
 
     fn trait_fn_impl(&self, body: TokenStream) -> TokenStream {

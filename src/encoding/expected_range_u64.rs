@@ -46,18 +46,23 @@ impl<const MIN: u64, const MAX: u64> Encoding for ExpectedRangeU64<MIN, MAX> {
             let header_bit = self.has_header_bit() as u64;
             let value_with_header = (value << header_bit) | header_bit;
             writer.write_bits(value_with_header, self.total_bits());
-        } else if let Some(invalid_bit_pattern) = self.invalid_bit_pattern() {
-            // TODO cold
-            (|| {
-                writer.write_bits(invalid_bit_pattern, self.range_bits());
-                writer.write_bits(word, bits);
-            })()
         } else {
-            // TODO cold
-            (|| {
-                writer.write_bit(false);
-                writer.write_bits(word, bits);
-            })()
+            #[cold]
+            fn cold<const MIN: u64, const MAX: u64>(
+                me: ExpectedRangeU64<MIN, MAX>,
+                word: Word,
+                bits: usize,
+                writer: &mut impl Write,
+            ) {
+                if let Some(invalid_bit_pattern) = me.invalid_bit_pattern() {
+                    writer.write_bits(invalid_bit_pattern, me.range_bits());
+                    writer.write_bits(word, bits);
+                } else {
+                    writer.write_bit(false);
+                    writer.write_bits(word, bits);
+                }
+            }
+            cold(self, word, bits, writer);
         }
     }
 
@@ -90,25 +95,23 @@ impl<const MIN: u64, const MAX: u64> Encoding for ExpectedRangeU64<MIN, MAX> {
                 }
                 cold(reader, bits, self.range_bits())
             }
-        } else {
-            if value_and_header & 1 != 0 {
-                reader.advance(total_bits)?;
+        } else if value_and_header & 1 != 0 {
+            reader.advance(total_bits)?;
 
-                let value = value_and_header >> 1;
-                let word = value + MIN;
-                if bits < WORD_BITS && word >= (1 << bits) {
-                    Err(E::Invalid("expected range").e())
-                } else {
-                    Ok(word)
-                }
+            let value = value_and_header >> 1;
+            let word = value + MIN;
+            if bits < WORD_BITS && word >= (1 << bits) {
+                Err(E::Invalid("expected range").e())
             } else {
-                #[cold]
-                fn cold(reader: &mut impl Read, bits: usize) -> Result<Word> {
-                    reader.advance(1)?;
-                    reader.read_bits(bits)
-                }
-                cold(reader, bits)
+                Ok(word)
             }
+        } else {
+            #[cold]
+            fn cold(reader: &mut impl Read, bits: usize) -> Result<Word> {
+                reader.advance(1)?;
+                reader.read_bits(bits)
+            }
+            cold(reader, bits)
         }
     }
 }

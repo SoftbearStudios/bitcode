@@ -21,22 +21,37 @@ impl Derive for Decode {
         &self,
         with_serde: bool,
         field_name: TokenStream,
-        _field_type: &Type,
+        field_type: &Type,
         encoding: Option<TokenStream>,
     ) -> (TokenStream, Path) {
         let private = private();
-        let encoding = unwrap_encoding(encoding);
         if with_serde {
+            let encoding = unwrap_encoding(encoding);
             (
+                // Field is using serde making DECODE_MAX unknown so we flush the current register
+                // buffer and read directly from the reader. See optimized_dec! macro in code.rs.
                 quote! {
+                    flush!();
                     let #field_name = #private::deserialize_compat(#encoding, reader)?;
                 },
                 parse_quote!(#private::DeserializeOwned),
             )
+        } else if let Some(encoding) = encoding {
+            (
+                // Field has an encoding making DECODE_MAX unknown so we flush the current register
+                // buffer and read directly from the reader. See optimized_dec! macro in code.rs.
+                quote! {
+                    flush!();
+                    let #field_name = #private::Decode::decode(#encoding, reader)?;
+                },
+                parse_quote!(#private::Decode),
+            )
         } else {
             (
+                // Field has a known DECODE_MAX. dec! will evaluate if it can read from the current
+                // register buffer. See optimized_dec! macro in code.rs.
                 quote! {
-                    let #field_name = #private::Decode::decode(#encoding, reader)?;
+                    dec!(#field_name, #field_type);
                 },
                 parse_quote!(#private::Decode),
             )
@@ -77,11 +92,22 @@ impl Derive for Decode {
         quote! { #private::Decode }
     }
 
+    fn min_bits(&self) -> TokenStream {
+        quote! { DECODE_MIN }
+    }
+
+    fn max_bits(&self) -> TokenStream {
+        quote! { DECODE_MAX }
+    }
+
     fn trait_fn_impl(&self, body: TokenStream) -> TokenStream {
         let private = private();
         quote! {
             fn decode(encoding: impl #private::Encoding, reader: &mut impl #private::Read) -> #private::Result<Self> {
-                #body
+                #private::optimized_dec!(encoding, reader);
+                let ret = { #body }?;
+                end_dec!();
+                Ok(ret)
             }
         }
     }

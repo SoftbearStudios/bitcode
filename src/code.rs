@@ -12,7 +12,7 @@ pub(crate) fn encode_internal<'a>(
     Ok(writer.finish_write())
 }
 
-pub(crate) fn decode_internal<'a, T: Decode>(
+pub(crate) fn decode_internal<T: Decode>(
     reader: &mut (impl Read + Default),
     bytes: &[u8],
 ) -> Result<T> {
@@ -38,13 +38,15 @@ pub(crate) fn decode_internal<'a, T: Decode>(
 /// }
 /// ```
 pub trait Encode {
+    // The minimum and maximum number of bits a type can encode as. For now these are only valid if
+    // the encoding is fixed. Before using them make sure the encoding passed to encode is fixed.
     // TODO make these const functions that take an encoding (once const fn is available in traits).
-    // For now these are only valid if encoding is fixed. Before using them make sure the encoding
-    // passed to encode is fixed.
     #[doc(hidden)]
-    const MIN_BITS: usize;
+    const ENCODE_MIN: usize;
+
+    // If max is lower than the actual max, we may not encode all the bits.
     #[doc(hidden)]
-    const MAX_BITS: usize;
+    const ENCODE_MAX: usize;
 
     #[doc(hidden)]
     fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()>;
@@ -67,6 +69,14 @@ pub trait Encode {
 /// }
 /// ```
 pub trait Decode: Sized {
+    // Copy of Encode constants. See Encode for details.
+    // If min is higher than the actual min, we may get EOFs.
+    #[doc(hidden)]
+    const DECODE_MIN: usize;
+
+    #[doc(hidden)]
+    const DECODE_MAX: usize;
+
     #[doc(hidden)]
     fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self>;
 }
@@ -79,39 +89,37 @@ pub trait Decode: Sized {
 #[macro_export]
 macro_rules! optimized_enc {
     ($encoding:ident, $writer:ident) => {
-        // Put __ in front of fields just in case proc macro shadows them.
-        // TODO use canonical names in proc macro.
-        let mut __buf = $crate::__private::RegisterBuffer::default();
+        let mut buf = $crate::__private::RegisterBuffer::default();
         #[allow(unused_mut)]
-        let mut __i: usize = 0;
+        let mut i: usize = 0;
         #[allow(unused)]
-        let __no_encoding_upstream = $encoding.is_fixed();
+        let no_encoding_upstream = $encoding.is_fixed();
 
         // Call on each field (that doesn't get it's encoding overridden in the derive macro).
         #[allow(unused)]
         macro_rules! enc {
             ($t:expr, $T:ty) => {
-                // MAX_BITS is only accurate if there isn't any encoding upstream.
-                // Downstream encodings make MAX_BITS = usize::MAX in derive macro.
-                if <$T>::MAX_BITS.saturating_add(__i) <= 64 && __no_encoding_upstream {
-                    <$T>::encode(&$t, $encoding, &mut __buf)?;
+                // ENCODE_MAX is only accurate if there isn't any encoding upstream.
+                // Downstream encodings make ENCODE_MAX = usize::MAX in derive macro.
+                if <$T>::ENCODE_MAX.saturating_add(i) <= 64 && no_encoding_upstream {
+                    <$T>::encode(&$t, $encoding, &mut buf)?;
                 } else {
-                    if __i != 0 {
-                        __buf.flush($writer);
+                    if i != 0 {
+                        buf.flush($writer);
                     }
 
-                    if <$T>::MAX_BITS < 64 && __no_encoding_upstream {
-                        <$T>::encode(&$t, $encoding, &mut __buf)?;
+                    if <$T>::ENCODE_MAX < 64 && no_encoding_upstream {
+                        <$T>::encode(&$t, $encoding, &mut buf)?;
                     } else {
                         <$T>::encode(&$t, $encoding, $writer)?;
                     }
                 }
 
-                __i = if <$T>::MAX_BITS.saturating_add(__i) <= 64 && __no_encoding_upstream {
-                    <$T>::MAX_BITS + __i
+                i = if <$T>::ENCODE_MAX.saturating_add(i) <= 64 && no_encoding_upstream {
+                    <$T>::ENCODE_MAX + i
                 } else {
-                    if <$T>::MAX_BITS < 64 && __no_encoding_upstream {
-                        <$T>::MAX_BITS
+                    if <$T>::ENCODE_MAX < 64 && no_encoding_upstream {
+                        <$T>::ENCODE_MAX
                     } else {
                         0
                     }
@@ -122,8 +130,8 @@ macro_rules! optimized_enc {
         // Call before you write anything to writer after you have called enc!.
         macro_rules! flush {
             () => {
-                if __i != 0 {
-                    __buf.flush($writer);
+                if i != 0 {
+                    buf.flush($writer);
                 }
             };
         }
@@ -146,7 +154,6 @@ mod optimized_enc_tests {
     type A = u8;
     type B = u8;
 
-    // TODO remove.
     #[derive(Clone, Debug, PartialEq, crate::Encode, crate::Decode)]
     struct Foo {
         a: A,
@@ -215,6 +222,165 @@ mod optimized_enc_tests {
             let foo = black_box(foo.as_slice());
             let bytes = buffer.encode(foo).unwrap();
             black_box(bytes);
+        })
+    }
+}
+
+/// A macro that facilitates reading from a RegisterBuffer when decoding multiple values less than 64 bits.
+/// This can dramatically speed operations like decoding a tuple of 8 bytes.
+///
+/// Once you call `optimized_dec!()`, you must call `end_dec!()` at the end to advance the reader.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! optimized_dec {
+    ($encoding:ident, $reader:ident) => {
+        let mut buf = $crate::__private::RegisterBuffer::default();
+        #[allow(unused_mut)]
+        let mut i: usize = 0;
+        #[allow(unused)]
+        let no_encoding_upstream = $encoding.is_fixed();
+
+        // Call on each field (that doesn't get it's encoding overridden in the derive macro).
+        #[allow(unused)]
+        macro_rules! dec {
+            ($t:ident, $T:ty) => {
+                // DECODE_MAX is only accurate if there isn't any encoding upstream.
+                // Downstream encodings make DECODE_MAX = usize::MAX in derive macro.
+                let $t = if i >= <$T>::DECODE_MAX && no_encoding_upstream {
+                    <$T>::decode($encoding, &mut buf)?
+                } else {
+                    if <$T>::DECODE_MAX < 64 && no_encoding_upstream {
+                        buf.refill($reader)?;
+                        <$T>::decode($encoding, &mut buf)?
+                    } else {
+                        buf.advance_reader($reader)?;
+                        <$T>::decode($encoding, $reader)?
+                    }
+                };
+
+                i = if i >= <$T>::DECODE_MAX && no_encoding_upstream {
+                    i - <$T>::DECODE_MAX
+                } else {
+                    if <$T>::DECODE_MAX < 64 && no_encoding_upstream {
+                        // Needs saturating since it's const (even though we've checked it).
+                        64usize.saturating_sub(<$T>::DECODE_MAX)
+                    } else {
+                        0
+                    }
+                };
+            };
+        }
+
+        // Call before you read anything from reader after you have called dec!.
+        macro_rules! flush {
+            () => {
+                buf.advance_reader($reader)?;
+            };
+        }
+
+        // Call once done decoding.
+        macro_rules! end_dec {
+            () => {
+                let _ = i;
+                flush!();
+            };
+        }
+    };
+}
+pub use optimized_dec;
+
+// These benchmarks ensure that optimized_dec is working. They run 4-8 times faster with optimized_dec.
+#[cfg(test)]
+mod optimized_dec_tests {
+    use test::{black_box, Bencher};
+
+    type A = u8;
+    type B = u8;
+
+    #[derive(Clone, Debug, PartialEq, crate::Encode, crate::Decode)]
+    #[repr(C, align(8))]
+    struct Foo {
+        a: A,
+        b: B,
+        c: A,
+        d: B,
+        e: A,
+        f: B,
+        g: A,
+        h: B,
+    }
+
+    #[bench]
+    fn bench_foo(b: &mut Bencher) {
+        let mut buffer = crate::Buffer::new();
+        let foo = Foo {
+            a: 1,
+            b: 2,
+            c: 3,
+            d: 4,
+            e: 5,
+            f: 6,
+            g: 7,
+            h: 8,
+        };
+        let foo = vec![foo; 1000];
+        type T = Vec<Foo>;
+
+        let bytes = buffer.encode(&foo).unwrap().to_vec();
+        let decoded: T = buffer.decode(&bytes).unwrap();
+        assert_eq!(foo, decoded);
+
+        b.iter(|| {
+            let bytes = black_box(bytes.as_slice());
+            black_box(buffer.decode::<T>(bytes).unwrap())
+        })
+    }
+
+    #[bench]
+    fn bench_tuple(b: &mut Bencher) {
+        let mut buffer = crate::Buffer::new();
+        let foo = vec![(0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8); 1000];
+        type T = Vec<(u8, u8, u8, u8, u8, u8, u8, u8)>;
+
+        let bytes = buffer.encode(&foo).unwrap().to_vec();
+        let decoded: T = buffer.decode(&bytes).unwrap();
+        assert_eq!(foo, decoded);
+
+        b.iter(|| {
+            let bytes = black_box(bytes.as_slice());
+            black_box(buffer.decode::<T>(bytes).unwrap())
+        })
+    }
+
+    #[bench]
+    fn bench_array(b: &mut Bencher) {
+        let mut buffer = crate::Buffer::new();
+        let foo = vec![[0u8; 8]; 1000];
+        type T = Vec<[u8; 8]>;
+
+        let bytes = buffer.encode(&foo).unwrap().to_vec();
+        let decoded: T = buffer.decode(&bytes).unwrap();
+        assert_eq!(foo, decoded);
+
+        b.iter(|| {
+            let bytes = black_box(bytes.as_slice());
+            black_box(buffer.decode::<T>(bytes).unwrap())
+        })
+    }
+
+    #[bench]
+    fn bench_vec(b: &mut Bencher) {
+        let mut buffer = crate::Buffer::new();
+        let foo = vec![0u8; 8000];
+        type T = Vec<u8>;
+
+        let bytes = buffer.encode(&foo).unwrap().to_vec();
+        let decoded: T = buffer.decode(&bytes).unwrap();
+        assert_eq!(foo, decoded);
+
+        b.iter(|| {
+            let bytes = black_box(bytes.as_slice());
+            black_box(buffer.decode::<T>(bytes).unwrap())
         })
     }
 }

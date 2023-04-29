@@ -1,29 +1,39 @@
 use crate::read::Read;
-use crate::{Result, E};
+use crate::{Decode, Result, E};
 
 pub const ZST_LIMIT: usize = 1 << 16;
 
-// Guards against Vec<()> with huge len taking forever.
-#[inline]
-pub fn guard_zst<T>(len: usize) -> Result<()> {
-    if std::mem::size_of::<T>() == 0 && len > ZST_LIMIT {
+fn check_zst_len(len: usize) -> Result<()> {
+    if len > ZST_LIMIT {
         Err(E::Invalid("too many zst").e())
     } else {
         Ok(())
     }
 }
 
-// Guards against allocating huge Vec<T> without enough remaining bits to fill it.
-// Also calls [`guard_zst`].
+// Used by deserialize. Guards against Vec<()> with huge len taking forever.
 #[inline]
-pub fn guard_len<T>(len: usize, reader: &impl Read) -> Result<()> {
+#[cfg(any(test, feature = "serde"))]
+pub fn guard_zst<T>(len: usize) -> Result<()> {
     if std::mem::size_of::<T>() == 0 {
-        guard_zst::<T>(len)
+        check_zst_len(len)
     } else {
-        // We assume that each non zero sized T requires at least 1 bit. If it took 0 bits
-        // decoding could allocate unbounded memory.
-        // TODO could multiply by min bits per T if we knew that.
-        let bits = len * 1;
+        Ok(())
+    }
+}
+
+// Used by decode. Guards against allocating huge Vec<T> without enough remaining bits to fill it.
+// Also guards against Vec<()> with huge len taking forever.
+#[inline]
+pub fn guard_len<T: Decode>(len: usize, reader: &impl Read) -> Result<()> {
+    // In #[derive(Decode)] we report serde types as 1 bit min even though they might serialize
+    // to 0. We do this so we can have large vectors past the ZST_LIMIT. We assume that any type
+    // that will serialize to nothing in serde has no size.
+    if T::DECODE_MIN == 0 || std::mem::size_of::<T>() == 0 {
+        check_zst_len(len)
+    } else {
+        // We ensure that we have the minimum required bits so decoding doesn't allocate unbounded memory.
+        let bits = len.saturating_mul(T::DECODE_MIN);
         reader.reserve_bits(bits)
     }
 }

@@ -45,7 +45,8 @@ macro_rules! impl_float {
             let mantissa_bits = $mantissa as usize;
             let exp_bias = $exp_bias as u32;
 
-            let mut register_buffer = RegisterBuffer::peek_reader(reader)?;
+            let mut register_buffer = RegisterBuffer::default();
+            register_buffer.refill(reader)?;
 
             let gamma_exp = $exp_type::decode(Gamma, &mut register_buffer)?;
             if gamma_exp < MAX_GAMMA_EXP as $exp_type {
@@ -86,7 +87,7 @@ mod benches {
     }
 
     #[bench]
-    fn bench_encode_normalized_floats(b: &mut Bencher) {
+    fn encode(b: &mut Bencher) {
         let mut buf = WordBuffer::with_capacity(4000);
         let floats = bench_floats();
 
@@ -102,7 +103,7 @@ mod benches {
     }
 
     #[bench]
-    fn bench_decode_normalized_floats(b: &mut Bencher) {
+    fn decode(b: &mut Bencher) {
         let floats = bench_floats();
         let mut buf = WordBuffer::default();
         buf.start_write();

@@ -130,7 +130,6 @@ mod word;
 mod word_buffer;
 mod write;
 
-#[cfg(feature = "derive")]
 #[doc(hidden)]
 pub mod __private;
 
@@ -228,6 +227,7 @@ impl Error {
         self
     }
 
+    // Doesn't implement PartialEq because that would be part of the public api.
     pub(crate) fn same(&self, other: &Self) -> bool {
         self.0 == other.0
     }
