@@ -69,7 +69,7 @@
 //! let expected_age: usize = bitcode::encode(&User { age: 42 }).unwrap().len();
 //! assert_eq!(expected_age, 1);
 //!
-//! // A user with an age outside the expected range more than 4 bytes to encode.
+//! // A user with an age outside the expected range takes more than 4 bytes to encode.
 //! let unexpected_age: usize = bitcode::encode(&User { age: 31415926 }).unwrap().len();
 //! assert!(unexpected_age > 4);
 //! ```
