@@ -12,14 +12,14 @@ pub fn serialize_internal<'a>(
     t: &(impl Serialize + ?Sized),
 ) -> Result<&'a [u8]> {
     writer.start_write();
-    serialize_compat(Fixed, writer, t)?;
+    serialize_compat(t, Fixed, writer)?;
     Ok(writer.finish_write())
 }
 
 pub fn serialize_compat(
+    t: &(impl Serialize + ?Sized),
     encoding: impl Encoding,
     writer: &mut impl Write,
-    t: &(impl Serialize + ?Sized),
 ) -> Result<()> {
     t.serialize(BitcodeSerializer { encoding, writer })
 }

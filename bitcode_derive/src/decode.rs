@@ -11,6 +11,7 @@ impl Derive for Decode {
         let private = private();
         (
             quote! {
+                end_dec!();
                 #private::deserialize_compat(encoding, reader)
             },
             parse_quote!(#private::DeserializeOwned),
@@ -31,8 +32,7 @@ impl Derive for Decode {
                 // Field is using serde making DECODE_MAX unknown so we flush the current register
                 // buffer and read directly from the reader. See optimized_dec! macro in code.rs.
                 quote! {
-                    flush!();
-                    let #field_name = #private::deserialize_compat(#encoding, reader)?;
+                    let #field_name = #private::deserialize_compat(#encoding, flush!())?;
                 },
                 parse_quote!(#private::DeserializeOwned),
             )
@@ -41,8 +41,7 @@ impl Derive for Decode {
                 // Field has an encoding making DECODE_MAX unknown so we flush the current register
                 // buffer and read directly from the reader. See optimized_dec! macro in code.rs.
                 quote! {
-                    flush!();
-                    let #field_name = #private::Decode::decode(#encoding, reader)?;
+                    let #field_name = #private::Decode::decode(#encoding, flush!())?;
                 },
                 parse_quote!(#private::Decode),
             )
@@ -61,6 +60,7 @@ impl Derive for Decode {
     fn struct_impl(&self, destructure_fields: TokenStream, do_fields: TokenStream) -> TokenStream {
         quote! {
             #do_fields
+            end_dec!();
             Ok(Self #destructure_fields)
         }
     }
@@ -74,6 +74,7 @@ impl Derive for Decode {
         quote! {
             #before_fields
             #field_impls
+            end_dec!();
             #destructure_variant
         }
     }
@@ -105,9 +106,7 @@ impl Derive for Decode {
         quote! {
             fn decode(encoding: impl #private::Encoding, reader: &mut impl #private::Read) -> #private::Result<Self> {
                 #private::optimized_dec!(encoding, reader);
-                let ret = { #body }?;
-                end_dec!();
-                Ok(ret)
+                #body
             }
         }
     }

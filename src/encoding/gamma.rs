@@ -54,7 +54,7 @@ impl Encoding for Gamma {
     fn read_word(self, reader: &mut impl Read, bits: usize) -> Result<Word> {
         debug_assert!((1..=WORD_BITS).contains(&bits));
         let zero_bits = reader.peek_bits()?.trailing_zeros() as usize;
-        reader.advance(zero_bits)?;
+        reader.advance(zero_bits);
 
         // 64 zeros is u64::MAX is special case.
         if zero_bits == Word::BITS as usize {

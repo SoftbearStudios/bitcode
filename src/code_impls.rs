@@ -399,11 +399,11 @@ fn encode_elements<T: Encode>(
     if T::ENCODE_MAX == 0 {
         return Ok(()); // Nothing to serialize.
     }
-
-    let mut buf = crate::register_buffer::RegisterBuffer::default();
     let chunk_size = 64 / T::ENCODE_MAX;
 
     if chunk_size > 1 && encoding.is_fixed() {
+        let mut buf = crate::register_buffer::RegisterWriter::new(writer);
+
         let chunks = elements.chunks_exact(chunk_size);
         let remainder = chunks.remainder();
 
@@ -411,14 +411,14 @@ fn encode_elements<T: Encode>(
             for t in chunk {
                 t.encode(encoding, &mut buf)?;
             }
-            buf.flush(writer);
+            buf.flush();
         }
 
         if !remainder.is_empty() {
             for t in remainder {
                 t.encode(encoding, &mut buf)?;
             }
-            buf.flush(writer);
+            buf.flush();
         }
     } else {
         for t in elements.iter() {
@@ -446,10 +446,10 @@ fn decode_elements<T: Decode>(
         let remainder = len % chunk_size;
 
         let mut ret = Vec::with_capacity(len);
-        let mut buf = crate::register_buffer::RegisterBuffer::default();
+        let mut buf = crate::register_buffer::RegisterReader::new(reader);
 
         for _ in 0..chunks {
-            buf.refill(reader)?;
+            buf.refill()?;
 
             // This avoids checking if allocation is needed for every item for chunks divisible by 8.
             // Adding more impls for other sizes slows down this case for some reason.
@@ -473,11 +473,11 @@ fn decode_elements<T: Decode>(
             }
         }
 
-        buf.refill(reader)?;
+        buf.refill()?;
         for _ in 0..remainder {
-            ret.push(T::decode(encoding, reader)?);
+            ret.push(T::decode(encoding, &mut buf)?);
         }
-        buf.advance_reader(reader)?;
+        buf.advance_reader();
 
         Ok(ret)
     } else {

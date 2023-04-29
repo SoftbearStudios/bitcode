@@ -11,7 +11,8 @@ impl Derive for Encode {
         let private = private();
         (
             quote! {
-                #private::serialize_compat(encoding, writer, self)?;
+                end_enc!();
+                #private::serialize_compat(self, encoding, writer)?;
             },
             parse_quote!(#private::Serialize),
         )
@@ -31,8 +32,7 @@ impl Derive for Encode {
                 // Field is using serde making ENCODE_MAX unknown so we flush the current register
                 // buffer and write directly to the writer. See optimized_enc! macro in code.rs.
                 quote! {
-                    flush!();
-                    #private::serialize_compat(#encoding, writer, #field_name)?;
+                    #private::serialize_compat(#field_name, #encoding, flush!())?;
                 },
                 parse_quote!(#private::Serialize),
             )
@@ -41,8 +41,7 @@ impl Derive for Encode {
                 // Field has an encoding making ENCODE_MAX unknown so we flush the current register
                 // buffer and write directly to the writer. See optimized_enc! macro in code.rs.
                 quote! {
-                    flush!();
-                    #private::Encode::encode(#field_name, #encoding, writer)?;
+                    #private::Encode::encode(#field_name, #encoding, flush!())?;
                 },
                 parse_quote!(#private::Encode),
             )
@@ -62,6 +61,7 @@ impl Derive for Encode {
         quote! {
             let Self #destructure_fields = self;
             #do_fields
+            end_enc!();
         }
     }
 
@@ -75,6 +75,7 @@ impl Derive for Encode {
             #destructure_variant => {
                 #before_fields
                 #field_impls
+                end_enc!();
             },
         }
     }
@@ -108,7 +109,6 @@ impl Derive for Encode {
             fn encode(&self, encoding: impl #private::Encoding, writer: &mut impl #private::Write) -> #private::Result<()> {
                 #private::optimized_enc!(encoding, writer);
                 #body
-                end_enc!();
                 Ok(())
             }
         }
