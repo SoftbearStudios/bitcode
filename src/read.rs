@@ -20,7 +20,7 @@ pub trait Read {
         finish_result?;
         Ok(t)
     }
-    /// Advances any amount of bits must never fail.
+    /// Advances any amount of bits. Must never fail.
     fn advance(&mut self, bits: usize);
     /// Peeks 64 bits without reading them. Bits after EOF are zeroed.
     fn peek_bits(&mut self) -> Result<Word>;
