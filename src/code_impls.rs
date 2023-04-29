@@ -390,7 +390,7 @@ impl_smart_ptr!(::std::rc::Rc);
 impl_smart_ptr!(::std::sync::Arc);
 
 // Writes multiple elements per flush. TODO use on VecDeque::as_slices.
-#[inline]
+#[inline(always)] // If only #[inline] optimized_enc_tests::bench_array is slow.
 fn encode_elements<T: Encode>(
     elements: &[T],
     encoding: impl Encoding,
