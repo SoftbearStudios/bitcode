@@ -21,7 +21,7 @@ impl BitBounds {
     }
 
     fn unbounded() -> Self {
-        Self::new(0, usize::MAX)
+        Self::new(1, usize::MAX)
     }
 
     fn new(min: usize, max: usize) -> Self {
