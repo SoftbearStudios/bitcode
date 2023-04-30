@@ -4,7 +4,7 @@ pub use crate::code::*;
 pub use crate::encoding::*;
 pub use crate::nightly::{max, min};
 pub use crate::read::Read;
-pub use crate::register_buffer::RegisterBuffer;
+pub use crate::register_buffer::*;
 pub use crate::write::Write;
 pub use crate::Error;
 

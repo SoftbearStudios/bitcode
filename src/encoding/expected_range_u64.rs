@@ -78,7 +78,7 @@ impl<const MIN: u64, const MAX: u64> Encoding for ExpectedRangeU64<MIN, MAX> {
         let value_and_header = raw_bits & ((1 << total_bits) - 1);
         if let Some(invalid_bit_pattern) = self.invalid_bit_pattern() {
             if value_and_header != invalid_bit_pattern {
-                reader.advance(total_bits)?;
+                reader.advance(total_bits);
 
                 let value = value_and_header;
                 let word = value + MIN;
@@ -90,13 +90,13 @@ impl<const MIN: u64, const MAX: u64> Encoding for ExpectedRangeU64<MIN, MAX> {
             } else {
                 #[cold]
                 fn cold(reader: &mut impl Read, bits: usize, skip: usize) -> Result<Word> {
-                    reader.advance(skip)?;
+                    reader.advance(skip);
                     reader.read_bits(bits)
                 }
                 cold(reader, bits, self.range_bits())
             }
         } else if value_and_header & 1 != 0 {
-            reader.advance(total_bits)?;
+            reader.advance(total_bits);
 
             let value = value_and_header >> 1;
             let word = value + MIN;
@@ -108,7 +108,7 @@ impl<const MIN: u64, const MAX: u64> Encoding for ExpectedRangeU64<MIN, MAX> {
         } else {
             #[cold]
             fn cold(reader: &mut impl Read, bits: usize) -> Result<Word> {
-                reader.advance(1)?;
+                reader.advance(1);
                 reader.read_bits(bits)
             }
             cold(reader, bits)

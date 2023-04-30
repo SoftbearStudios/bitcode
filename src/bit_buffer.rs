@@ -12,6 +12,7 @@ pub struct BitBuffer {
     bits: BitVec<u8, Lsb0>,
     read: usize,
     tmp: Box<[u8]>,
+    advanced_too_far: bool,
 }
 
 impl WithCapacity for BitBuffer {
@@ -71,6 +72,10 @@ impl Read for BitBuffer {
     }
 
     fn finish_read(&self) -> Result<()> {
+        if self.advanced_too_far {
+            return Err(E::Eof.e());
+        }
+
         // Can't use remaining because of borrow checker.
         let remaining = &self.bits[self.read..];
         if remaining.is_empty() {
@@ -92,9 +97,13 @@ impl Read for BitBuffer {
             .ok_or_else(|| E::ExpectedEof.e())
     }
 
-    fn advance(&mut self, bits: usize) -> Result<()> {
-        self.read_slice(bits)?;
-        Ok(())
+    fn advance(&mut self, bits: usize) {
+        let new_read = self.read + bits;
+        if new_read > self.bits.len() {
+            // Handle the error later since we can't return it.
+            self.advanced_too_far = true;
+        }
+        self.read = new_read.min(self.bits.len());
     }
 
     fn peek_bits(&mut self) -> Result<Word> {

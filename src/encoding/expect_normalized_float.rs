@@ -1,7 +1,7 @@
 use crate::code::{Decode, Encode};
 use crate::encoding::prelude::*;
 use crate::encoding::{Fixed, Gamma};
-use crate::register_buffer::RegisterBuffer;
+use crate::register_buffer::{RegisterReader, RegisterWriter};
 
 #[derive(Copy, Clone)]
 pub struct ExpectNormalizedFloat;
@@ -24,12 +24,12 @@ macro_rules! impl_float {
             let gamma_exp = (exp_bias - 1).wrapping_sub(exp);
 
             if (sign | gamma_exp as $i) < MAX_GAMMA_EXP as $i {
-                let mut register_buffer = RegisterBuffer::default();
+                let mut buf = RegisterWriter::new(writer);
                 let mantissa = bits as $i & !(<$i>::MAX << mantissa_bits);
 
-                (gamma_exp as $exp_type).encode(Gamma, &mut register_buffer).unwrap();
-                register_buffer.write_bits(mantissa.into(), mantissa_bits);
-                register_buffer.flush(writer);
+                (gamma_exp as $exp_type).encode(Gamma, &mut buf).unwrap();
+                buf.write_bits(mantissa.into(), mantissa_bits);
+                buf.flush();
             } else {
                 #[cold]
                 fn cold(writer: &mut impl Write, v: $t) {
@@ -45,23 +45,22 @@ macro_rules! impl_float {
             let mantissa_bits = $mantissa as usize;
             let exp_bias = $exp_bias as u32;
 
-            let mut register_buffer = RegisterBuffer::default();
-            register_buffer.refill(reader)?;
+            let mut buf = RegisterReader::new(reader);
+            buf.refill()?;
 
-            let gamma_exp = $exp_type::decode(Gamma, &mut register_buffer)?;
+            let gamma_exp = $exp_type::decode(Gamma, &mut buf)?;
             if gamma_exp < MAX_GAMMA_EXP as $exp_type {
-                let mantissa = register_buffer.read_bits(mantissa_bits)? as $i;
-                register_buffer.advance_reader(reader)?;
-
+                let mantissa = buf.read_bits(mantissa_bits)? as $i;
+                buf.advance_reader();
                 let exp = (exp_bias - 1) - gamma_exp as u32;
                 Ok(<$t>::from_bits(exp as $i << mantissa_bits | mantissa))
             } else {
                 #[cold]
-                fn cold(reader: &mut impl Read, mut register_buffer: RegisterBuffer) -> Result<$t> {
-                    register_buffer.advance_reader(reader)?;
-                    <$t>::decode(Fixed, reader)
+                fn cold(mut buf: RegisterReader<impl Read>) -> Result<$t> {
+                    buf.advance_reader();
+                    <$t>::decode(Fixed, buf.reader)
                 }
-                cold(reader, register_buffer)
+                cold(buf)
             }
         }
     }

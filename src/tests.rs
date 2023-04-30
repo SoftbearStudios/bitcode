@@ -254,6 +254,12 @@ fn test_chars() {
 }
 
 #[test]
+fn test_char1() {
+    let c = char::from_u32(11141).unwrap();
+    the_same(c)
+}
+
+#[test]
 fn test_expected_range() {
     #[derive(PartialEq, Debug, Clone, Serialize, Deserialize, Encode, Decode)]
     struct LargeU64(#[bitcode_hint(expected_range = "10..1000000000")] u64);

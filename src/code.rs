@@ -81,15 +81,16 @@ pub trait Decode: Sized {
     fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self>;
 }
 
-/// A macro that facilitates writing to a RegisterBuffer when encoding multiple values less than 64 bits.
+/// A macro that facilitates writing to a RegisterWriter when encoding multiple values less than 64 bits.
 /// This can dramatically speed operations like encoding a tuple of 8 bytes.
 ///
 /// Once you call `optimized_enc!()`, you must call `end_enc!()` at the end to flush the remaining bits.
+/// If the execution path diverges it must never converge or this won't optimize well.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! optimized_enc {
     ($encoding:ident, $writer:ident) => {
-        let mut buf = $crate::__private::RegisterBuffer::default();
+        let mut buf = $crate::__private::RegisterWriter::new($writer);
         #[allow(unused_mut)]
         let mut i: usize = 0;
         #[allow(unused)]
@@ -105,13 +106,13 @@ macro_rules! optimized_enc {
                     <$T>::encode(&$t, $encoding, &mut buf)?;
                 } else {
                     if i != 0 {
-                        buf.flush($writer);
+                        buf.flush();
                     }
 
                     if <$T>::ENCODE_MAX < 64 && no_encoding_upstream {
                         <$T>::encode(&$t, $encoding, &mut buf)?;
                     } else {
-                        <$T>::encode(&$t, $encoding, $writer)?;
+                        <$T>::encode(&$t, $encoding, buf.writer)?;
                     }
                 }
 
@@ -127,19 +128,24 @@ macro_rules! optimized_enc {
             };
         }
 
-        // Call before you write anything to writer after you have called enc!.
+        // Call to flush the contents of the RegisterWriter and get the inner writer.
         macro_rules! flush {
-            () => {
+            () => {{
                 if i != 0 {
-                    buf.flush($writer);
+                    buf.flush();
                 }
-            };
+                i = 0;
+                &mut *buf.writer
+            }};
         }
 
         // Call once done encoding.
         macro_rules! end_enc {
             () => {
                 flush!();
+                let _ = i;
+                #[allow(clippy::drop_non_drop)]
+                drop(buf);
             };
         }
     };
@@ -226,15 +232,17 @@ mod optimized_enc_tests {
     }
 }
 
-/// A macro that facilitates reading from a RegisterBuffer when decoding multiple values less than 64 bits.
+/// A macro that facilitates reading from a RegisterReader when decoding multiple values less than 64 bits.
 /// This can dramatically speed operations like decoding a tuple of 8 bytes.
 ///
 /// Once you call `optimized_dec!()`, you must call `end_dec!()` at the end to advance the reader.
+/// If the execution path diverges it must never converge or this won't optimize well.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! optimized_dec {
     ($encoding:ident, $reader:ident) => {
-        let mut buf = $crate::__private::RegisterBuffer::default();
+        #[allow(unused_mut)]
+        let mut buf = $crate::__private::RegisterReader::new($reader);
         #[allow(unused_mut)]
         let mut i: usize = 0;
         #[allow(unused)]
@@ -250,11 +258,11 @@ macro_rules! optimized_dec {
                     <$T>::decode($encoding, &mut buf)?
                 } else {
                     if <$T>::DECODE_MAX < 64 && no_encoding_upstream {
-                        buf.refill($reader)?;
+                        buf.refill()?;
                         <$T>::decode($encoding, &mut buf)?
                     } else {
-                        buf.advance_reader($reader)?;
-                        <$T>::decode($encoding, $reader)?
+                        buf.advance_reader();
+                        <$T>::decode($encoding, buf.reader)?
                     }
                 };
 
@@ -271,18 +279,23 @@ macro_rules! optimized_dec {
             };
         }
 
-        // Call before you read anything from reader after you have called dec!.
+        // Call to flush the contents of the RegisterReader and get the inner reader.
         macro_rules! flush {
-            () => {
-                buf.advance_reader($reader)?;
-            };
+            () => {{
+                let _ = i;
+                i = 0;
+                buf.advance_reader();
+                &mut *buf.reader
+            }};
         }
 
         // Call once done decoding.
         macro_rules! end_dec {
             () => {
-                let _ = i;
                 flush!();
+                let _ = i;
+                #[allow(clippy::drop_non_drop)]
+                drop(buf);
             };
         }
     };

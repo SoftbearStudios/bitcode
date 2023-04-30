@@ -304,7 +304,9 @@ impl VariantEncoding {
     ) -> Result<TokenStream> {
         // if variant_count is 0 or 1 no encoding is required.
         Ok(match self.variant_count {
-            0 => quote! {},
+            0 => quote! {
+                end_enc!(); // No variants will call this so we call to avoid unused warning.
+            },
             1 => {
                 let encode_variant = encode(0, quote! {}, 0)?;
                 quote! {
@@ -323,7 +325,7 @@ impl VariantEncoding {
                         encode(
                             i,
                             quote! {
-                                writer.write_bits(#code, #bits);
+                                flush!().write_bits(#code, #bits);
                             },
                             bits,
                         )
@@ -350,6 +352,7 @@ impl VariantEncoding {
             0 => {
                 let private = private();
                 quote! {
+                    end_dec!(); // No variants will call this so we call to avoid unused warning.
                     Err(#private::invalid_variant())
                 }
             }
@@ -370,7 +373,7 @@ impl VariantEncoding {
 
                         Ok(quote! {
                             b if b & #mask == #code => {
-                                reader.advance(#bits)?;
+                                flush!().advance(#bits);
                                 #decode_variant
                             }
                         })
@@ -379,7 +382,7 @@ impl VariantEncoding {
                 let variants = variants?;
 
                 quote! {
-                    Ok(match reader.peek_bits()? {
+                    Ok(match flush!().peek_bits()? {
                         #variants,
                         _ => unreachable!(),
                     })

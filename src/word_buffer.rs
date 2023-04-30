@@ -351,9 +351,8 @@ impl Read for WordBuffer {
         }
     }
 
-    fn advance(&mut self, bits: usize) -> Result<()> {
+    fn advance(&mut self, bits: usize) {
         self.index += bits;
-        Ok(())
     }
 
     fn peek_bits(&mut self) -> Result<Word> {
