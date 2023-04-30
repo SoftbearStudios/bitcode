@@ -39,3 +39,68 @@ pub mod test_prelude {
         test_encoding_inner::<crate::word_buffer::WordBuffer, V>(encoding, value);
     }
 }
+
+#[cfg(test)]
+pub mod bench_prelude {
+    use super::test_prelude::*;
+    pub use super::*;
+    use crate::buffer::WithCapacity;
+    use crate::read::Read;
+    use crate::word_buffer::WordBuffer;
+    use crate::write::Write;
+    use test::black_box;
+    pub use test::Bencher;
+
+    #[macro_export]
+    macro_rules! bench_encoding {
+        ($encoding:path, $dataset:ident) => {
+            #[bench]
+            fn encode(b: &mut Bencher) {
+                bench_encode(b, $encoding, $dataset());
+            }
+
+            #[bench]
+            fn decode(b: &mut Bencher) {
+                bench_decode(b, $encoding, $dataset());
+            }
+        };
+    }
+    pub use bench_encoding;
+
+    pub fn bench_encode(b: &mut Bencher, encoding: impl Encoding, data: Vec<impl Encode>) {
+        let mut buf = WordBuffer::with_capacity(4000);
+
+        b.iter(|| {
+            let buf = black_box(&mut buf);
+            let data = black_box(data.as_slice());
+
+            buf.start_write();
+            for v in data {
+                v.encode(encoding, buf).unwrap();
+            }
+        })
+    }
+
+    pub fn bench_decode<T: Encode + Decode + Debug + PartialEq>(
+        b: &mut Bencher,
+        encoding: impl Encoding,
+        data: Vec<T>,
+    ) {
+        let mut buf = WordBuffer::default();
+        buf.start_write();
+        for v in &data {
+            v.encode(encoding, &mut buf).unwrap();
+        }
+        let bytes = buf.finish_write().to_owned();
+
+        b.iter(|| {
+            let buf = black_box(&mut buf);
+
+            buf.start_read(black_box(bytes.as_slice()));
+            for v in &data {
+                let decoded = T::decode(encoding, buf).unwrap();
+                assert_eq!(&decoded, v);
+            }
+        })
+    }
+}

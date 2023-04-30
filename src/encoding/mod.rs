@@ -19,12 +19,12 @@ pub trait Encoding: Copy {
         false
     }
 
-    fn write_word(self, writer: &mut impl Write, word: Word, bits: usize) {
-        writer.write_bits(word, bits);
+    fn write_word<const BITS: usize>(self, writer: &mut impl Write, word: Word) {
+        writer.write_bits(word, BITS);
     }
 
-    fn read_word(self, reader: &mut impl Read, bits: usize) -> Result<Word> {
-        reader.read_bits(bits)
+    fn read_word<const BITS: usize>(self, reader: &mut impl Read) -> Result<Word> {
+        reader.read_bits(BITS)
     }
 
     fn write_f32(self, writer: &mut impl Write, v: f32) {

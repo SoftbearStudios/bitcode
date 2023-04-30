@@ -32,6 +32,7 @@ macro_rules! impl_float {
                 buf.flush();
             } else {
                 #[cold]
+                #[inline(never)]
                 fn cold(writer: &mut impl Write, v: $t) {
                     MAX_GAMMA_EXP.encode(Gamma, writer).unwrap();
                     v.encode(Fixed, writer).unwrap()
@@ -73,54 +74,15 @@ impl Encoding for ExpectNormalizedFloat {
 
 #[cfg(test)]
 mod benches {
-    use crate::buffer::WithCapacity;
-    use crate::encoding::prelude::test_prelude::*;
-    use crate::encoding::ExpectNormalizedFloat;
-    use crate::word_buffer::WordBuffer;
+    use crate::encoding::prelude::bench_prelude::*;
     use rand::prelude::*;
-    use test::{black_box, Bencher};
 
-    fn bench_floats() -> Vec<f32> {
+    fn dataset() -> Vec<f32> {
         let mut rng = rand_chacha::ChaCha20Rng::from_seed(Default::default());
         (0..1000).map(|_| rng.gen()).collect()
     }
 
-    #[bench]
-    fn encode(b: &mut Bencher) {
-        let mut buf = WordBuffer::with_capacity(4000);
-        let floats = bench_floats();
-
-        b.iter(|| {
-            let buf = black_box(&mut buf);
-            let floats = black_box(floats.as_slice());
-
-            buf.start_write();
-            for v in floats {
-                v.encode(ExpectNormalizedFloat, buf).unwrap();
-            }
-        })
-    }
-
-    #[bench]
-    fn decode(b: &mut Bencher) {
-        let floats = bench_floats();
-        let mut buf = WordBuffer::default();
-        buf.start_write();
-        for &v in &floats {
-            v.encode(ExpectNormalizedFloat, &mut buf).unwrap();
-        }
-        let bytes = buf.finish_write().to_owned();
-
-        b.iter(|| {
-            let buf = black_box(&mut buf);
-
-            buf.start_read(black_box(bytes.as_slice()));
-            for &v in &floats {
-                let decoded = f32::decode(ExpectNormalizedFloat, buf).unwrap();
-                assert_eq!(decoded, v);
-            }
-        })
-    }
+    bench_encoding!(super::ExpectNormalizedFloat, dataset);
 }
 
 #[cfg(all(test, debug_assertions, not(miri)))]

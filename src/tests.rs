@@ -8,7 +8,6 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::num::{NonZeroU32, NonZeroU8};
 
 #[cfg(not(miri))]
 use crate::bit_buffer::BitBuffer;

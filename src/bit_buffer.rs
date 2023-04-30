@@ -107,6 +107,10 @@ impl Read for BitBuffer {
     }
 
     fn peek_bits(&mut self) -> Result<Word> {
+        if self.advanced_too_far {
+            return Err(E::Eof.e());
+        }
+
         let slice = &self.bits[self.read..];
         let bits = slice.len().min(64);
 

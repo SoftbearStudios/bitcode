@@ -68,7 +68,7 @@ macro_rules! impl_uints {
                 impl_enc_size!($int);
 
                 fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
-                    encoding.write_word(writer, (*self).into(), <$int>::BITS as usize);
+                    encoding.write_word::<{ <$int>::BITS as usize }>(writer, (*self).into());
                     Ok(())
                 }
             }
@@ -77,7 +77,7 @@ macro_rules! impl_uints {
                 impl_dec_from_enc!();
 
                 fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
-                    Ok(encoding.read_word(reader, <$int>::BITS as usize)? as $int)
+                    Ok(encoding.read_word::<{ <$int>::BITS as usize }>(reader)? as $int)
                 }
             }
         )*
@@ -96,7 +96,7 @@ macro_rules! impl_ints {
                     } else {
                         (*self as $uint).into()
                     };
-                    encoding.write_word(writer, word, <$int>::BITS as usize);
+                    encoding.write_word::<{ <$int>::BITS as usize }>(writer, word);
                     Ok(())
                 }
             }
@@ -105,7 +105,7 @@ macro_rules! impl_ints {
                 impl_dec_from_enc!();
 
                 fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
-                    let word = encoding.read_word(reader, <$int>::BITS as usize)?;
+                    let word = encoding.read_word::<{ <$int>::BITS as usize }>(reader)?;
                     let sint = if encoding.zigzag() {
                         zigzag::ZigZagDecode::zigzag_decode(word as $uint)
                     } else {

@@ -33,10 +33,10 @@ impl<const MIN: u64, const MAX: u64> ExpectedRangeU64<MIN, MAX> {
 }
 
 impl<const MIN: u64, const MAX: u64> Encoding for ExpectedRangeU64<MIN, MAX> {
-    fn write_word(self, writer: &mut impl Write, word: Word, bits: usize) {
+    fn write_word<const BITS: usize>(self, writer: &mut impl Write, word: Word) {
         // Don't use use this encoding if it's pointless.
-        if self.is_pointless(bits) {
-            writer.write_bits(word, bits);
+        if self.is_pointless(BITS) {
+            writer.write_bits(word, BITS);
             return;
         }
 
@@ -62,14 +62,14 @@ impl<const MIN: u64, const MAX: u64> Encoding for ExpectedRangeU64<MIN, MAX> {
                     writer.write_bits(word, bits);
                 }
             }
-            cold(self, word, bits, writer);
+            cold(self, word, BITS, writer);
         }
     }
 
-    fn read_word(self, reader: &mut impl Read, bits: usize) -> Result<Word> {
+    fn read_word<const BITS: usize>(self, reader: &mut impl Read) -> Result<Word> {
         // Don't use use this encoding if it's pointless.
-        if self.is_pointless(bits) {
-            return reader.read_bits(bits);
+        if self.is_pointless(BITS) {
+            return reader.read_bits(BITS);
         }
 
         let raw_bits = reader.peek_bits()?;
@@ -82,7 +82,7 @@ impl<const MIN: u64, const MAX: u64> Encoding for ExpectedRangeU64<MIN, MAX> {
 
                 let value = value_and_header;
                 let word = value + MIN;
-                if bits < WORD_BITS && word >= (1 << bits) {
+                if BITS < WORD_BITS && word >= (1 << BITS) {
                     Err(E::Invalid("expected range").e())
                 } else {
                     Ok(word)
@@ -93,14 +93,14 @@ impl<const MIN: u64, const MAX: u64> Encoding for ExpectedRangeU64<MIN, MAX> {
                     reader.advance(skip);
                     reader.read_bits(bits)
                 }
-                cold(reader, bits, self.range_bits())
+                cold(reader, BITS, self.range_bits())
             }
         } else if value_and_header & 1 != 0 {
             reader.advance(total_bits);
 
             let value = value_and_header >> 1;
             let word = value + MIN;
-            if bits < WORD_BITS && word >= (1 << bits) {
+            if BITS < WORD_BITS && word >= (1 << BITS) {
                 Err(E::Invalid("expected range").e())
             } else {
                 Ok(word)
@@ -111,9 +111,22 @@ impl<const MIN: u64, const MAX: u64> Encoding for ExpectedRangeU64<MIN, MAX> {
                 reader.advance(1);
                 reader.read_bits(bits)
             }
-            cold(reader, bits)
+            cold(reader, BITS)
         }
     }
+}
+
+#[cfg(test)]
+mod benches {
+    use crate::encoding::prelude::bench_prelude::*;
+    use rand::prelude::*;
+
+    fn dataset() -> Vec<u64> {
+        let mut rng = rand_chacha::ChaCha20Rng::from_seed(Default::default());
+        (0..1000).map(|_| rng.gen_range(0..100)).collect()
+    }
+
+    bench_encoding!(super::ExpectedRangeU64<0, 100>, dataset);
 }
 
 #[cfg(all(test, debug_assertions, not(miri)))]

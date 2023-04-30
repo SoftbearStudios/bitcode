@@ -7,33 +7,34 @@ impl Encoding for Gamma {
         true
     }
 
-    fn write_word(self, writer: &mut impl Write, word: Word, bits: usize) {
-        debug_assert!(bits <= WORD_BITS);
-        if bits != WORD_BITS {
-            debug_assert_eq!(word, word & ((1 << bits) - 1));
+    #[inline]
+    fn write_word<const BITS: usize>(self, writer: &mut impl Write, word: Word) {
+        debug_assert!(BITS <= WORD_BITS);
+        if BITS != WORD_BITS {
+            debug_assert_eq!(word, word & ((1 << BITS) - 1));
         }
 
-        // https://en.wikipedia.org/wiki/Elias_gamma_coding
-        // Gamma can't encode 0 so add 1.
         if word < u32::MAX as u64 {
+            // https://en.wikipedia.org/wiki/Elias_gamma_coding
+            // Gamma can't encode 0 so add 1.
             let v = word + 1;
 
             let zero_bits = ilog2_u64(v) as usize;
             let integer_bits = zero_bits + 1;
-            let gamma_bits = integer_bits + zero_bits;
+            let gamma_bits = zero_bits + integer_bits;
 
             // Rotate bits mod `integer_bits` instead of reversing since it's faster.
             // 00001bbb -> 0000bbb1
-            let rotated = ((v as u64) << 1 & !(1 << integer_bits)) | 1;
+            let rotated = (v << 1 & !(1 << integer_bits)) | 1;
             let gamma = rotated << zero_bits;
+
             writer.write_bits(gamma, gamma_bits);
         } else {
-            // `zero_bits` + `integer_bits` won't fit in a single call to write_bits.
-            // This only happens if v is larger than u32::MAX so we mark it as #[cold].
+            // The representation is > 64 bits or or we want to write 64 zeros since it's u64::MAX.
             #[cold]
-            fn slow(writer: &mut impl Write, word: Word) {
+            fn slow<const BITS: usize>(writer: &mut impl Write, word: Word) {
                 // Special case u64::MAX as 64 zeros.
-                if word == Word::MAX {
+                if BITS == WORD_BITS && word == u64::MAX {
                     writer.write_bits(0, WORD_BITS);
                     return;
                 }
@@ -46,38 +47,69 @@ impl Encoding for Gamma {
                 let rotated = (v << 1 & !(1 << integer_bits)) | 1;
                 writer.write_bits(rotated, integer_bits);
             }
-            slow(writer, word);
+            slow::<BITS>(writer, word);
         }
     }
 
     #[inline] // TODO is required?.
-    fn read_word(self, reader: &mut impl Read, bits: usize) -> Result<Word> {
-        debug_assert!((1..=WORD_BITS).contains(&bits));
-        let zero_bits = reader.peek_bits()?.trailing_zeros() as usize;
-        reader.advance(zero_bits);
+    fn read_word<const BITS: usize>(self, reader: &mut impl Read) -> Result<Word> {
+        debug_assert!((1..=WORD_BITS).contains(&BITS));
 
-        // 64 zeros is u64::MAX is special case.
-        if zero_bits == Word::BITS as usize {
-            return Ok(Word::MAX);
-        }
+        let peek = reader.peek_bits()?;
+        let zero_bits = peek.trailing_zeros() as usize;
 
-        let integer_bits = zero_bits + 1;
-        let rotated = reader.read_bits(integer_bits)?;
+        if zero_bits < u32::BITS as usize {
+            let integer_bits = zero_bits + 1;
+            let gamma_bits = zero_bits + integer_bits;
+            reader.advance(gamma_bits);
 
-        // Rotate bits mod `integer_bits` instead of reversing since it's faster.
-        // 0000bbb1 -> 00001bbb
-        let v = (rotated as u64 >> 1) | (1 << (integer_bits - 1));
+            let rotated = peek >> zero_bits & ((1 << integer_bits) - 1);
 
-        // Gamma can't encode 0 so sub 1 (see Gamma::write_word for more details).
-        let v = v - 1;
-        if bits < 64 && v >= (1 << bits) {
-            // Could remove the possibility of an error by making uN::MAX encode as N zeros.
-            // This might slow down encode in the common case though.
-            Err(E::Invalid("gamma").e())
-        } else {
+            // Rotate bits mod `integer_bits` instead of reversing since it's faster.
+            // 0000bbb1 -> 00001bbb
+            let v = (rotated as u64 >> 1) | (1 << (integer_bits - 1));
+
+            // Gamma can't encode 0 so sub 1.
+            let v = v - 1;
             Ok(v)
+        } else {
+            // The representation is > 64 bits or or we want to read 64 zeros since it's u64::MAX.
+            #[cold]
+            fn slow<const BITS: usize>(reader: &mut impl Read) -> Result<Word> {
+                let zero_bits = reader.peek_bits()?.trailing_zeros() as usize;
+                reader.advance(zero_bits);
+
+                // u64::MAX is special cased as 64 zeros.
+                if zero_bits == WORD_BITS {
+                    return Ok(if BITS < WORD_BITS { 0 } else { Word::MAX });
+                }
+
+                let integer_bits = zero_bits + 1;
+                let rotated = reader.read_bits(integer_bits)?;
+
+                let v = (rotated as u64 >> 1) | (1 << (integer_bits - 1));
+                let v = v - 1;
+
+                // Mask to valid range.
+                Ok(v & (u64::MAX >> (64 - BITS)))
+            }
+            slow::<BITS>(reader)
         }
     }
+}
+
+#[cfg(test)]
+mod benches {
+    use crate::encoding::prelude::bench_prelude::*;
+    use rand::prelude::*;
+
+    type Int = u8;
+    fn dataset() -> Vec<Int> {
+        let mut rng = rand_chacha::ChaCha20Rng::from_seed(Default::default());
+        (0..1000).map(|_| (rng.gen::<u8>() / 2) as Int).collect()
+    }
+
+    bench_encoding!(super::Gamma, dataset);
 }
 
 #[cfg(all(test, debug_assertions, not(miri)))]
