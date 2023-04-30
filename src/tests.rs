@@ -276,6 +276,17 @@ fn test_expected_range() {
     }
 }
 
+#[test]
+fn test_weird_tuple() {
+    let value = (1u8, Option::<()>::None);
+    println!(
+        "{} {:?}",
+        <(u8, Option<()>)>::DECODE_MIN,
+        crate::encode(&value).unwrap()
+    );
+    the_same(value);
+}
+
 // Everything below this comment was derived from bincode:
 // https://github.com/bincode-org/bincode/blob/v1.x/tests/test.rs
 
@@ -450,15 +461,4 @@ fn test_fixed_size_array() {
     the_same([24u32; 32]);
     the_same([1u64, 2, 3, 4, 5, 6, 7, 8]);
     the_same([0u8; 19]);
-}
-
-#[test]
-fn test_weird_tuple() {
-    let value = (1u8, Option::<()>::None);
-    println!(
-        "{} {:?}",
-        <(u8, Option<()>)>::DECODE_MIN,
-        crate::encode(&value).unwrap()
-    );
-    the_same(value);
 }
