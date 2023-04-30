@@ -67,7 +67,7 @@ impl Encoding for Gamma {
 
             // Rotate bits mod `integer_bits` instead of reversing since it's faster.
             // 0000bbb1 -> 00001bbb
-            let v = (rotated as u64 >> 1) | (1 << (integer_bits - 1));
+            let v = (rotated >> 1) | (1 << (integer_bits - 1));
 
             // Gamma can't encode 0 so sub 1.
             let v = v - 1;
@@ -87,7 +87,7 @@ impl Encoding for Gamma {
                 let integer_bits = zero_bits + 1;
                 let rotated = reader.read_bits(integer_bits)?;
 
-                let v = (rotated as u64 >> 1) | (1 << (integer_bits - 1));
+                let v = (rotated >> 1) | (1 << (integer_bits - 1));
                 let v = v - 1;
 
                 // Mask to valid range.
