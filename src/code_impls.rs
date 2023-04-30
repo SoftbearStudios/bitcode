@@ -409,14 +409,14 @@ fn encode_elements<T: Encode>(
 
         for chunk in chunks {
             for t in chunk {
-                t.encode(encoding, &mut buf)?;
+                t.encode(encoding, &mut buf.inner)?;
             }
             buf.flush();
         }
 
         if !remainder.is_empty() {
             for t in remainder {
-                t.encode(encoding, &mut buf)?;
+                t.encode(encoding, &mut buf.inner)?;
             }
             buf.flush();
         }
@@ -450,32 +450,33 @@ fn decode_elements<T: Decode>(
 
         for _ in 0..chunks {
             buf.refill()?;
+            let r = &mut buf.inner;
 
             // This avoids checking if allocation is needed for every item for chunks divisible by 8.
             // Adding more impls for other sizes slows down this case for some reason.
             if chunk_size % 8 == 0 {
                 for _ in 0..chunk_size / 8 {
                     ret.extend([
-                        T::decode(encoding, &mut buf)?,
-                        T::decode(encoding, &mut buf)?,
-                        T::decode(encoding, &mut buf)?,
-                        T::decode(encoding, &mut buf)?,
-                        T::decode(encoding, &mut buf)?,
-                        T::decode(encoding, &mut buf)?,
-                        T::decode(encoding, &mut buf)?,
-                        T::decode(encoding, &mut buf)?,
+                        T::decode(encoding, r)?,
+                        T::decode(encoding, r)?,
+                        T::decode(encoding, r)?,
+                        T::decode(encoding, r)?,
+                        T::decode(encoding, r)?,
+                        T::decode(encoding, r)?,
+                        T::decode(encoding, r)?,
+                        T::decode(encoding, r)?,
                     ])
                 }
             } else {
                 for _ in 0..chunk_size {
-                    ret.push(T::decode(encoding, &mut buf)?)
+                    ret.push(T::decode(encoding, r)?)
                 }
             }
         }
 
         buf.refill()?;
         for _ in 0..remainder {
-            ret.push(T::decode(encoding, &mut buf)?);
+            ret.push(T::decode(encoding, &mut buf.inner)?);
         }
         buf.advance_reader();
 

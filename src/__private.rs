@@ -26,11 +26,19 @@ pub fn invalid_variant() -> Error {
 mod tests {
     use crate::{Decode, Encode};
 
-    #[derive(Debug, PartialEq, Encode, Decode)]
+    #[derive(Debug, Default, PartialEq, Encode, Decode)]
     #[bitcode(recursive)]
     struct Recursive {
         a: Option<Box<Recursive>>,
         b: Option<Box<Self>>,
+        c: Vec<Self>,
+    }
+
+    #[test]
+    fn test_recursive() {
+        // If these functions aren't called, Rust hides some kinds of compile errors.
+        crate::encode(&Recursive::default()).unwrap();
+        let _ = crate::decode::<Recursive>(&[]);
     }
 
     trait ParamTrait {

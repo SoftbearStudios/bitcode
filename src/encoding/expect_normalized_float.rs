@@ -27,8 +27,8 @@ macro_rules! impl_float {
                 let mut buf = RegisterWriter::new(writer);
                 let mantissa = bits as $i & !(<$i>::MAX << mantissa_bits);
 
-                (gamma_exp as $exp_type).encode(Gamma, &mut buf).unwrap();
-                buf.write_bits(mantissa.into(), mantissa_bits);
+                (gamma_exp as $exp_type).encode(Gamma, &mut buf.inner).unwrap();
+                buf.inner.write_bits(mantissa.into(), mantissa_bits);
                 buf.flush();
             } else {
                 #[cold]
@@ -48,9 +48,9 @@ macro_rules! impl_float {
             let mut buf = RegisterReader::new(reader);
             buf.refill()?;
 
-            let gamma_exp = $exp_type::decode(Gamma, &mut buf)?;
+            let gamma_exp = $exp_type::decode(Gamma, &mut buf.inner)?;
             if gamma_exp < MAX_GAMMA_EXP as $exp_type {
-                let mantissa = buf.read_bits(mantissa_bits)? as $i;
+                let mantissa = buf.inner.read_bits(mantissa_bits)? as $i;
                 buf.advance_reader();
                 let exp = (exp_bias - 1) - gamma_exp as u32;
                 Ok(<$t>::from_bits(exp as $i << mantissa_bits | mantissa))

@@ -103,14 +103,14 @@ macro_rules! optimized_enc {
                 // ENCODE_MAX is only accurate if there isn't any encoding upstream.
                 // Downstream encodings make ENCODE_MAX = usize::MAX in derive macro.
                 if <$T>::ENCODE_MAX.saturating_add(i) <= 64 && no_encoding_upstream {
-                    <$T>::encode(&$t, $encoding, &mut buf)?;
+                    <$T>::encode(&$t, $encoding, &mut buf.inner)?;
                 } else {
                     if i != 0 {
                         buf.flush();
                     }
 
                     if <$T>::ENCODE_MAX < 64 && no_encoding_upstream {
-                        <$T>::encode(&$t, $encoding, &mut buf)?;
+                        <$T>::encode(&$t, $encoding, &mut buf.inner)?;
                     } else {
                         <$T>::encode(&$t, $encoding, buf.writer)?;
                     }
@@ -255,11 +255,11 @@ macro_rules! optimized_dec {
                 // DECODE_MAX is only accurate if there isn't any encoding upstream.
                 // Downstream encodings make DECODE_MAX = usize::MAX in derive macro.
                 let $t = if i >= <$T>::DECODE_MAX && no_encoding_upstream {
-                    <$T>::decode($encoding, &mut buf)?
+                    <$T>::decode($encoding, &mut buf.inner)?
                 } else {
                     if <$T>::DECODE_MAX < 64 && no_encoding_upstream {
                         buf.refill()?;
-                        <$T>::decode($encoding, &mut buf)?
+                        <$T>::decode($encoding, &mut buf.inner)?
                     } else {
                         buf.advance_reader();
                         <$T>::decode($encoding, buf.reader)?
