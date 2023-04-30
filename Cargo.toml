@@ -6,7 +6,7 @@ members = [
 [package]
 name = "bitcode"
 authors = [ "Cai Bear", "Finn Bear" ]
-version = "0.3.4"
+version = "0.3.5"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/SoftbearStudios/bitcode"
