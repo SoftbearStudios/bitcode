@@ -117,7 +117,9 @@ impl Read for RegisterBuffer {
     }
 
     fn peek_bits(&mut self) -> Result<Word> {
-        Ok(self.value)
+        debug_assert!(self.index < 64);
+        let v = self.value >> self.index;
+        Ok(v)
     }
 
     fn read_bit(&mut self) -> Result<bool> {
@@ -125,9 +127,7 @@ impl Read for RegisterBuffer {
     }
 
     fn read_bits(&mut self, bits: usize) -> Result<Word> {
-        debug_assert!(self.index < 64);
-        let v = (self.value >> self.index) & (Word::MAX >> (WORD_BITS - bits));
-
+        let v = self.peek_bits()? & (Word::MAX >> (WORD_BITS - bits));
         self.advance(bits);
         Ok(v)
     }

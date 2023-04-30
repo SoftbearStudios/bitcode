@@ -8,6 +8,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::num::{NonZeroU32, NonZeroU8};
 
 #[cfg(not(miri))]
 use crate::bit_buffer::BitBuffer;
@@ -449,4 +450,15 @@ fn test_fixed_size_array() {
     the_same([24u32; 32]);
     the_same([1u64, 2, 3, 4, 5, 6, 7, 8]);
     the_same([0u8; 19]);
+}
+
+#[test]
+fn test_weird_tuple() {
+    let value = (1u8, Option::<()>::None);
+    println!(
+        "{} {:?}",
+        <(u8, Option<()>)>::DECODE_MIN,
+        crate::encode(&value).unwrap()
+    );
+    the_same(value);
 }
