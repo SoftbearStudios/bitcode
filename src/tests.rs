@@ -286,6 +286,16 @@ fn test_weird_tuple() {
     the_same(value);
 }
 
+#[test]
+fn test_gamma_bytes() {
+    #[derive(Encode, Decode, Serialize, Deserialize, PartialEq, Debug, Clone)]
+    #[bitcode_hint(gamma)]
+    struct Bytes(Vec<u8>);
+
+    let me = Bytes(vec![0u8; 20]);
+    the_same_once(me);
+}
+
 // Everything below this comment was derived from bincode:
 // https://github.com/bincode-org/bincode/blob/v1.x/tests/test.rs
 

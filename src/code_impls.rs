@@ -544,7 +544,7 @@ impl<T: Decode> Decode for Vec<T> {
 
     fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
         let len = usize::decode(Gamma, reader)?;
-        guard_len::<T>(len, reader)?;
+        guard_len::<T>(len, encoding, reader)?;
         decode_elements(len, encoding, reader)
     }
 }
@@ -568,7 +568,7 @@ macro_rules! impl_collection {
 
             fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
                 let len = usize::decode(Gamma, reader)?;
-                guard_len::<T>(len, reader)?;
+                guard_len::<T>(len, encoding, reader)?;
 
                 (0..len).map(|_| T::decode(encoding, reader)).collect()
             }
@@ -631,7 +631,7 @@ macro_rules! impl_map {
 
             fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
                 let len = usize::decode(Gamma, reader)?;
-                guard_len::<(K, V)>(len, reader)?;
+                guard_len::<(K, V)>(len, encoding, reader)?;
 
                 (0..len)
                     .map(|_| <(K, V)>::decode(encoding, reader))
