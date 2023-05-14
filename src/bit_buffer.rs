@@ -1,4 +1,4 @@
-use crate::buffer::WithCapacity;
+use crate::buffer::BufferTrait;
 use crate::read::Read;
 use crate::word::*;
 use crate::write::Write;
@@ -10,12 +10,14 @@ use bitvec::prelude::*;
 #[derive(Debug, Default)]
 pub struct BitBuffer {
     bits: BitVec<u8, Lsb0>,
-    read: usize,
-    tmp: Box<[u8]>,
-    advanced_too_far: bool,
+    read_bytes_buf: Box<[u8]>,
 }
 
-impl WithCapacity for BitBuffer {
+impl BufferTrait for BitBuffer {
+    type Writer = BitWriter;
+    type Reader<'a> = BitReader<'a>;
+    type Context = ();
+
     fn capacity(&self) -> usize {
         self.bits.capacity() / u8::BITS as usize
     }
@@ -26,19 +28,63 @@ impl WithCapacity for BitBuffer {
             ..Default::default()
         }
     }
-}
 
-impl Write for BitBuffer {
-    fn start_write(&mut self) {
+    fn start_write(&mut self) -> Self::Writer {
         self.bits.clear();
-        self.read = 0;
+        Self::Writer {
+            bits: std::mem::take(&mut self.bits),
+        }
     }
 
-    fn finish_write(&mut self) -> &[u8] {
+    fn finish_write(&mut self, writer: Self::Writer) -> &[u8] {
+        let Self::Writer { bits } = writer;
+        self.bits = bits;
+
         self.bits.force_align();
         self.bits.as_raw_slice()
     }
 
+    fn start_read<'a>(&'a mut self, bytes: &'a [u8]) -> (Self::Reader<'a>, Self::Context) {
+        let bits = BitSlice::from_slice(bytes);
+        let reader = Self::Reader {
+            bits,
+            read_bytes_buf: &mut self.read_bytes_buf,
+            advanced_too_far: false,
+        };
+
+        (reader, ())
+    }
+
+    fn finish_read(reader: Self::Reader<'_>, _: Self::Context) -> Result<()> {
+        if reader.advanced_too_far {
+            return Err(E::Eof.e());
+        }
+
+        if reader.bits.is_empty() {
+            return Ok(());
+        }
+
+        // Make sure no trailing 1 bits or zero bytes.
+        let e = match reader.bits.domain() {
+            Domain::Enclave(e) => e,
+            Domain::Region { head, body, tail } => {
+                if !body.is_empty() {
+                    return Err(E::ExpectedEof.e());
+                }
+                head.xor(tail).ok_or_else(|| E::ExpectedEof.e())?
+            }
+        };
+        (e.into_bitslice().count_ones() == 0)
+            .then_some(())
+            .ok_or_else(|| E::ExpectedEof.e())
+    }
+}
+
+pub struct BitWriter {
+    bits: BitVec<u8, Lsb0>,
+}
+
+impl Write for BitWriter {
     fn write_bit(&mut self, v: bool) {
         self.bits.push(v);
     }
@@ -54,56 +100,31 @@ impl Write for BitBuffer {
     }
 }
 
-impl BitBuffer {
+pub struct BitReader<'a> {
+    bits: &'a BitSlice<u8, Lsb0>,
+    read_bytes_buf: &'a mut Box<[u8]>,
+    advanced_too_far: bool,
+}
+
+impl BitReader<'_> {
     fn read_slice(&mut self, bits: usize) -> Result<&BitSlice<u8, Lsb0>> {
-        let slice = self.bits[self.read..]
-            .get(..bits)
-            .ok_or_else(|| E::Eof.e())?;
-        self.read += bits;
+        if bits > self.bits.len() {
+            return Err(E::Eof.e());
+        }
+
+        let (slice, remaining) = self.bits.split_at(bits);
+        self.bits = remaining;
         Ok(slice)
     }
 }
 
-impl Read for BitBuffer {
-    fn start_read(&mut self, bytes: &[u8]) {
-        self.bits.clear();
-        self.bits.extend_from_raw_slice(bytes);
-        self.read = 0;
-    }
-
-    fn finish_read(&self) -> Result<()> {
-        if self.advanced_too_far {
-            return Err(E::Eof.e());
-        }
-
-        // Can't use remaining because of borrow checker.
-        let remaining = &self.bits[self.read..];
-        if remaining.is_empty() {
-            return Ok(());
-        }
-
-        // Make sure no trailing 1 bits or zero bytes.
-        let e = match remaining.domain() {
-            Domain::Enclave(e) => e,
-            Domain::Region { head, body, tail } => {
-                if !body.is_empty() {
-                    return Err(E::ExpectedEof.e());
-                }
-                head.xor(tail).ok_or_else(|| E::ExpectedEof.e())?
-            }
-        };
-        (e.into_bitslice().count_ones() == 0)
-            .then_some(())
-            .ok_or_else(|| E::ExpectedEof.e())
-    }
-
+impl Read for BitReader<'_> {
     fn advance(&mut self, bits: usize) {
-        let new_read = self.read + bits;
-        if new_read > self.bits.len() {
+        if bits > self.bits.len() {
             // Handle the error later since we can't return it.
             self.advanced_too_far = true;
         }
-        self.read = new_read.min(self.bits.len());
+        self.bits = &self.bits[bits.min(self.bits.len())..];
     }
 
     fn peek_bits(&mut self) -> Result<Word> {
@@ -111,11 +132,10 @@ impl Read for BitBuffer {
             return Err(E::Eof.e());
         }
 
-        let slice = &self.bits[self.read..];
-        let bits = slice.len().min(64);
+        let bits = self.bits.len().min(64);
 
         let mut v = [0; 8];
-        BitSlice::<u8, Lsb0>::from_slice_mut(&mut v)[..bits].copy_from_bitslice(&slice[..bits]);
+        BitSlice::<u8, Lsb0>::from_slice_mut(&mut v)[..bits].copy_from_bitslice(&self.bits[..bits]);
         Ok(Word::from_le_bytes(v))
     }
 
@@ -133,7 +153,7 @@ impl Read for BitBuffer {
 
     fn read_bytes(&mut self, len: usize) -> Result<&[u8]> {
         // Take to avoid borrowing issue.
-        let mut tmp = std::mem::take(&mut self.tmp);
+        let mut tmp = std::mem::take(self.read_bytes_buf);
 
         let bits = len
             .checked_mul(u8::BITS as usize)
@@ -146,12 +166,12 @@ impl Read for BitBuffer {
         }
 
         tmp.as_mut_bits()[..slice.len()].copy_from_bitslice(slice);
-        self.tmp = tmp;
-        Ok(&self.tmp[..len])
+        *self.read_bytes_buf = tmp;
+        Ok(&self.read_bytes_buf[..len])
     }
 
     fn reserve_bits(&self, bits: usize) -> Result<()> {
-        if bits <= self.bits[self.read..].len() {
+        if bits <= self.bits.len() {
             Ok(())
         } else {
             Err(E::Eof.e())

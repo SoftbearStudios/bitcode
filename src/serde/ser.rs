@@ -1,3 +1,4 @@
+use crate::buffer::BufferTrait;
 use crate::encoding::{Encoding, Fixed, Gamma};
 use crate::write::Write;
 use crate::{Encode, Error, Result, E};
@@ -8,12 +9,12 @@ use serde::ser::{
 use serde::{Serialize, Serializer};
 
 pub fn serialize_internal<'a>(
-    writer: &'a mut impl Write,
+    buffer: &'a mut impl BufferTrait,
     t: &(impl Serialize + ?Sized),
 ) -> Result<&'a [u8]> {
-    writer.start_write();
-    serialize_compat(t, Fixed, writer)?;
-    Ok(writer.finish_write())
+    let mut writer = buffer.start_write();
+    serialize_compat(t, Fixed, &mut writer)?;
+    Ok(buffer.finish_write(writer))
 }
 
 pub fn serialize_compat(
@@ -88,7 +89,7 @@ impl<C: Encoding, W: Write> Serializer for BitcodeSerializer<'_, C, W> {
     }
 
     fn serialize_none(self) -> Result<Self::Ok> {
-        self.writer.write_bit(false);
+        self.writer.write_false();
         Ok(())
     }
 

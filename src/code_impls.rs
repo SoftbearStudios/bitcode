@@ -47,6 +47,7 @@ macro_rules! impl_dec_same {
 impl Encode for bool {
     impl_enc_const!(1);
 
+    #[inline(always)]
     fn encode(&self, _: impl Encoding, writer: &mut impl Write) -> Result<()> {
         writer.write_bit(*self);
         Ok(())
@@ -56,6 +57,7 @@ impl Encode for bool {
 impl Decode for bool {
     impl_dec_from_enc!();
 
+    #[inline(always)]
     fn decode(_: impl Encoding, reader: &mut impl Read) -> Result<Self> {
         reader.read_bit()
     }
@@ -67,6 +69,7 @@ macro_rules! impl_uints {
             impl Encode for $int {
                 impl_enc_size!($int);
 
+                #[inline(always)]
                 fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
                     encoding.write_word::<{ <$int>::BITS as usize }>(writer, (*self).into());
                     Ok(())
@@ -76,6 +79,7 @@ macro_rules! impl_uints {
             impl Decode for $int {
                 impl_dec_from_enc!();
 
+                #[inline(always)]
                 fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
                     Ok(encoding.read_word::<{ <$int>::BITS as usize }>(reader)? as $int)
                 }
@@ -90,6 +94,7 @@ macro_rules! impl_ints {
             impl Encode for $int {
                 impl_enc_size!($int);
 
+                #[inline(always)]
                 fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
                     let word = if encoding.zigzag() {
                         zigzag::ZigZagEncode::zigzag_encode(*self).into()
@@ -104,6 +109,7 @@ macro_rules! impl_ints {
             impl Decode for $int {
                 impl_dec_from_enc!();
 
+                #[inline(always)]
                 fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
                     let word = encoding.read_word::<{ <$int>::BITS as usize }>(reader)?;
                     let sint = if encoding.zigzag() {
@@ -126,6 +132,7 @@ macro_rules! impl_try_int {
         impl Encode for $a {
             impl_enc_size!($b);
 
+            #[inline(always)]
             fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
                 (*self as $b).encode(encoding, writer)
             }
@@ -134,7 +141,7 @@ macro_rules! impl_try_int {
         impl Decode for $a {
             impl_dec_from_enc!();
 
-            #[inline] // TODO is required?.
+            #[inline(always)]
             fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
                 <$b>::decode(encoding, reader)?
                     .try_into()
@@ -152,6 +159,7 @@ macro_rules! impl_float {
         impl Encode for $a {
             impl_enc_size!($a);
 
+            #[inline(always)]
             fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
                 encoding.$write(writer, *self);
                 Ok(())
@@ -161,6 +169,7 @@ macro_rules! impl_float {
         impl Decode for $a {
             impl_dec_from_enc!();
 
+            #[inline(always)]
             fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
                 encoding.$read(reader)
             }
@@ -178,6 +187,7 @@ macro_rules! impl_non_zero {
             impl Encode for $a {
                 impl_enc_size!($a);
 
+                #[inline(always)]
                 fn encode(&self, _: impl Encoding, writer: &mut impl Write) -> Result<()> {
                     (self.get() - 1).encode(Fixed, writer)
                 }
@@ -186,6 +196,7 @@ macro_rules! impl_non_zero {
             impl Decode for $a {
                 impl_dec_from_enc!();
 
+                #[inline(always)]
                 fn decode(_: impl Encoding, reader: &mut impl Read) -> Result<Self> {
                     let v = Decode::decode(Fixed, reader)?;
                     let _ = Self::new(v); // Type inference.
@@ -251,7 +262,7 @@ impl<T: Encode> Encode for Option<T> {
             }
             encode_some(t, encoding, writer)
         } else {
-            false.encode(encoding, writer)?;
+            writer.write_false();
             Ok(())
         }
     }
@@ -286,7 +297,7 @@ macro_rules! impl_either {
                     Self::$a(a) => {
                         debug_assert!(!self.$is_b());
                         optimized_enc!(encoding, writer);
-                        enc!(false, bool);
+                        enc!(false, bool); // TODO use write_false.
                         enc!(a, $a_t);
                         end_enc!();
                         Ok(())
@@ -390,7 +401,7 @@ impl_smart_ptr!(::std::rc::Rc);
 impl_smart_ptr!(::std::sync::Arc);
 
 // Writes multiple elements per flush. TODO use on VecDeque::as_slices.
-#[inline(always)] // If only #[inline] optimized_enc_tests::bench_array is slow.
+#[inline(always)]
 fn encode_elements<T: Encode>(
     elements: &[T],
     encoding: impl Encoding,
@@ -429,7 +440,7 @@ fn encode_elements<T: Encode>(
 }
 
 // Reads multiple elements per flush.
-#[inline]
+#[inline(always)]
 fn decode_elements<T: Decode>(
     len: usize,
     encoding: impl Encoding,
@@ -485,7 +496,11 @@ fn decode_elements<T: Decode>(
         // This is faster than extend for some reason.
         let mut vec = Vec::with_capacity(len);
         for _ in 0..len {
-            vec.push(T::decode(encoding, reader)?)
+            // Avoid generating allocation logic in push (we've allocated enough capacity).
+            if vec.len() == vec.capacity() {
+                panic!();
+            }
+            vec.push(T::decode(encoding, reader)?);
         }
         Ok(vec)
     }
@@ -586,9 +601,9 @@ impl Encode for str {
     const ENCODE_MIN: usize = 1;
     const ENCODE_MAX: usize = usize::MAX;
 
-    fn encode(&self, _: impl Encoding, writer: &mut impl Write) -> Result<()> {
-        self.len().encode(Gamma, writer)?;
-        writer.write_bytes(self.as_bytes());
+    #[inline(always)]
+    fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
+        encoding.write_str(writer, self);
         Ok(())
     }
 }
@@ -596,6 +611,7 @@ impl Encode for str {
 impl Encode for String {
     impl_enc_same!(str);
 
+    #[inline(always)]
     fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
         self.as_str().encode(encoding, writer)
     }
@@ -604,11 +620,9 @@ impl Encode for String {
 impl Decode for String {
     impl_dec_from_enc!();
 
-    #[inline(never)]
-    fn decode(_: impl Encoding, reader: &mut impl Read) -> Result<Self> {
-        let len = usize::decode(Gamma, reader)?;
-        let bytes = reader.read_bytes(len)?.to_vec();
-        String::from_utf8(bytes).map_err(|_| E::Invalid("utf8").e())
+    #[inline(always)]
+    fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
+        Ok(encoding.read_str(reader)?.to_owned())
     }
 }
 

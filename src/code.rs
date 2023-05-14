@@ -1,24 +1,25 @@
+use crate::buffer::BufferTrait;
 use crate::encoding::{Encoding, Fixed};
 use crate::read::Read;
 use crate::write::Write;
 use crate::Result;
 
 pub(crate) fn encode_internal<'a>(
-    writer: &'a mut (impl Write + Default),
+    buffer: &'a mut impl BufferTrait,
     t: &(impl Encode + ?Sized),
 ) -> Result<&'a [u8]> {
-    writer.start_write();
-    t.encode(Fixed, writer)?;
-    Ok(writer.finish_write())
+    let mut writer = buffer.start_write();
+    t.encode(Fixed, &mut writer)?;
+    Ok(buffer.finish_write(writer))
 }
 
-pub(crate) fn decode_internal<T: Decode>(
-    reader: &mut (impl Read + Default),
+pub(crate) fn decode_internal<B: BufferTrait, T: Decode>(
+    buffer: &mut B,
     bytes: &[u8],
 ) -> Result<T> {
-    reader.start_read(bytes);
-    let decode_result = T::decode(Fixed, reader);
-    reader.finish_read_with_result(decode_result)
+    let (mut reader, context) = buffer.start_read(bytes);
+    let decode_result = T::decode(Fixed, &mut reader);
+    B::finish_read_with_result(reader, context, decode_result)
 }
 
 /// A type which can be encoded to bytes with [`encode`][`crate::encode`].
@@ -137,6 +138,17 @@ macro_rules! optimized_enc {
                 i = 0;
                 &mut *buf.writer
             }};
+        }
+
+        // Call to encode an enum variant. Faster than flush!().write_bits($variant, $bits).
+        // Must be fist call after optimized_enc!.
+        #[allow(unused)]
+        macro_rules! enc_variant {
+            ($variant:literal, $bits:literal) => {
+                debug_assert!(i == 0);
+                buf.inner.write_bits($variant, $bits);
+                i = $bits + i;
+            };
         }
 
         // Call once done encoding.
@@ -287,6 +299,27 @@ macro_rules! optimized_dec {
                 buf.advance_reader();
                 &mut *buf.reader
             }};
+        }
+
+        // Call to peek bits to decode an enum variant. Faster than flush!().peek_bits()?.
+        // Must be fist call after optimized_dec!.
+        #[allow(unused)]
+        macro_rules! dec_variant_peek {
+            () => {{
+                buf.refill()?;
+                buf.inner.peek_bits()?
+            }};
+        }
+
+        // Call to advance bits to decode an enum variant. Faster than flush!().advance($bits)?.
+        // Must be second call after dec_variant_peek!.
+        #[allow(unused)]
+        macro_rules! dec_variant_advance {
+            ($bits:literal) => {
+                debug_assert!(i == 0);
+                buf.inner.advance($bits);
+                i = 64 - $bits;
+            };
         }
 
         // Call once done decoding.

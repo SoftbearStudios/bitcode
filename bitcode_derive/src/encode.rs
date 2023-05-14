@@ -11,7 +11,6 @@ impl Derive for Encode {
         let private = private();
         (
             quote! {
-                end_enc!();
                 #private::serialize_compat(self, encoding, writer)?;
             },
             parse_quote!(#private::Serialize),
@@ -58,8 +57,10 @@ impl Derive for Encode {
     }
 
     fn struct_impl(&self, destructure_fields: TokenStream, do_fields: TokenStream) -> TokenStream {
+        let private = private();
         quote! {
             let Self #destructure_fields = self;
+            #private::optimized_enc!(encoding, writer);
             #do_fields
             end_enc!();
         }
@@ -71,8 +72,10 @@ impl Derive for Encode {
         field_impls: TokenStream,
         destructure_variant: TokenStream,
     ) -> TokenStream {
+        let private = private();
         quote! {
             #destructure_variant => {
+                #private::optimized_enc!(encoding, writer);
                 #before_fields
                 #field_impls
                 end_enc!();
@@ -105,9 +108,8 @@ impl Derive for Encode {
     fn trait_fn_impl(&self, body: TokenStream) -> TokenStream {
         let private = private();
         quote! {
-            #[inline]
+            #[inline(always)]
             fn encode(&self, encoding: impl #private::Encoding, writer: &mut impl #private::Write) -> #private::Result<()> {
-                #private::optimized_enc!(encoding, writer);
                 #body
                 Ok(())
             }

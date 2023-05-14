@@ -304,9 +304,7 @@ impl VariantEncoding {
     ) -> Result<TokenStream> {
         // if variant_count is 0 or 1 no encoding is required.
         Ok(match self.variant_count {
-            0 => quote! {
-                end_enc!(); // No variants will call this so we call to avoid unused warning.
-            },
+            0 => quote! {},
             1 => {
                 let encode_variant = encode(0, quote! {}, 0)?;
                 quote! {
@@ -325,7 +323,7 @@ impl VariantEncoding {
                         encode(
                             i,
                             quote! {
-                                flush!().write_bits(#code, #bits);
+                                enc_variant!(#code, #bits);
                             },
                             bits,
                         )
@@ -352,7 +350,7 @@ impl VariantEncoding {
             0 => {
                 let private = private();
                 quote! {
-                    end_dec!(); // No variants will call this so we call to avoid unused warning.
+                    end_dec!(); // No variants so we call to avoid unused warning.
                     Err(#private::invalid_variant())
                 }
             }
@@ -371,9 +369,16 @@ impl VariantEncoding {
                         let bits = prefix_code.bits;
                         let decode_variant = decode(i, quote! {}, bits)?;
 
+                        // Match anything as the last pattern to avoid _ => unreachable!().
+                        let pattern = if i == self.variant_count as usize - 1 {
+                            quote! { _ }
+                        } else {
+                            quote! { b if b & #mask == #code }
+                        };
+
                         Ok(quote! {
-                            b if b & #mask == #code => {
-                                flush!().advance(#bits);
+                            #pattern => {
+                                dec_variant_advance!(#bits);
                                 #decode_variant
                             }
                         })
@@ -382,9 +387,8 @@ impl VariantEncoding {
                 let variants = variants?;
 
                 quote! {
-                    Ok(match flush!().peek_bits()? {
+                    Ok(match dec_variant_peek!() {
                         #variants,
-                        _ => unreachable!(),
                     })
                 }
             }

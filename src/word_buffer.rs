@@ -1,4 +1,4 @@
-use crate::buffer::WithCapacity;
+use crate::buffer::BufferTrait;
 use crate::nightly::div_ceil;
 use crate::read::Read;
 use crate::word::*;
@@ -9,16 +9,72 @@ use std::array;
 /// A fast [`Buffer`] that operates on [`Word`]s.
 #[derive(Debug, Default)]
 pub struct WordBuffer {
-    words: Vec<Word>,
-    index: usize,
-    input_bytes: usize,
+    allocation: Allocation,
     read_bytes_buf: Box<[Word]>,
 }
 
-impl WithCapacity for WordBuffer {
+#[derive(Debug, Default)]
+struct Allocation {
+    allocation: Vec<Word>,
+    written_words: usize,
+}
+
+impl Allocation {
+    fn as_mut_slice(&mut self) -> &mut [Word] {
+        self.allocation.as_mut_slice()
+    }
+
+    fn take_box(&mut self) -> Box<[Word]> {
+        let vec = std::mem::take(&mut self.allocation);
+        let mut box_ = if vec.capacity() == vec.len() {
+            vec
+        } else {
+            // Must have been created by start_read. We need len and capacity to be equal to make
+            // into_boxed_slice zero cost. If we zeroed up to capacity we could have a situation
+            // where reading/writing to same buffer causes the whole capacity to be zeroed each
+            // write (even if only a small portion of the buffer is used).
+            vec![]
+        }
+        .into_boxed_slice();
+
+        // Zero all the words that we could have written to.
+        let written_words = self.written_words.min(box_.len());
+        box_[0..written_words].fill(0);
+        self.written_words = 0;
+        debug_assert!(box_.iter().all(|&w| w == 0));
+
+        box_
+    }
+
+    fn replace_box(&mut self, box_: Box<[Word]>, written_words: usize) {
+        self.allocation = box_.into();
+        self.written_words = written_words;
+    }
+
+    fn make_vec(&mut self) -> &mut Vec<Word> {
+        self.written_words = usize::MAX;
+        &mut self.allocation
+    }
+}
+
+pub struct WordContext {
+    input_bytes: usize,
+}
+
+impl WordBuffer {
+    /// Extra [`Word`]s appended to the end of the input to make deserialization faster.
+    /// 1 for peek_reserved_bits and another for read_zeros (which calls peek_reserved_bits).
+    const READ_PADDING: usize = 2;
+}
+
+impl BufferTrait for WordBuffer {
+    type Writer = WordWriter;
+    type Reader<'a> = WordReader<'a>;
+    type Context = WordContext;
+
     fn capacity(&self) -> usize {
         // Subtract the padding of 1 (added by alloc_index_plus_one).
-        self.words.len().saturating_sub(1) * WORD_BYTES
+        self.allocation.allocation.capacity().saturating_sub(1) * WORD_BYTES
     }
 
     fn with_capacity(cap: usize) -> Self {
@@ -26,45 +82,144 @@ impl WithCapacity for WordBuffer {
         if cap == 0 {
             return me;
         }
+        let mut writer = Self::Writer::default();
 
         // Convert len to index by subtracting 1.
-        me.alloc_index_plus_one(div_ceil(cap, WORD_BYTES) - 1);
+        Self::Writer::alloc_index_plus_one(&mut writer.words, div_ceil(cap, WORD_BYTES) - 1);
+        me.allocation.replace_box(writer.words, 0);
         me
+    }
+
+    fn start_write(&mut self) -> Self::Writer {
+        let words = self.allocation.take_box();
+        Self::Writer { words, index: 0 }
+    }
+
+    fn finish_write(&mut self, mut writer: Self::Writer) -> &[u8] {
+        // write_zeros doesn't allocate, but it moves index so we allocate up to index at the end.
+        let index = writer.index / WORD_BITS;
+        if index >= writer.words.len() {
+            // TODO could allocate exact amount instead of regular growth strategy.
+            Self::Writer::alloc_index_plus_one(&mut writer.words, index);
+        }
+
+        let Self::Writer { words, index } = writer;
+        let written_words = div_ceil(index, WORD_BITS);
+
+        self.allocation.replace_box(words, written_words);
+        let written_words = &mut self.allocation.as_mut_slice()[..written_words];
+
+        // Swap bytes in each word (that was written to) if big endian.
+        if cfg!(target_endian = "big") {
+            written_words.iter_mut().for_each(|w| *w = w.swap_bytes());
+        }
+
+        let written_bytes = div_ceil(index, u8::BITS as usize);
+        &bytemuck::cast_slice(written_words)[..written_bytes]
+    }
+
+    fn start_read<'a>(&'a mut self, bytes: &'a [u8]) -> (Self::Reader<'a>, Self::Context) {
+        let words = self.allocation.make_vec();
+        words.clear();
+
+        // u8s rounded up to u64s plus 1 u64 padding.
+        let capacity = div_ceil(bytes.len(), WORD_BYTES) + Self::READ_PADDING;
+        words.reserve_exact(capacity);
+
+        // Fast hot loop (would be nicer with array_chunks, but that requires nightly).
+        let chunks = bytes.chunks_exact(WORD_BYTES);
+        let remainder = chunks.remainder();
+        words.extend(chunks.map(|chunk| {
+            let chunk: &[u8; 8] = chunk.try_into().unwrap();
+            Word::from_le_bytes(*chunk)
+        }));
+
+        // Remaining bytes.
+        if !remainder.is_empty() {
+            words.push(u64::from_le_bytes(array::from_fn(|i| {
+                remainder.get(i).copied().unwrap_or_default()
+            })));
+        }
+
+        // Padding so peek_reserved_bits doesn't ever go out of bounds.
+        words.extend([0; Self::READ_PADDING]);
+        debug_assert_eq!(words.len(), capacity);
+
+        let reader = WordReader {
+            inner: WordReaderInner { words, index: 0 },
+            read_bytes_buf: &mut self.read_bytes_buf,
+        };
+        let context = WordContext {
+            input_bytes: bytes.len(),
+        };
+        (reader, context)
+    }
+
+    fn finish_read(reader: Self::Reader<'_>, context: Self::Context) -> Result<()> {
+        let read = reader.inner.index;
+        let bytes_read = div_ceil(read, u8::BITS as usize);
+        let index = read / WORD_BITS;
+        let bits_written = read % WORD_BITS;
+
+        if bits_written != 0 && reader.inner.words[index] & !((1 << bits_written) - 1) != 0 {
+            return Err(E::ExpectedEof.e());
+        }
+
+        use std::cmp::Ordering::*;
+        match bytes_read.cmp(&context.input_bytes) {
+            Less => Err(E::ExpectedEof.e()),
+            Equal => Ok(()),
+            Greater => {
+                // It is possible that we read more bytes than we have (bytes are rounded up to words).
+                // We don't check this while deserializing to avoid degrading performance.
+                Err(E::Eof.e())
+            }
+        }
     }
 }
 
-impl WordBuffer {
+#[derive(Default)]
+pub struct WordWriter {
+    words: Box<[Word]>,
+    index: usize,
+}
+
+impl WordWriter {
     /// Allocates at least `words` of zeroed memory.
-    /// TODO find a way to use Allocator::grow_zeroed safely (new bytemuck api?).
-    fn alloc(&mut self, words: usize) {
-        let new_cap = words.next_power_of_two().max(16);
+    fn alloc(words: &mut Box<[Word]>, len: usize) {
+        let new_cap = len.next_power_of_two().max(16);
+
+        // TODO find a way to use Allocator::grow_zeroed safely (new bytemuck api?).
         let new = bytemuck::allocation::zeroed_slice_box(new_cap);
-        let previous = std::mem::replace(&mut self.words, Vec::from(new));
-        self.words[..previous.len()].copy_from_slice(&previous);
+
+        let previous = std::mem::replace(words, new);
+        words[..previous.len()].copy_from_slice(&previous);
     }
 
     // Allocates up to an `index + 1` in words if a bounds check fails.
     // Returns a mutable array of [index, index + 1] to avoid bounds checks near hot code.
     #[cold]
-    fn alloc_index_plus_one(&mut self, index: usize) -> &mut [Word; 2] {
+    fn alloc_index_plus_one(words: &mut Box<[Word]>, index: usize) -> &mut [Word; 2] {
         let end = index + 2;
-        self.alloc(end);
-        (&mut self.words[index..end]).try_into().unwrap()
+        Self::alloc(words, end);
+        (&mut words[index..end]).try_into().unwrap()
     }
 
-    /// Ensures that space for `bytes` is allocated.
+    /// Ensures that space for `bytes` is allocated.\
+    #[inline(always)]
     fn reserve_write_bytes(&mut self, bytes: usize) {
         let index = self.index / WORD_BITS + bytes / WORD_BYTES + 1;
         if index >= self.words.len() {
-            self.alloc_index_plus_one(index);
+            Self::alloc_index_plus_one(&mut self.words, index);
         }
     }
 
+    #[inline(always)]
     fn write_bits_inner(
         &mut self,
         word: Word,
         bits: usize,
-        out_of_bounds: fn(&mut Self, usize) -> &mut [Word; 2],
+        out_of_bounds: fn(&mut Box<[Word]>, usize) -> &mut [Word; 2],
     ) {
         debug_assert!(bits <= WORD_BITS);
         if bits != WORD_BITS {
@@ -81,12 +236,13 @@ impl WordBuffer {
         let slice = if let Some(w) = self.words.get_mut(index..index + 2) {
             w.try_into().unwrap()
         } else {
-            out_of_bounds(self, index)
+            out_of_bounds(&mut self.words, index)
         };
         slice[0] |= word << bit_remainder;
         slice[1] = (word >> 1) >> (WORD_BITS - bit_remainder - 1);
     }
 
+    #[inline(always)]
     fn write_reserved_bits(&mut self, word: Word, bits: usize) {
         self.write_bits_inner(word, bits, |_, _| unreachable!());
     }
@@ -130,28 +286,8 @@ impl WordBuffer {
     }
 }
 
-impl Write for WordBuffer {
-    fn start_write(&mut self) {
-        let max_index =
-            (div_ceil(self.index, WORD_BITS)).max(div_ceil(self.input_bytes, WORD_BYTES));
-        self.index = 0;
-        self.input_bytes = 0;
-
-        // Zero all the words that we could have written to.
-        self.words[0..max_index].fill(0);
-        debug_assert!(self.words.iter().all(|&w| w == 0));
-    }
-
-    fn finish_write(&mut self) -> &[u8] {
-        let written_words = &mut self.words[..div_ceil(self.index, WORD_BITS)];
-
-        // Swap bytes in each word (that was written to) if big endian.
-        if cfg!(target_endian = "big") {
-            written_words.iter_mut().for_each(|w| *w = w.swap_bytes());
-        }
-        &bytemuck::cast_slice(written_words)[..div_ceil(self.index, u8::BITS as usize)]
-    }
-
+impl Write for WordWriter {
+    #[inline(always)]
     fn write_bit(&mut self, v: bool) {
         let bit_index = self.index;
         self.index += 1;
@@ -162,35 +298,42 @@ impl Write for WordBuffer {
         *if let Some(w) = self.words.get_mut(index) {
             w
         } else {
-            &mut self.alloc_index_plus_one(index)[0]
+            &mut Self::alloc_index_plus_one(&mut self.words, index)[0]
         } |= (v as Word) << bit_remainder;
     }
 
+    #[inline(always)]
     fn write_bits(&mut self, word: Word, bits: usize) {
         self.write_bits_inner(word, bits, Self::alloc_index_plus_one);
     }
 
-    #[inline(always)] // Improves perf (regular #[inline] isn't enough).
+    #[inline(always)]
     fn write_bytes(&mut self, bytes: &[u8]) {
-        #[inline]
-        fn write_0_to_7_bytes(me: &mut WordBuffer, bytes: &[u8]) {
-            debug_assert!(bytes.len() < 8);
+        #[inline(always)]
+        fn write_0_to_8_bytes(me: &mut WordWriter, bytes: &[u8]) {
+            use from_bytes_or_zeroed::FromBytesOrZeroed;
+
+            debug_assert!(bytes.len() <= 8);
             me.write_reserved_bits(
-                read_0_to_7_bytes_into_word(bytes),
+                u64::from_le_bytes_or_zeroed(bytes),
                 bytes.len() * u8::BITS as usize,
             );
         }
 
         // Slower for small inputs. Doesn't work on big endian since it bytemucks u64 to bytes.
         #[inline(never)]
-        fn write_many_bytes(me: &mut WordBuffer, bytes: &[u8]) {
+        fn write_many_bytes(me: &mut WordWriter, bytes: &[u8]) {
             assert!(!cfg!(target_endian = "big"));
 
             // TODO look into align_to specification to see if any special cases are required.
             let (a, b, c) = bytemuck::pod_align_to::<u8, Word>(bytes);
-            write_0_to_7_bytes(me, a);
+            write_0_to_8_bytes(me, a);
             me.write_reserved_words(b);
-            write_0_to_7_bytes(me, c);
+            write_0_to_8_bytes(me, c);
+        }
+
+        if bytes.is_empty() {
+            return;
         }
 
         self.reserve_write_bytes(bytes.len());
@@ -199,46 +342,31 @@ impl Write for WordBuffer {
         // write_many_bytes doesn't work on big endian.
         if bytes.len() < 75 || cfg!(target_endian = "big") {
             let mut bytes = bytes;
-            while bytes.len() >= 8 {
+            while bytes.len() > 8 {
                 let b8: &[u8; 8] = bytes[0..8].try_into().unwrap();
                 self.write_reserved_bits(Word::from_le_bytes(*b8), WORD_BITS);
                 bytes = &bytes[8..]
             }
-            write_0_to_7_bytes(self, bytes);
+            write_0_to_8_bytes(self, bytes);
         } else {
             write_many_bytes(self, bytes)
         }
     }
+
+    #[inline(always)]
+    fn write_zeros(&mut self, bits: usize) {
+        debug_assert!(bits <= WORD_BITS);
+        self.index += bits;
+    }
 }
 
-#[inline]
-fn read_0_to_7_bytes_into_word(mut bytes: &[u8]) -> Word {
-    // Faster than Word -> &mut [u8; 8] + copy_from_slice.
-    let mut ret = 0;
-    let mut shift = 0;
-    if let Some(b4) = bytes.get(0..4) {
-        bytes = &bytes[4..];
-        let b4: &[u8; 4] = b4.try_into().unwrap();
-        ret |= u32::from_le_bytes(*b4) as Word;
-        shift += u32::BITS;
-    }
-    if let Some(b2) = bytes.get(0..2) {
-        bytes = &bytes[2..];
-        let b2: &[u8; 2] = b2.try_into().unwrap();
-        ret |= (u16::from_le_bytes(*b2) as Word) << shift;
-        shift += u16::BITS;
-    }
-    if let Some(&b) = bytes.first() {
-        ret |= (b as Word) << shift;
-    }
-    ret
+struct WordReaderInner<'a> {
+    words: &'a [Word],
+    index: usize,
 }
 
-impl WordBuffer {
-    /// Extra [`Word`]s appended to the end of the input to make deserialization faster.
-    /// 1 for peek_reserved_bits and another for read_zeros (which calls peek_reserved_bits).
-    const READ_PADDING: usize = 2;
-
+impl WordReaderInner<'_> {
+    #[inline(always)]
     fn peek_reserved_bits(&self, bits: usize) -> Word {
         debug_assert!((1..=WORD_BITS).contains(&bits));
         let bit_index = self.index;
@@ -254,6 +382,7 @@ impl WordBuffer {
         ((a | b) << extra_bits) >> extra_bits
     }
 
+    #[inline(always)]
     fn read_reserved_bits(&mut self, bits: usize) -> Word {
         let v = self.peek_reserved_bits(bits);
         self.index += bits;
@@ -272,6 +401,7 @@ impl WordBuffer {
     }
 
     /// Faster [`Self::reserve_read_bytes`] that can elide bounds checks for `bits` in 1..=64.
+    #[inline(always)]
     fn reserve_read_1_to_64(&self, bits: usize) -> Result<()> {
         debug_assert!((1..=WORD_BITS).contains(&bits));
 
@@ -286,6 +416,7 @@ impl WordBuffer {
     }
 
     /// Checks that `bytes` exist.
+    #[inline(always)]
     fn reserve_read_bytes(&self, bytes: usize) -> Result<()> {
         let whole_words_len = bytes / WORD_BYTES;
 
@@ -299,95 +430,52 @@ impl WordBuffer {
     }
 }
 
-impl Read for WordBuffer {
-    fn start_read(&mut self, bytes: &[u8]) {
-        self.words.clear();
-        self.index = 0;
-        self.input_bytes = bytes.len();
+pub struct WordReader<'a> {
+    inner: WordReaderInner<'a>,
+    read_bytes_buf: &'a mut Box<[Word]>,
+}
 
-        // u8s rounded up to u64s plus 1 u64 padding.
-        let capacity = div_ceil(bytes.len(), WORD_BYTES) + Self::READ_PADDING;
-        self.words.reserve_exact(capacity);
-
-        // Fast hot loop (would be nicer with array_chunks, but that requires nightly).
-        let chunks = bytes.chunks_exact(WORD_BYTES);
-        let remainder = chunks.remainder();
-        self.words.extend(chunks.map(|chunk| {
-            let chunk: &[u8; 8] = chunk.try_into().unwrap();
-            Word::from_le_bytes(*chunk)
-        }));
-
-        // Remaining bytes.
-        if !remainder.is_empty() {
-            self.words.push(u64::from_le_bytes(array::from_fn(|i| {
-                remainder.get(i).copied().unwrap_or_default()
-            })));
-        }
-
-        // Padding so peek_reserved_bits doesn't ever go out of bounds.
-        self.words.extend([0; Self::READ_PADDING]);
-        debug_assert_eq!(self.words.len(), capacity);
-    }
-
-    fn finish_read(&self) -> Result<()> {
-        let read = self.index;
-        let bytes_read = div_ceil(read, u8::BITS as usize);
-        let index = read / WORD_BITS;
-        let bits_written = read % WORD_BITS;
-
-        if bits_written != 0 && self.words[index] & !((1 << bits_written) - 1) != 0 {
-            return Err(E::ExpectedEof.e());
-        }
-
-        use std::cmp::Ordering::*;
-        match bytes_read.cmp(&self.input_bytes) {
-            Less => Err(E::ExpectedEof.e()),
-            Equal => Ok(()),
-            Greater => {
-                // It is possible that we read more bytes than we have (bytes are rounded up to words).
-                // We don't check this while deserializing to avoid degrading performance.
-                Err(E::Eof.e())
-            }
-        }
-    }
-
+impl<'a> Read for WordReader<'a> {
+    #[inline(always)]
     fn advance(&mut self, bits: usize) {
-        self.index += bits;
+        self.inner.index += bits;
     }
 
+    #[inline(always)]
     fn peek_bits(&mut self) -> Result<Word> {
-        self.reserve_read_1_to_64(64)?;
-        Ok(self.peek_reserved_bits(64))
+        self.inner.reserve_read_1_to_64(64)?;
+        Ok(self.inner.peek_reserved_bits(64))
     }
 
+    #[inline(always)]
     fn read_bit(&mut self) -> Result<bool> {
-        self.reserve_read_1_to_64(1)?;
+        self.inner.reserve_read_1_to_64(1)?;
 
-        let bit_index = self.index;
-        self.index += 1;
+        let bit_index = self.inner.index;
+        self.inner.index += 1;
 
         let index = bit_index / WORD_BITS;
         let bit_remainder = bit_index % WORD_BITS;
 
-        Ok((self.words[index] & (1 << bit_remainder)) != 0)
+        Ok((self.inner.words[index] & (1 << bit_remainder)) != 0)
     }
 
+    #[inline(always)]
     fn read_bits(&mut self, bits: usize) -> Result<Word> {
-        self.reserve_read_1_to_64(bits)?;
-        Ok(self.read_reserved_bits(bits))
+        self.inner.reserve_read_1_to_64(bits)?;
+        Ok(self.inner.read_reserved_bits(bits))
     }
 
-    #[inline]
+    #[inline(always)]
     fn read_bytes(&mut self, len: usize) -> Result<&[u8]> {
         // TODO get this to elide bounds checks.
-        self.reserve_read_bytes(len)?;
+        self.inner.reserve_read_bytes(len)?;
 
         // Only allocate after reserve_read to prevent memory exhaustion attacks.
         let whole_words_len = len / WORD_BYTES;
         let word_len = whole_words_len + 1;
 
-        // Take to avoid borrowing issue.
-        let mut buf = std::mem::take(&mut self.read_bytes_buf);
+        let buf = &mut *self.read_bytes_buf;
         let words = if let Some(slice) = buf.get_mut(..word_len) {
             slice
         } else {
@@ -396,36 +484,34 @@ impl Read for WordBuffer {
                 let new_cap = len.next_power_of_two().max(16);
                 *buf = bytemuck::allocation::zeroed_slice_box(new_cap);
             }
-            alloc_buf(&mut buf, word_len);
+            alloc_buf(buf, word_len);
             &mut buf[..word_len]
         };
 
         let whole_words = &mut words[..whole_words_len];
         if whole_words.len() < 4 {
             for w in whole_words {
-                *w = self.read_reserved_bits(WORD_BITS);
+                *w = self.inner.read_reserved_bits(WORD_BITS);
             }
         } else {
-            self.read_reserved_words(whole_words);
+            self.inner.read_reserved_words(whole_words);
         }
 
         // We can read the whole word (the caller will ignore the extra).
         // We even read it if we'll use none of it's bytes to avoid a branch.
-        *words.last_mut().unwrap() = self.peek_reserved_bits(WORD_BITS);
-        self.index += (len % WORD_BYTES) * u8::BITS as usize;
+        *words.last_mut().unwrap() = self.inner.peek_reserved_bits(WORD_BITS);
+        self.inner.index += (len % WORD_BYTES) * u8::BITS as usize;
 
         // Swap bytes in each word (that was written to) if big endian.
         if cfg!(target_endian = "big") {
             words.iter_mut().for_each(|w| *w = w.swap_bytes());
         }
 
-        // Replace and reborrow to avoid borrowing issue.
-        self.read_bytes_buf = buf;
         Ok(&bytemuck::cast_slice(&self.read_bytes_buf)[..len])
     }
 
     fn reserve_bits(&self, bits: usize) -> Result<()> {
-        self.reserve_read_bytes(bits / u8::BITS as usize)
+        self.inner.reserve_read_bytes(bits / u8::BITS as usize)
     }
 }
 

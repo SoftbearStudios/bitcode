@@ -33,6 +33,7 @@ impl<const MIN: u64, const MAX: u64> ExpectedRangeU64<MIN, MAX> {
 }
 
 impl<const MIN: u64, const MAX: u64> Encoding for ExpectedRangeU64<MIN, MAX> {
+    #[inline(always)]
     fn write_word<const BITS: usize>(self, writer: &mut impl Write, word: Word) {
         // Don't use use this encoding if it's pointless.
         if self.is_pointless(BITS) {
@@ -58,7 +59,7 @@ impl<const MIN: u64, const MAX: u64> Encoding for ExpectedRangeU64<MIN, MAX> {
                     writer.write_bits(invalid_bit_pattern, me.range_bits());
                     writer.write_bits(word, bits);
                 } else {
-                    writer.write_bit(false);
+                    writer.write_false();
                     writer.write_bits(word, bits);
                 }
             }
@@ -66,6 +67,7 @@ impl<const MIN: u64, const MAX: u64> Encoding for ExpectedRangeU64<MIN, MAX> {
         }
     }
 
+    #[inline(always)]
     fn read_word<const BITS: usize>(self, reader: &mut impl Read) -> Result<Word> {
         // Don't use use this encoding if it's pointless.
         if self.is_pointless(BITS) {
@@ -126,7 +128,7 @@ mod benches {
         (0..1000).map(|_| rng.gen_range(0..100)).collect()
     }
 
-    bench_encoding!(super::ExpectedRangeU64<0, 100>, dataset);
+    bench_encoding!(super::ExpectedRangeU64::<0, 100>, dataset);
 }
 
 #[cfg(all(test, debug_assertions, not(miri)))]

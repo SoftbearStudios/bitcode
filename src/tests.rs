@@ -73,11 +73,11 @@ macro_rules! impl_the_same {
                 bytes.push(0);
                 #[cfg(not(miri))]
                 assert_eq!(
-                    [<$de _internal>]::<T>(&mut BitBuffer::default(), &bytes),
+                    [<$de _internal>]::<BitBuffer, T>(&mut Default::default(), &bytes),
                     Err(E::ExpectedEof.e())
                 );
                 assert_eq!(
-                    [<$de _internal>]::<T>(&mut WordBuffer::default(), &bytes),
+                    [<$de _internal>]::<WordBuffer, T>(&mut Default::default(), &bytes),
                     Err(E::ExpectedEof.e())
                 );
 
@@ -85,11 +85,11 @@ macro_rules! impl_the_same {
                 if bytes.pop().is_some() {
                     #[cfg(not(miri))]
                     assert_eq!(
-                        [<$de _internal>]::<T>(&mut BitBuffer::default(), &bytes),
+                        [<$de _internal>]::<BitBuffer, T>(&mut Default::default(), &bytes),
                         Err(E::Eof.e())
                     );
                     assert_eq!(
-                        [<$de _internal>]::<T>(&mut WordBuffer::default(), &bytes),
+                        [<$de _internal>]::<WordBuffer, T>(&mut Default::default(), &bytes),
                         Err(E::Eof.e())
                     );
                 }
@@ -292,8 +292,8 @@ fn test_gamma_bytes() {
     #[bitcode_hint(gamma)]
     struct Bytes(Vec<u8>);
 
-    let me = Bytes(vec![0u8; 20]);
-    the_same_once(me);
+    the_same_once(Bytes(vec![0u8; 20]));
+    the_same_once(Bytes(vec![255u8; 20]));
 }
 
 // Everything below this comment was derived from bincode:

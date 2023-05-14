@@ -22,23 +22,33 @@ Bitcode does not attempt to have a stable format, so we are free to optimize it.
 ### Additional features with `#[derive(bitcode::Encode, bitcode::Decode)]`
 
 - Enums use the fewest possible bits, e.g. an enum with 4 variants uses 2 bits
-- Specify frequency of enum variants with `#[bincode_hint(frequency = 123)` to use [Huffman](https://en.wikipedia.org/wiki/Huffman_coding) coding
-- Specify expected range of integers with `#[bitcode_hint(expected_range = "50..100"]`
+- Specify frequency of enum variants with `#[bitcode_hint(frequency = 123)` to use [Huffman](https://en.wikipedia.org/wiki/Huffman_coding) coding
 - Opt into [Gamma](https://en.wikipedia.org/wiki/Elias_gamma_coding) encoded integers with `#[bitcode_hint(gamma)]`
+- Specify expected range of integers with `#[bitcode_hint(expected_range = "50..100"]`
+- Hint that floats are expected to be between 0 and 1 with `#[bitcode_hint(expected_range = "0.0..1.0"]` (makes `f32` ~25 bits and `f64` ~54 bits)
+- Serialization with `bitcode::encode` will never return an error unless you:
 - Fall back to serde on specific fields with `#[bitcode(with_serde)]`
 
 ### Limitations
 
 - Doesn't support streaming APIs
 - Format is unstable between versions
-- When using `#[feature = "derive"]` structs/enums that are contain themselves must be labeled with `#[bitcode(recursive)]` or you will get a compile error
+- When using `feature = "derive"`, structs/enums that contain themselves must be labeled with `#[bitcode(recursive)]` or you will get a compile error
 
 ## Benchmarks vs. [bincode](https://github.com/bincode-org/bincode) and [postcard](https://github.com/jamesmunns/postcard)
 
-### Speed
+### Speed (nanoseconds)
 
-Aims to be no more than twice as slow as [bincode](https://github.com/bincode-org/bincode) or [postcard](https://github.com/jamesmunns/postcard).
-See [rust serialization benchmark](https://github.com/djkoloski/rust_serialization_benchmark) for benchmarks.
+| Format           | Serialize | Deserialize |
+|------------------|-----------|-------------|
+| Bitcode (derive) | 6,312     | 25,370      |
+| Bitcode (serde)  | 10,015    | 41,223      |
+| Bincode          | 8,247     | 23,317      |
+| Bincode (varint) | 9,872     | 30,138      |
+| Postcard         | 13,836    | 31,453      |
+
+Aims to be as fast as [bincode](https://github.com/bincode-org/bincode) and [postcard](https://github.com/jamesmunns/postcard).
+See [rust serialization benchmark](https://github.com/djkoloski/rust_serialization_benchmark) for more benchmarks.
 
 ### Size (bits)
 
@@ -95,7 +105,7 @@ If the result contains a large percentage of zero bytes, that is a sign that it 
 
 | Format                 | Size (bytes) | Zero Bytes |
 |------------------------|--------------|------------|
-| Bitcode (derive)       | 6.5          | 0.28%      |
+| Bitcode (derive)       | 6.5          | 0.25%      |
 | Bitcode (serde)        | 6.7          | 0.19%      |
 | Bincode                | 20.3         | 65.9%      |
 | Bincode (varint)       | 10.9         | 27.7%      |

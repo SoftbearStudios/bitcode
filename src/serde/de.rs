@@ -1,3 +1,4 @@
+use crate::buffer::BufferTrait;
 use crate::encoding::{Encoding, Fixed, Gamma};
 use crate::guard::guard_zst;
 use crate::read::Read;
@@ -8,13 +9,13 @@ use serde::de::{
 };
 use serde::Deserializer;
 
-pub fn deserialize_internal<T: DeserializeOwned>(
-    reader: &mut impl Read,
+pub fn deserialize_internal<B: BufferTrait, T: DeserializeOwned>(
+    buffer: &mut B,
     bytes: &[u8],
 ) -> Result<T> {
-    reader.start_read(bytes);
-    let decode_result = deserialize_compat(Fixed, reader);
-    reader.finish_read_with_result(decode_result)
+    let (mut reader, context) = buffer.start_read(bytes);
+    let decode_result = deserialize_compat(Fixed, &mut reader);
+    B::finish_read_with_result(reader, context, decode_result)
 }
 
 pub fn deserialize_compat<T: DeserializeOwned>(
@@ -89,12 +90,11 @@ impl<'de, C: Encoding, R: Read> Deserializer<'de> for BitcodeDeserializer<'_, C,
     impl_de!(deserialize_char, visit_char);
     impl_de!(deserialize_string, visit_string);
 
-    fn deserialize_str<V>(mut self, visitor: V) -> Result<V::Value>
+    fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        let bytes = self.read_len_and_bytes()?;
-        visitor.visit_str(std::str::from_utf8(bytes).map_err(|_| E::Invalid("utf8").e())?)
+        visitor.visit_str(self.encoding.read_str(self.reader)?)
     }
 
     fn deserialize_bytes<V>(mut self, visitor: V) -> Result<V::Value>

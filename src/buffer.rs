@@ -1,4 +1,7 @@
+use crate::read::Read;
 use crate::word_buffer::WordBuffer;
+use crate::write::Write;
+use crate::{Result, E};
 
 /// A buffer for reusing allocations between any number of calls to [`Buffer::encode`] and/or
 /// [`Buffer::decode`].
@@ -39,7 +42,7 @@ impl Buffer {
 
     /// Constructs a new buffer with at least the specified capacity in bytes.
     pub fn with_capacity(capacity: usize) -> Self {
-        Self(WithCapacity::with_capacity(capacity))
+        Self(BufferTrait::with_capacity(capacity))
     }
 
     /// Returns the capacity in bytes.
@@ -49,15 +52,45 @@ impl Buffer {
     }
 }
 
-pub trait WithCapacity {
+pub trait BufferTrait: Default {
+    type Writer: Write;
+    type Reader<'a>: Read;
+    type Context;
+
     fn capacity(&self) -> usize;
     fn with_capacity(capacity: usize) -> Self;
+
+    /// Clears the buffer.
+    fn start_write(&mut self) -> Self::Writer;
+    /// Returns the written bytes.
+    fn finish_write(&mut self, writer: Self::Writer) -> &[u8];
+
+    fn start_read<'a>(&'a mut self, bytes: &'a [u8]) -> (Self::Reader<'a>, Self::Context);
+    /// Check for errors such as Eof and ExpectedEof
+    fn finish_read(reader: Self::Reader<'_>, context: Self::Context) -> Result<()>;
+    /// Overrides decoding errors with Eof since the reader might allow reading slightly past the
+    /// end. Only WordBuffer currently does this.
+    fn finish_read_with_result<T>(
+        reader: Self::Reader<'_>,
+        context: Self::Context,
+        decode_result: Result<T>,
+    ) -> Result<T> {
+        let finish_result = Self::finish_read(reader, context);
+        if let Err(e) = &finish_result {
+            if e.same(&E::Eof.e()) {
+                return Err(E::Eof.e());
+            }
+        }
+        let t = decode_result?;
+        finish_result?;
+        Ok(t)
+    }
 }
 
 #[cfg(all(test, not(miri), debug_assertions))]
 mod tests {
     use crate::bit_buffer::BitBuffer;
-    use crate::buffer::WithCapacity;
+    use crate::buffer::BufferTrait;
     use crate::word_buffer::WordBuffer;
     use paste::paste;
 
