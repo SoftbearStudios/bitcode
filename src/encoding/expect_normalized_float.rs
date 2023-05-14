@@ -68,7 +68,7 @@ impl Encoding for ExpectNormalizedFloat {
     impl_float!(write_f64, read_f64, f64, u64, 52, 1023);
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod benches {
     use rand::distributions::Standard;
     use rand::prelude::*;

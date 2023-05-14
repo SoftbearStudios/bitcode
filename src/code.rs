@@ -165,7 +165,7 @@ macro_rules! optimized_enc {
 pub use optimized_enc;
 
 // These benchmarks ensure that optimized_enc is working. They all run about 8 times faster with optimized_enc.
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod optimized_enc_tests {
     use test::{black_box, Bencher};
 
@@ -336,7 +336,7 @@ macro_rules! optimized_dec {
 pub use optimized_dec;
 
 // These benchmarks ensure that optimized_dec is working. They run 4-8 times faster with optimized_dec.
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod optimized_dec_tests {
     use test::{black_box, Bencher};
 

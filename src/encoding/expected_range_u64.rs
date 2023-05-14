@@ -118,7 +118,7 @@ impl<const MIN: u64, const MAX: u64> Encoding for ExpectedRangeU64<MIN, MAX> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod benches {
     use crate::encoding::prelude::bench_prelude::*;
     use rand::prelude::*;

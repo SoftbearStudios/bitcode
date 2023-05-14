@@ -107,7 +107,7 @@ impl Encoding for Gamma {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod benches {
     use crate::encoding::prelude::bench_prelude::*;
     use rand::prelude::*;
