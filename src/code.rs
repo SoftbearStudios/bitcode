@@ -103,25 +103,29 @@ macro_rules! optimized_enc {
             ($t:expr, $T:ty) => {
                 // ENCODE_MAX is only accurate if there isn't any encoding upstream.
                 // Downstream encodings make ENCODE_MAX = usize::MAX in derive macro.
-                if <$T>::ENCODE_MAX.saturating_add(i) <= 64 && no_encoding_upstream {
-                    <$T>::encode(&$t, $encoding, &mut buf.inner)?;
+                if <$T as $crate::__private::Encode>::ENCODE_MAX.saturating_add(i) <= 64
+                    && no_encoding_upstream
+                {
+                    <$T as $crate::__private::Encode>::encode(&$t, $encoding, &mut buf.inner)?;
                 } else {
                     if i != 0 {
                         buf.flush();
                     }
 
-                    if <$T>::ENCODE_MAX < 64 && no_encoding_upstream {
-                        <$T>::encode(&$t, $encoding, &mut buf.inner)?;
+                    if <$T as $crate::__private::Encode>::ENCODE_MAX < 64 && no_encoding_upstream {
+                        <$T as $crate::__private::Encode>::encode(&$t, $encoding, &mut buf.inner)?;
                     } else {
-                        <$T>::encode(&$t, $encoding, buf.writer)?;
+                        <$T as $crate::__private::Encode>::encode(&$t, $encoding, buf.writer)?;
                     }
                 }
 
-                i = if <$T>::ENCODE_MAX.saturating_add(i) <= 64 && no_encoding_upstream {
-                    <$T>::ENCODE_MAX + i
+                i = if <$T as $crate::__private::Encode>::ENCODE_MAX.saturating_add(i) <= 64
+                    && no_encoding_upstream
+                {
+                    <$T as $crate::__private::Encode>::ENCODE_MAX + i
                 } else {
-                    if <$T>::ENCODE_MAX < 64 && no_encoding_upstream {
-                        <$T>::ENCODE_MAX
+                    if <$T as $crate::__private::Encode>::ENCODE_MAX < 64 && no_encoding_upstream {
+                        <$T as $crate::__private::Encode>::ENCODE_MAX
                     } else {
                         0
                     }
@@ -266,24 +270,26 @@ macro_rules! optimized_dec {
             ($t:ident, $T:ty) => {
                 // DECODE_MAX is only accurate if there isn't any encoding upstream.
                 // Downstream encodings make DECODE_MAX = usize::MAX in derive macro.
-                let $t = if i >= <$T>::DECODE_MAX && no_encoding_upstream {
-                    <$T>::decode($encoding, &mut buf.inner)?
+                let $t = if i >= <$T as $crate::__private::Decode>::DECODE_MAX
+                    && no_encoding_upstream
+                {
+                    <$T as $crate::__private::Decode>::decode($encoding, &mut buf.inner)?
                 } else {
-                    if <$T>::DECODE_MAX < 64 && no_encoding_upstream {
+                    if <$T as $crate::__private::Decode>::DECODE_MAX < 64 && no_encoding_upstream {
                         buf.refill()?;
-                        <$T>::decode($encoding, &mut buf.inner)?
+                        <$T as $crate::__private::Decode>::decode($encoding, &mut buf.inner)?
                     } else {
                         buf.advance_reader();
-                        <$T>::decode($encoding, buf.reader)?
+                        <$T as $crate::__private::Decode>::decode($encoding, buf.reader)?
                     }
                 };
 
-                i = if i >= <$T>::DECODE_MAX && no_encoding_upstream {
-                    i - <$T>::DECODE_MAX
+                i = if i >= <$T as $crate::__private::Decode>::DECODE_MAX && no_encoding_upstream {
+                    i - <$T as $crate::__private::Decode>::DECODE_MAX
                 } else {
-                    if <$T>::DECODE_MAX < 64 && no_encoding_upstream {
+                    if <$T as $crate::__private::Decode>::DECODE_MAX < 64 && no_encoding_upstream {
                         // Needs saturating since it's const (even though we've checked it).
-                        64usize.saturating_sub(<$T>::DECODE_MAX)
+                        64usize.saturating_sub(<$T as $crate::__private::Decode>::DECODE_MAX)
                     } else {
                         0
                     }
