@@ -296,6 +296,31 @@ fn test_gamma_bytes() {
     the_same_once(Bytes(vec![255u8; 20]));
 }
 
+#[test]
+fn test_name_conflict() {
+    mod decode {
+        #[allow(unused_imports)]
+        use musli::Decode;
+
+        #[derive(bitcode::Decode)]
+        struct Struct {
+            #[allow(unused)]
+            field: u64,
+        }
+    }
+
+    mod encode {
+        #[allow(unused_imports)]
+        use musli::Encode;
+
+        #[derive(bitcode::Encode)]
+        struct Struct {
+            #[allow(unused)]
+            field: u64,
+        }
+    }
+}
+
 // Everything below this comment was derived from bincode:
 // https://github.com/bincode-org/bincode/blob/v1.x/tests/test.rs
 
