@@ -104,6 +104,7 @@ impl Derive for Decode {
     fn trait_fn_impl(&self, body: TokenStream) -> TokenStream {
         let private = private();
         quote! {
+            #[allow(clippy::all)]
             #[inline(always)]
             fn decode(encoding: impl #private::Encoding, reader: &mut impl #private::Read) -> #private::Result<Self> {
                 #private::optimized_dec!(encoding, reader);

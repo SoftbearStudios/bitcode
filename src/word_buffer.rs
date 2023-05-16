@@ -507,7 +507,7 @@ impl<'a> Read for WordReader<'a> {
             words.iter_mut().for_each(|w| *w = w.swap_bytes());
         }
 
-        Ok(&bytemuck::cast_slice(&self.read_bytes_buf)[..len])
+        Ok(&bytemuck::cast_slice(self.read_bytes_buf)[..len])
     }
 
     fn reserve_bits(&self, bits: usize) -> Result<()> {

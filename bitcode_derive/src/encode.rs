@@ -108,6 +108,7 @@ impl Derive for Encode {
     fn trait_fn_impl(&self, body: TokenStream) -> TokenStream {
         let private = private();
         quote! {
+            #[allow(clippy::all)]
             #[inline(always)]
             fn encode(&self, encoding: impl #private::Encoding, writer: &mut impl #private::Write) -> #private::Result<()> {
                 #body

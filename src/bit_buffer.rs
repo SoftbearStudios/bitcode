@@ -96,7 +96,7 @@ impl Write for BitWriter {
 
     fn write_bytes(&mut self, bytes: &[u8]) {
         self.bits
-            .extend_from_bitslice(&BitSlice::<u8, Lsb0>::from_slice(bytes));
+            .extend_from_bitslice(BitSlice::<u8, Lsb0>::from_slice(bytes));
     }
 }
 

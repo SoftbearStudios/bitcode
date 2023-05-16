@@ -175,7 +175,7 @@ fn bench_serialize(b: &mut Bencher, ser: fn(&[Data]) -> Vec<u8>) {
 
 fn bench_deserialize(b: &mut Bencher, ser: fn(&[Data]) -> Vec<u8>, de: fn(&[u8]) -> Vec<Data>) {
     let data = bench_data();
-    let ref serialized_data = ser(&data);
+    let serialized_data = &ser(&data);
     assert_eq!(de(serialized_data), data);
     b.iter(|| {
         black_box(de(black_box(serialized_data)));
@@ -197,7 +197,7 @@ fn bench_bitcode_buffer_serialize(b: &mut Bencher) {
 #[bench]
 fn bench_bitcode_buffer_deserialize(b: &mut Bencher) {
     let data = bench_data();
-    let ref bytes = crate::serde::serialize(&data).unwrap();
+    let bytes = &crate::serde::serialize(&data).unwrap();
     let mut buf = Buffer::new();
     assert_eq!(buf.deserialize::<Vec<Data>>(bytes).unwrap(), data);
     let initial_cap = buf.capacity();
@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn comparison1() {
-        let ref data = random_data(10000);
+        let data = &random_data(10000);
         let print_results = |name: &'static str, b: Vec<u8>| {
             let zeros = 100.0 * b.iter().filter(|&&b| b == 0).count() as f32 / b.len() as f32;
             let precision = 2 - (zeros.log10().ceil() as usize).min(1);

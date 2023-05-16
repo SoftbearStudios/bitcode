@@ -106,7 +106,7 @@ fn the_same_once<T: Clone + Debug + PartialEq + Encode + Decode + Serialize + De
 ) {
     let mut buf = Buffer::new();
     the_same_serialize(t.clone(), &mut buf);
-    the_same_encode(t.clone(), &mut buf);
+    the_same_encode(t, &mut buf);
 }
 
 fn the_same<T: Clone + Debug + PartialEq + Encode + Decode + Serialize + DeserializeOwned>(t: T) {
@@ -453,7 +453,10 @@ fn test_enum() {
     the_same(TestEnum::OneArg(4));
     the_same(TestEnum::Args(4, 5));
     the_same(TestEnum::AnotherNoArg);
-    the_same(TestEnum::StructLike { x: 4, y: 3.14159 });
+    the_same(TestEnum::StructLike {
+        x: 4,
+        y: std::f32::consts::PI,
+    });
     the_same(vec![
         TestEnum::NoArg,
         TestEnum::OneArg(5),

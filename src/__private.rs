@@ -90,7 +90,7 @@ mod tests {
     enum Never {}
 
     #[derive(Copy, Clone, Debug, PartialEq, Encode, Decode)]
-    enum XYZ {
+    enum Xyz {
         #[bitcode_hint(frequency = 2)]
         X,
         Y,
@@ -99,21 +99,21 @@ mod tests {
 
     #[test]
     fn test_encode_x() {
-        let v = [XYZ::X; 16];
+        let v = [Xyz::X; 16];
         let encoded = crate::encode(&v).unwrap();
         assert_eq!(encoded.len(), 2);
 
-        let decoded: [XYZ; 16] = crate::decode(&encoded).unwrap();
+        let decoded: [Xyz; 16] = crate::decode(&encoded).unwrap();
         assert_eq!(v, decoded);
     }
 
     #[test]
     fn test_encode_y() {
-        let v = [XYZ::Y; 16];
+        let v = [Xyz::Y; 16];
         let encoded = crate::encode(&v).unwrap();
         assert_eq!(encoded.len(), 4);
 
-        let decoded: [XYZ; 16] = crate::decode(&encoded).unwrap();
+        let decoded: [Xyz; 16] = crate::decode(&encoded).unwrap();
         assert_eq!(v, decoded);
     }
 }

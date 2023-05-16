@@ -1,6 +1,7 @@
 #![cfg_attr(test, feature(test))]
 #![cfg_attr(doc, feature(doc_cfg))]
 #![forbid(unsafe_code)]
+#![allow(clippy::items_after_test_module)]
 
 //! Bitcode is a crate for encoding and decoding using a tinier
 //! binary serialization strategy. You can easily go from having

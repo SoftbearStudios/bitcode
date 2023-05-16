@@ -59,7 +59,7 @@ pub trait Encoding: Copy {
     fn read_str(self, reader: &mut impl Read) -> Result<&str> {
         let len = usize::decode(Gamma, reader)?;
         let bytes = reader.read_bytes(len)?;
-        Ok(std::str::from_utf8(bytes).map_err(|_| E::Invalid("utf8").e())?)
+        std::str::from_utf8(bytes).map_err(|_| E::Invalid("utf8").e())
     }
 }
 
