@@ -105,7 +105,7 @@ impl Derive for Decode {
         let private = private();
         quote! {
             #[allow(clippy::all)]
-            #[inline(always)]
+            #[cfg_attr(not(debug_assertions), inline(always))]
             fn decode(encoding: impl #private::Encoding, reader: &mut impl #private::Read) -> #private::Result<Self> {
                 #private::optimized_dec!(encoding, reader);
                 #body

@@ -401,7 +401,7 @@ impl_smart_ptr!(::std::rc::Rc);
 impl_smart_ptr!(::std::sync::Arc);
 
 // Writes multiple elements per flush. TODO use on VecDeque::as_slices.
-#[inline(always)]
+#[cfg_attr(not(debug_assertions), inline(always))]
 fn encode_elements<T: Encode>(
     elements: &[T],
     encoding: impl Encoding,
@@ -440,7 +440,7 @@ fn encode_elements<T: Encode>(
 }
 
 // Reads multiple elements per flush.
-#[inline(always)]
+#[cfg_attr(not(debug_assertions), inline(always))]
 fn decode_elements<T: Decode>(
     len: usize,
     encoding: impl Encoding,

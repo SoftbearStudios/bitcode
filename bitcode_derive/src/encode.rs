@@ -109,7 +109,7 @@ impl Derive for Encode {
         let private = private();
         quote! {
             #[allow(clippy::all)]
-            #[inline(always)]
+            #[cfg_attr(not(debug_assertions), inline(always))]
             fn encode(&self, encoding: impl #private::Encoding, writer: &mut impl #private::Write) -> #private::Result<()> {
                 #body
                 Ok(())
