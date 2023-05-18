@@ -114,7 +114,7 @@ pub trait Derive {
 
                 let (field_impl, bound) =
                     self.field_impl(field_attrs.with_serde(), field_name, field_type, encoding);
-                bounds.add_field_bound(field.clone(), bound);
+                bounds.add_bound_type(field.clone(), &field_attrs, bound);
                 Ok(field_impl)
             })
             .collect()

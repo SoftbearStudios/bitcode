@@ -5,10 +5,10 @@ use quote::quote;
 use std::str::FromStr;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{Attribute, DataEnum, Expr, Lit, Meta, Path, Result, Token};
+use syn::{parse2, Attribute, DataEnum, Expr, Lit, Meta, Path, Result, Token, Type};
 
-#[derive(Copy, Clone, Debug)]
 enum BitcodeAttr {
+    BoundType(Type),
     Encoding(Encoding),
     Frequency(f64),
     Recursive,
@@ -56,14 +56,44 @@ impl BitcodeAttr {
                 }
                 _ => err(&nested, "unknown hint"),
             },
+            "bound_type" => match nested {
+                Meta::NameValue(name_value) => {
+                    let expr = &name_value.value;
+                    let expr_lit = match expr {
+                        Expr::Lit(expr_lit) => expr_lit,
+                        _ => return err(&expr, "expected literal"),
+                    };
+
+                    match &expr_lit.lit {
+                        Lit::Str(str_lit) => {
+                            let value = TokenStream::from_str(&str_lit.value()).unwrap();
+                            Ok(Self::BoundType(
+                                parse2(value).map_err(|e| error(str_lit, &format!("{e}")))?,
+                            ))
+                        }
+                        _ => err(expr_lit, "expected str"),
+                    }
+                }
+                _ => err(&nested, "expected name value"),
+            },
             "recursive" if matches!(nested, Meta::Path(_)) => Ok(Self::Recursive),
             "with_serde" if matches!(nested, Meta::Path(_)) => Ok(Self::WithSerde),
             _ => err(&nested, "unknown attribute"),
         }
     }
 
-    fn apply(&self, attrs: &mut BitcodeAttrs, nested: &Meta) -> Result<()> {
-        match *self {
+    fn apply(self, attrs: &mut BitcodeAttrs, nested: &Meta) -> Result<()> {
+        match self {
+            Self::BoundType(bound_type) => {
+                if let AttrType::Field { bound_type: b, .. } = &mut attrs.attr_type {
+                    if b.is_some() {
+                        return err(nested, "duplicate");
+                    }
+                    *b = Some(bound_type);
+                } else {
+                    return err(nested, "can only apply bound to fields");
+                }
+            }
             Self::Encoding(encoding) => {
                 if attrs.encoding.is_some() {
                     return err(nested, "duplicate");
@@ -143,6 +173,7 @@ enum AttrType {
     },
     Field {
         parent_attrs: Box<BitcodeAttrs>,
+        bound_type: Option<Type>,
     },
 }
 
@@ -182,6 +213,13 @@ impl BitcodeAttrs {
         }
     }
 
+    pub fn bound_type(&self) -> Option<Type> {
+        match &self.attr_type {
+            AttrType::Field { bound_type, .. } => bound_type.as_ref().cloned(),
+            _ => unreachable!(),
+        }
+    }
+
     // Gets the most specific encoding. For example field encoding overrides variant encoding which
     // overrides enum encoding.
     fn most_specific_encoding(&self) -> Option<Encoding> {
@@ -213,6 +251,7 @@ impl BitcodeAttrs {
     pub fn parse_field(attrs: &[Attribute], parent_attrs: &Self) -> Result<Self> {
         let mut ret = Self::new(AttrType::Field {
             parent_attrs: Box::new(parent_attrs.clone()),
+            bound_type: None,
         });
         ret.parse_inner(attrs)?;
         Ok(ret)

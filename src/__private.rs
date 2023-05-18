@@ -25,6 +25,8 @@ pub fn invalid_variant() -> Error {
 #[cfg(all(test, debug_assertions))]
 mod tests {
     use crate::{Decode, Encode};
+    use serde::{Deserialize, Serialize};
+    use std::marker::PhantomData;
 
     #[derive(Debug, Default, PartialEq, Encode, Decode)]
     #[bitcode(recursive)]
@@ -42,12 +44,50 @@ mod tests {
     }
 
     trait ParamTrait {
-        type Bar: Encode + Decode;
+        type One;
+        type Two: Encode + Decode;
+        type Three;
+        type Four;
+    }
+
+    struct Param;
+
+    #[derive(Serialize, Deserialize)]
+    struct SerdeU32(u32);
+
+    impl ParamTrait for Param {
+        type One = i8;
+        type Two = u16;
+        type Three = SerdeU32;
+        type Four = &'static str;
     }
 
     #[derive(Encode, Decode)]
-    struct Param<T: ParamTrait> {
-        a: Option<T::Bar>,
+    #[bitcode_hint(gamma)]
+    struct UsesParamTrait<A: ParamTrait, B: ParamTrait> {
+        #[bitcode(bound_type = "B::One")]
+        a: Vec<B::One>,
+        #[bitcode(bound_type = "A::One")] // Make sure redundant bound_type works.
+        b: A::One,
+        c: Vec<A::Two>, // Always Encode + Decode so no bound_type needed.
+        #[bitcode(with_serde, bound_type = "(A::Three, B::Three)")]
+        d: Vec<(A::Three, B::Three)>,
+        e: PhantomData<A::Four>,
+    }
+
+    #[test]
+    fn test_uses_param_trait() {
+        type T = UsesParamTrait<Param, Param>;
+        let t: T = UsesParamTrait {
+            a: vec![1, 2, 3],
+            b: 1,
+            c: vec![1, 2, 3],
+            d: vec![(SerdeU32(1), SerdeU32(2))],
+            e: PhantomData,
+        };
+
+        let encoded = crate::encode(&t).unwrap();
+        let _ = crate::decode::<T>(&encoded).unwrap();
     }
 
     #[derive(Debug, PartialEq, Encode, Decode)]

@@ -1,20 +1,31 @@
+use crate::attribute::BitcodeAttrs;
 use std::collections::{HashMap, HashSet};
 use syn::punctuated::Pair;
 use syn::Token;
 
 #[derive(Default)]
 pub struct FieldBounds {
-    bounds: HashMap<syn::Path, Vec<syn::Field>>,
+    bounds: HashMap<syn::Path, (Vec<syn::Field>, Vec<syn::Type>)>,
 }
 
 impl FieldBounds {
-    pub fn add_field_bound(&mut self, field: syn::Field, bound: syn::Path) {
-        self.bounds.entry(bound).or_default().push(field)
+    pub fn add_bound_type(
+        &mut self,
+        field: syn::Field,
+        field_attrs: &BitcodeAttrs,
+        bound: syn::Path,
+    ) {
+        let bounds = self.bounds.entry(bound).or_default();
+        if let Some(bound_type) = field_attrs.bound_type() {
+            bounds.1.push(bound_type);
+        } else {
+            bounds.0.push(field);
+        }
     }
 
     pub fn apply_to_generics(self, generics: &mut syn::Generics) {
-        for (bound, fields) in self.bounds {
-            *generics = with_bound(&fields, generics, &bound);
+        for (bound, (fields, extra_bound_types)) in self.bounds {
+            *generics = with_bound(&fields, extra_bound_types, generics, &bound);
         }
     }
 }
@@ -22,6 +33,7 @@ impl FieldBounds {
 // Based on https://github.com/serde-rs/serde/blob/0c6a2bbf794abe966a4763f5b7ff23acb535eb7f/serde_derive/src/bound.rs#L94-L314
 pub fn with_bound(
     fields: &[syn::Field],
+    extra_bound_types: Vec<syn::Type>,
     generics: &syn::Generics,
     bound: &syn::Path,
 ) -> syn::Generics {
@@ -192,11 +204,13 @@ pub fn with_bound(
             path: id.into(),
         })
         .chain(associated_type_usage.into_iter().cloned())
+        .map(syn::Type::Path)
+        .chain(extra_bound_types)
         .map(|bounded_ty| {
             syn::WherePredicate::Type(syn::PredicateType {
                 lifetimes: None,
                 // the type parameter that is being bounded e.g. T
-                bounded_ty: syn::Type::Path(bounded_ty),
+                bounded_ty,
                 colon_token: <Token![:]>::default(),
                 // the bound e.g. Serialize
                 bounds: vec![syn::TypeParamBound::Trait(syn::TraitBound {
