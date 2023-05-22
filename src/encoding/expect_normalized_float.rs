@@ -70,31 +70,14 @@ impl Encoding for ExpectNormalizedFloat {
 
 #[cfg(all(test, not(miri)))]
 mod benches {
-    use rand::distributions::Standard;
-    use rand::prelude::*;
-
-    fn dataset<T>() -> Vec<T>
-    where
-        Standard: Distribution<T>,
-    {
-        let mut rng = rand_chacha::ChaCha20Rng::from_seed(Default::default());
-        (0..1000).map(|_| rng.gen()).collect()
-    }
-
     mod f32 {
-        use crate::encoding::prelude::bench_prelude::*;
-        bench_encoding!(
-            crate::encoding::ExpectNormalizedFloat,
-            super::dataset::<f32>
-        );
+        use crate::encoding::bench_prelude::*;
+        bench_encoding!(crate::encoding::ExpectNormalizedFloat, dataset::<f32>);
     }
 
     mod f64 {
-        use crate::encoding::prelude::bench_prelude::*;
-        bench_encoding!(
-            crate::encoding::ExpectNormalizedFloat,
-            super::dataset::<f64>
-        );
+        use crate::encoding::bench_prelude::*;
+        bench_encoding!(crate::encoding::ExpectNormalizedFloat, dataset::<f64>);
     }
 }
 

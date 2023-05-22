@@ -1,6 +1,8 @@
 // Replacements for nightly features used while developing the crate.
 
-#[inline]
+use std::num::NonZeroU64;
+
+#[inline(always)]
 pub fn div_ceil(me: usize, rhs: usize) -> usize {
     let d = me / rhs;
     let r = me % rhs;
@@ -11,15 +13,21 @@ pub fn div_ceil(me: usize, rhs: usize) -> usize {
     }
 }
 
-#[inline]
+#[inline(always)]
 pub const fn ilog2_u64(me: u64) -> u32 {
-    if me == 0 {
+    if cfg!(debug_assertions) && me == 0 {
         panic!("log2 on zero")
     }
     u64::BITS - 1 - me.leading_zeros()
 }
 
-#[inline]
+// Faster than ilog2_u64 on CPUs that have bsr but not lzcnt.
+#[inline(always)]
+pub const fn ilog2_non_zero_u64(me: NonZeroU64) -> u32 {
+    u64::BITS - 1 - me.leading_zeros()
+}
+
+#[inline(always)]
 pub fn utf8_char_width(b: u8) -> usize {
     if b < 128 {
         1
