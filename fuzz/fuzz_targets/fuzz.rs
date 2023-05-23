@@ -1,10 +1,10 @@
 #![no_main]
 use libfuzzer_sys::fuzz_target;
 extern crate bitcode;
-use bitcode::{Encode, Decode};
-use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
+use bitcode::{Decode, Encode};
 use bitvec::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 fuzz_target!(|data: &[u8]| {
     if data.len() < 3 {
@@ -28,22 +28,28 @@ fuzz_target!(|data: &[u8]| {
             {
                 let mut j = 0;
                 $(
-                    {
-                        if j == $typ1 {
+                    let mut buffer = bitcode::Buffer::new();
+
+                    if j == $typ1 {
+                        for _ in 0..2 {
                             if $typ2 == 0 {
-                                if let Ok(de) = bitcode::decode::<$typ>(data) {
-                                    let _ = bitcode::encode(&de).unwrap();
+                                if let Ok(de) = buffer.decode::<$typ>(data) {
+                                    let data2 = buffer.encode(&de).unwrap();
+                                    let de2 = bitcode::decode::<$typ>(&data2).unwrap();
+                                    assert_eq!(de, de2);
                                 }
                             } else if $typ2 == 1 {
-                                if let Ok(de) = bitcode::deserialize::<$typ>(data) {
-                                    let _ = bitcode::serialize(&de).unwrap();
+                                if let Ok(de) = buffer.deserialize::<$typ>(data) {
+                                    let data2 = buffer.serialize(&de).unwrap();
+                                    let de2 = bitcode::deserialize::<$typ>(&data2).unwrap();
+                                    assert_eq!(de, de2);
                                 }
                             }
                         }
-                        #[allow(unused)]
-                        {
-                            j += 1;
-                        }
+                    }
+                    #[allow(unused)]
+                    {
+                        j += 1;
                     }
                 )*
             }
@@ -90,20 +96,39 @@ fuzz_target!(|data: &[u8]| {
         }
     }
 
-    #[derive(Serialize, Deserialize, Encode, Decode, PartialEq)]
+    #[derive(Serialize, Deserialize, Encode, Decode, Debug, PartialEq)]
     enum Enum {
         A,
         B,
         C(u16),
-        D{a: u8, b: u8},
+        D { a: u8, b: u8 },
         E(String),
         F,
-        G(#[bitcode_hint(expected_range = "0.0..1.0")] f32),
-        H(#[bitcode_hint(expected_range = "0.0..1.0")] f64),
+        G(#[bitcode_hint(expected_range = "0.0..1.0")] BitsEqualF32),
+        H(#[bitcode_hint(expected_range = "0.0..1.0")] BitsEqualF64),
         I(#[bitcode_hint(expected_range = "0..32")] u8),
         J(#[bitcode_hint(expected_range = "3..51")] u16),
         K(#[bitcode_hint(expected_range = "200..5000")] u32),
-        // E(Box<Self>)
+        L(#[bitcode_hint(gamma)] i8),
+        M(#[bitcode_hint(gamma)] u64),
+    }
+
+    #[derive(Serialize, Deserialize, Encode, Decode, Debug)]
+    struct BitsEqualF32(f32);
+
+    impl PartialEq for BitsEqualF32 {
+        fn eq(&self, other: &Self) -> bool {
+            self.0.to_bits() == other.0.to_bits()
+        }
+    }
+
+    #[derive(Serialize, Deserialize, Encode, Decode, Debug)]
+    struct BitsEqualF64(f64);
+
+    impl PartialEq for BitsEqualF64 {
+        fn eq(&self, other: &Self) -> bool {
+            self.0.to_bits() == other.0.to_bits()
+        }
     }
 
     tests!(
@@ -124,8 +149,8 @@ fuzz_target!(|data: &[u8]| {
         i64,
         usize,
         isize,
-        f32,
-        f64,
+        BitsEqualF32,
+        BitsEqualF64,
         Vec<u8>,
         String,
         Enum
