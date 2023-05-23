@@ -5,6 +5,7 @@ use bitcode::{Decode, Encode};
 use bitvec::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::ffi::CString;
 
 fuzz_target!(|data: &[u8]| {
     if data.len() < 3 {
@@ -153,6 +154,7 @@ fuzz_target!(|data: &[u8]| {
         BitsEqualF64,
         Vec<u8>,
         String,
+        CString,
         Enum
     );
 });

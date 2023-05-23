@@ -7,6 +7,7 @@ use paste::paste;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::ffi::{CStr, CString};
 use std::fmt::Debug;
 
 #[cfg(not(miri))]
@@ -319,6 +320,18 @@ fn test_name_conflict() {
             field: u64,
         }
     }
+}
+
+#[test]
+fn test_c_string() {
+    the_same_once(CString::new(vec![]).unwrap());
+    the_same_once(CString::new((1..=255).collect::<Vec<_>>()).unwrap());
+
+    let bytes = vec![1, 2, 3, 255, 0];
+    let c_str = CStr::from_bytes_with_nul(&bytes).unwrap();
+    let encoded = crate::encode(c_str).unwrap();
+    let decoded = crate::decode::<CString>(&encoded).unwrap();
+    assert_eq!(decoded.as_c_str(), c_str)
 }
 
 // Everything below this comment was derived from bincode:

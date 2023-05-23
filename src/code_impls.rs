@@ -5,6 +5,7 @@ use crate::nightly::{max, min, utf8_char_width};
 use crate::read::Read;
 use crate::write::Write;
 use crate::{Result, E};
+use std::ffi::{CStr, CString};
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
@@ -626,6 +627,35 @@ impl Decode for String {
     }
 }
 
+impl Encode for CStr {
+    const ENCODE_MIN: usize = 1;
+    const ENCODE_MAX: usize = usize::MAX;
+
+    #[inline(always)]
+    fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
+        encoding.write_byte_str(writer, self.to_bytes());
+        Ok(())
+    }
+}
+
+impl Encode for CString {
+    impl_enc_same!(str);
+
+    #[inline(always)]
+    fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
+        self.as_c_str().encode(encoding, writer)
+    }
+}
+
+impl Decode for CString {
+    impl_dec_from_enc!();
+
+    #[inline(always)]
+    fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
+        CString::new(encoding.read_byte_str(reader)?).map_err(|_| E::Invalid("CString").e())
+    }
+}
+
 macro_rules! impl_map {
     ($collection: ident $(,$bound: ident)*) => {
         impl<K: Encode, V: Encode> Encode for std::collections::$collection<K, V> {
@@ -773,6 +803,7 @@ macro_rules! impl_tuples {
                 const ENCODE_MIN: usize = $(<$name>::ENCODE_MIN +)+ 0;
                 const ENCODE_MAX: usize = 0usize $(.saturating_add(<$name>::ENCODE_MAX))+;
 
+                #[cfg_attr(not(debug_assertions), inline(always))]
                 fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
                     optimized_enc!(encoding, writer);
                     $(
@@ -791,6 +822,7 @@ macro_rules! impl_tuples {
                 const DECODE_MAX: usize = 0usize $(.saturating_add(<$name>::DECODE_MAX))+;
 
                 #[allow(non_snake_case)]
+                #[cfg_attr(not(debug_assertions), inline(always))]
                 fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
                     optimized_dec!(encoding, reader);
                     $(

@@ -51,15 +51,24 @@ pub trait Encoding: Copy {
 
     #[inline(always)]
     fn write_str(self, writer: &mut impl Write, v: &str) {
-        v.len().encode(Gamma, writer).unwrap();
-        writer.write_bytes(v.as_bytes());
+        self.write_byte_str(writer, v.as_bytes());
     }
 
     #[inline(always)]
     fn read_str(self, reader: &mut impl Read) -> Result<&str> {
+        std::str::from_utf8(self.read_byte_str(reader)?).map_err(|_| E::Invalid("utf8").e())
+    }
+
+    #[inline(always)]
+    fn write_byte_str(self, writer: &mut impl Write, v: &[u8]) {
+        v.len().encode(Gamma, writer).unwrap();
+        writer.write_bytes(v);
+    }
+
+    #[inline(always)]
+    fn read_byte_str(self, reader: &mut impl Read) -> Result<&[u8]> {
         let len = usize::decode(Gamma, reader)?;
-        let bytes = reader.read_bytes(len)?;
-        std::str::from_utf8(bytes).map_err(|_| E::Invalid("utf8").e())
+        reader.read_bytes(len)
     }
 }
 
