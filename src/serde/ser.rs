@@ -73,10 +73,12 @@ impl<C: Encoding, W: Write> Serializer for BitcodeSerializer<'_, C, W> {
     impl_ser!(serialize_i16, i16);
     impl_ser!(serialize_i32, i32);
     impl_ser!(serialize_i64, i64);
+    impl_ser!(serialize_i128, i128);
     impl_ser!(serialize_u8, u8);
     impl_ser!(serialize_u16, u16);
     impl_ser!(serialize_u32, u32);
     impl_ser!(serialize_u64, u64);
+    impl_ser!(serialize_u128, u128);
     impl_ser!(serialize_f32, f32);
     impl_ser!(serialize_f64, f64);
     impl_ser!(serialize_char, char);

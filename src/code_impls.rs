@@ -65,14 +65,14 @@ impl Decode for bool {
 }
 
 macro_rules! impl_uints {
-    ($($int: ty),*) => {
+    ($read:ident, $write:ident, $($int: ty),*) => {
         $(
             impl Encode for $int {
-                impl_enc_size!($int);
+                impl_enc_size!(Self);
 
                 #[inline(always)]
                 fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
-                    encoding.write_word::<{ <$int>::BITS as usize }>(writer, (*self).into());
+                    encoding.$write::<{ Self::BITS as usize }>(writer, (*self).into());
                     Ok(())
                 }
             }
@@ -82,7 +82,7 @@ macro_rules! impl_uints {
 
                 #[inline(always)]
                 fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
-                    Ok(encoding.read_word::<{ <$int>::BITS as usize }>(reader)? as $int)
+                    Ok(encoding.$read::<{ Self::BITS as usize }>(reader)? as Self)
                 }
             }
         )*
@@ -90,10 +90,10 @@ macro_rules! impl_uints {
 }
 
 macro_rules! impl_ints {
-    ($($int: ty => $uint: ty),*) => {
+    ($read:ident, $write:ident, $($int: ty => $uint: ty),*) => {
         $(
             impl Encode for $int {
-                impl_enc_size!($int);
+                impl_enc_size!(Self);
 
                 #[inline(always)]
                 fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
@@ -102,7 +102,7 @@ macro_rules! impl_ints {
                     } else {
                         (*self as $uint).into()
                     };
-                    encoding.write_word::<{ <$int>::BITS as usize }>(writer, word);
+                    encoding.$write::<{ Self::BITS as usize }>(writer, word);
                     Ok(())
                 }
             }
@@ -112,11 +112,11 @@ macro_rules! impl_ints {
 
                 #[inline(always)]
                 fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
-                    let word = encoding.read_word::<{ <$int>::BITS as usize }>(reader)?;
+                    let word = encoding.$read::<{ Self::BITS as usize }>(reader)?;
                     let sint = if encoding.zigzag() {
                         zigzag::ZigZagDecode::zigzag_decode(word as $uint)
                     } else {
-                        word as $int
+                        word as Self
                     };
                     Ok(sint)
                 }
@@ -125,13 +125,15 @@ macro_rules! impl_ints {
     }
 }
 
-impl_uints!(u8, u16, u32, u64);
-impl_ints!(i8 => u8, i16 => u16, i32 => u32, i64 => u64);
+impl_uints!(read_u64, write_u64, u8, u16, u32, u64);
+impl_ints!(read_u64, write_u64, i8 => u8, i16 => u16, i32 => u32, i64 => u64);
+impl_uints!(read_u128, write_u128, u128);
+impl_ints!(read_u128, write_u128, i128 => u128);
 
 macro_rules! impl_try_int {
     ($a:ty, $b:ty) => {
         impl Encode for $a {
-            impl_enc_size!($b);
+            impl_enc_size!(Self);
 
             #[inline(always)]
             fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {

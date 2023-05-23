@@ -20,13 +20,33 @@ pub trait Encoding: Copy {
     }
 
     #[inline(always)]
-    fn write_word<const BITS: usize>(self, writer: &mut impl Write, word: Word) {
-        writer.write_bits(word, BITS);
+    fn write_u64<const BITS: usize>(self, writer: &mut impl Write, v: u64) {
+        writer.write_bits(v, BITS);
     }
 
     #[inline(always)]
-    fn read_word<const BITS: usize>(self, reader: &mut impl Read) -> Result<Word> {
+    fn read_u64<const BITS: usize>(self, reader: &mut impl Read) -> Result<u64> {
         reader.read_bits(BITS)
+    }
+
+    // TODO add implementations to Gamma and ExpectedRange.
+    #[inline(always)]
+    fn write_u128<const BITS: usize>(self, writer: &mut impl Write, v: u128) {
+        debug_assert!((65..=128).contains(&BITS));
+
+        let lo = v as u64;
+        let hi = (v >> 64) as u64;
+        writer.write_bits(lo, 64);
+        writer.write_bits(hi, BITS - 64);
+    }
+
+    #[inline(always)]
+    fn read_u128<const BITS: usize>(self, reader: &mut impl Read) -> Result<u128> {
+        debug_assert!((65..=128).contains(&BITS));
+
+        let lo = reader.read_bits(64)?;
+        let hi = reader.read_bits(BITS - 64)?;
+        Ok(lo as u128 | ((hi as u128) << 64))
     }
 
     #[inline(always)]

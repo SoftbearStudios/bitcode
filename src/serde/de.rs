@@ -81,10 +81,12 @@ impl<'de, C: Encoding, R: Read> Deserializer<'de> for BitcodeDeserializer<'_, C,
     impl_de!(deserialize_i16, visit_i16);
     impl_de!(deserialize_i32, visit_i32);
     impl_de!(deserialize_i64, visit_i64);
+    impl_de!(deserialize_i128, visit_i128);
     impl_de!(deserialize_u8, visit_u8);
     impl_de!(deserialize_u16, visit_u16);
     impl_de!(deserialize_u32, visit_u32);
     impl_de!(deserialize_u64, visit_u64);
+    impl_de!(deserialize_u128, visit_u128);
     impl_de!(deserialize_f32, visit_f32);
     impl_de!(deserialize_f64, visit_f64);
     impl_de!(deserialize_char, visit_char);

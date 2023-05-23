@@ -334,6 +334,32 @@ fn test_c_string() {
     assert_eq!(decoded.as_c_str(), c_str)
 }
 
+#[test]
+fn test_numbers_extra() {
+    macro_rules! test {
+        ($t:ident) => {
+            the_same(5 as $t);
+            the_same($t::MAX - 5);
+            the_same($t::MAX);
+        };
+    }
+
+    test!(u64);
+    test!(u128);
+
+    macro_rules! test_signed {
+        ($t:ident) => {
+            test!($t);
+            the_same(-5 as $t);
+            the_same($t::MIN);
+            the_same($t::MIN + 5);
+        };
+    }
+
+    test_signed!(i64);
+    test_signed!(i128);
+}
+
 // Everything below this comment was derived from bincode:
 // https://github.com/bincode-org/bincode/blob/v1.x/tests/test.rs
 
@@ -344,8 +370,6 @@ fn test_numbers() {
     the_same(5u16);
     the_same(5u32);
     the_same(5u64);
-    the_same(u64::MAX - 5);
-    the_same(u64::MAX);
     the_same(5usize);
     // signed positive
     the_same(5i8);
@@ -358,10 +382,6 @@ fn test_numbers() {
     the_same(-5i16);
     the_same(-5i32);
     the_same(-5i64);
-    the_same(i64::MAX);
-    the_same(i64::MAX - 5);
-    the_same(i64::MIN);
-    the_same(i64::MIN + 5);
     the_same(-5isize);
     // floating
     the_same(-100f32);

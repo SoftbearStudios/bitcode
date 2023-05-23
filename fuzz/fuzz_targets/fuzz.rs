@@ -148,6 +148,8 @@ fuzz_target!(|data: &[u8]| {
         i32,
         u64,
         i64,
+        u128,
+        i128,
         usize,
         isize,
         BitsEqualF32,

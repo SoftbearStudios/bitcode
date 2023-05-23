@@ -34,7 +34,7 @@ impl<const MIN: u64, const MAX: u64> ExpectedRangeU64<MIN, MAX> {
 
 impl<const MIN: u64, const MAX: u64> Encoding for ExpectedRangeU64<MIN, MAX> {
     #[inline(always)]
-    fn write_word<const BITS: usize>(self, writer: &mut impl Write, word: Word) {
+    fn write_u64<const BITS: usize>(self, writer: &mut impl Write, word: Word) {
         // Don't use use this encoding if it's pointless.
         if self.is_pointless(BITS) {
             writer.write_bits(word, BITS);
@@ -68,7 +68,7 @@ impl<const MIN: u64, const MAX: u64> Encoding for ExpectedRangeU64<MIN, MAX> {
     }
 
     #[inline(always)]
-    fn read_word<const BITS: usize>(self, reader: &mut impl Read) -> Result<Word> {
+    fn read_u64<const BITS: usize>(self, reader: &mut impl Read) -> Result<Word> {
         // Don't use use this encoding if it's pointless.
         if self.is_pointless(BITS) {
             return reader.read_bits(BITS);

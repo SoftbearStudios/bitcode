@@ -10,7 +10,7 @@ impl Encoding for Gamma {
     }
 
     #[inline(always)]
-    fn write_word<const BITS: usize>(self, writer: &mut impl Write, word: Word) {
+    fn write_u64<const BITS: usize>(self, writer: &mut impl Write, word: Word) {
         debug_assert!(BITS <= WORD_BITS);
         if BITS != WORD_BITS {
             debug_assert_eq!(word, word & ((1 << BITS) - 1));
@@ -40,7 +40,7 @@ impl Encoding for Gamma {
     }
 
     #[inline(always)]
-    fn read_word<const BITS: usize>(self, reader: &mut impl Read) -> Result<Word> {
+    fn read_u64<const BITS: usize>(self, reader: &mut impl Read) -> Result<Word> {
         debug_assert!((1..=WORD_BITS).contains(&BITS));
 
         let peek = reader.peek_bits()?;
