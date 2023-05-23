@@ -133,7 +133,7 @@ impl_ints!(read_u128, write_u128, i128 => u128);
 macro_rules! impl_try_int {
     ($a:ty, $b:ty) => {
         impl Encode for $a {
-            impl_enc_size!(Self);
+            impl_enc_size!($b);
 
             #[inline(always)]
             fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
