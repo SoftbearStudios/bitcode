@@ -312,10 +312,10 @@ mod tests {
     fn comparison2() {
         use std::ops::RangeInclusive;
 
-        fn compare<T: Encode + Serialize + Clone>(name: &str, r: RangeInclusive<T>) {
-            fn measure<T: Encode + Serialize + Clone>(t: T) -> [usize; 5] {
+        fn compare_inner<T: Encode + Serialize>(name: &str, r: RangeInclusive<T>) -> String {
+            fn measure<T: Encode + Serialize>(t: &T) -> [usize; 5] {
                 const COUNT: usize = 8;
-                let many: [T; COUNT] = std::array::from_fn(|_| t.clone());
+                let many: [&T; COUNT] = std::array::from_fn(|_| t);
                 [
                     bitcode_encode(&many).len(),
                     bitcode_serialize(&many).len(),
@@ -326,8 +326,8 @@ mod tests {
                 .map(|b| 8 * b / COUNT)
             }
 
-            let lo = measure(r.start().clone());
-            let hi = measure(r.end().clone());
+            let lo = measure(&r.start());
+            let hi = measure(&r.end());
 
             let v: Vec<_> = lo
                 .into_iter()
@@ -340,14 +340,30 @@ mod tests {
                     }
                 })
                 .collect();
-            println!(
+
+            format!(
                 "| {name:<19} | {:<16} | {:<15} | {:<7} | {:<16} | {:<8} |",
                 v[0], v[1], v[2], v[3], v[4],
-            );
+            )
         }
 
-        fn compare_one<T: Encode + Serialize + Clone>(name: &str, t: T) {
-            compare(name, t.clone()..=t);
+        fn compare<T: Encode + Serialize>(name: &str, r: RangeInclusive<T>) {
+            println!("{}", compare_inner(name, r));
+        }
+
+        fn compare_one<T: Encode + Serialize>(name: &str, t: T) {
+            println!("{}", compare_inner(name, &t..=&t));
+        }
+
+        fn compare_int<U: Encode + Serialize, S: Encode + Serialize>(
+            name: &str,
+            u: RangeInclusive<U>,
+            s: RangeInclusive<S>,
+        ) {
+            let unsigned = compare_inner(name, u);
+            let signed = compare_inner(name, s);
+            assert_eq!(unsigned, signed, "unsigned/signed sizes are different");
+            println!("{unsigned}");
         }
 
         #[derive(Clone, Encode, Decode, Serialize, Deserialize)]
@@ -361,14 +377,12 @@ mod tests {
         println!("| Type                | Bitcode (derive) | Bitcode (serde) | Bincode | Bincode (varint) | Postcard |");
         println!("|---------------------|------------------|-----------------|---------|------------------|----------|");
         compare("bool", false..=true);
-        compare("u8", 0u8..=u8::MAX);
-        compare("i8", 0i8..=i8::MAX);
-        compare("u16", 0u16..=u16::MAX);
-        compare("i16", 0i16..=i16::MAX);
-        compare("u32", 0u32..=u32::MAX);
-        compare("i32", 0i32..=i32::MAX);
-        compare("u64", 0u64..=u64::MAX);
-        compare("i64", 0i64..=i64::MAX);
+        compare_int("u8/i8", 0u8..=u8::MAX, 0i8..=i8::MAX);
+        compare_int("u16/i16", 0u16..=u16::MAX, 0i16..=i16::MAX);
+        compare_int("u32/i32", 0u32..=u32::MAX, 0i32..=i32::MAX);
+        compare_int("u64/i64", 0u64..=u64::MAX, 0i64..=i64::MAX);
+        compare_int("u128/i128", 0u128..=u128::MAX, 0i128..=i128::MAX);
+        compare_int("usize/isize", 0usize..=usize::MAX, 0isize..=isize::MAX);
         compare_one("f32", 0f32);
         compare_one("f64", 0f64);
         compare("char", (0 as char)..=char::MAX);
