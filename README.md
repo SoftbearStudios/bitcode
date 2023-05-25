@@ -38,7 +38,7 @@ The format may change between major versions, so we are free to optimize it.
 
 ## Benchmarks vs. [bincode](https://github.com/bincode-org/bincode) and [postcard](https://github.com/jamesmunns/postcard)
 
-### Primitives
+### Primitives (size in bits)
 
 | Type                | Bitcode (derive) | Bitcode (serde) | Bincode | Bincode (varint) | Postcard |
 |---------------------|------------------|-----------------|---------|------------------|----------|
@@ -56,7 +56,7 @@ The format may change between major versions, so we are free to optimize it.
 | Result<(), ()>      | 1                | 1-3             | 32      | 8                | 8        |
 | enum { A, B, C, D } | 2                | 1-5             | 32      | 8                | 8        |
 
-### Values
+### Values (size in bits)
 
 | Value               | Bitcode (derive) | Bitcode (serde) | Bincode | Bincode (varint) | Postcard |
 |---------------------|------------------|-----------------|---------|------------------|----------|
@@ -70,9 +70,7 @@ The format may change between major versions, so we are free to optimize it.
 | "abcd1234"          | 71               | 71              | 128     | 72               | 72       |
 
 
-### Random Structs and Enums
-
-The following table contains averages for a [randomly generated `Data` struct with a `DataEnum` enum](https://github.com/SoftbearStudios/bitcode/blob/2a47235eee64f4a7c49ad1841a5b509abd2d0e99/src/benches.rs#L16-L88):
+### Random [Structs and Enums](https://github.com/SoftbearStudios/bitcode/blob/2a47235eee64f4a7c49ad1841a5b509abd2d0e99/src/benches.rs#L16-L88) (average size and speed)
 
 | Format                 | Size (bytes) | Serialize (ns) | Deserialize (ns) |
 |------------------------|--------------|----------------|------------------|
