@@ -72,24 +72,7 @@ The format may change between major versions, so we are free to optimize it.
 
 ### Random Structs and Enums
 
-The following data structures were used for benchmarking:
-```rust
-struct Data {
-    x: Option<f32>,
-    y: Option<i8>,
-    z: u16,
-    s: String,
-    e: DataEnum,
-}
-
-enum DataEnum {
-    Bar,
-    Baz(String),
-    Foo(Option<u8>),
-}
-```
-
-The following table contains averages for a randomly generated `Data` struct:
+The following table contains averages for a [randomly generated `Data` struct with a `DataEnum` enum](https://github.com/SoftbearStudios/bitcode/blob/2a47235eee64f4a7c49ad1841a5b509abd2d0e99/src/benches.rs#L16-L88):
 
 | Format                 | Size (bytes) | Serialize (ns) | Deserialize (ns) |
 |------------------------|--------------|----------------|------------------|
