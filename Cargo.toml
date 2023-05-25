@@ -15,6 +15,7 @@ exclude = ["fuzz/"]
 
 [dependencies]
 bitcode_derive = { version = "0.1.4", path="./bitcode_derive", optional = true }
+bitintr = "0.3.0"
 bytemuck = { version = "1.13", features = [ "extern_crate_alloc" ] }
 from_bytes_or_zeroed = "0.1"
 residua-zigzag = "0.1.0"

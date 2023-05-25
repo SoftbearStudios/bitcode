@@ -1,5 +1,6 @@
 use crate::word::Word;
 use crate::Result;
+use bitcode::encoding::ByteEncoding;
 
 /// Abstracts over reading bits from a buffer.
 pub trait Read {
@@ -13,6 +14,8 @@ pub trait Read {
     fn read_bits(&mut self, bits: usize) -> Result<Word>;
     /// Reads `len` bytes.
     fn read_bytes(&mut self, len: usize) -> Result<&[u8]>;
+    /// Reads `len` with a [`ByteEncoding`].
+    fn read_encoded_bytes<C: ByteEncoding>(&mut self, len: usize) -> Result<&[u8]>;
     /// Ensures that at least `bits` remain. Never underreports remaining bits.
     fn reserve_bits(&self, bits: usize) -> Result<()>;
 }

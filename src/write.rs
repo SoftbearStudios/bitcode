@@ -1,14 +1,24 @@
+use crate::encoding::ByteEncoding;
 use crate::word::Word;
 
 /// Abstracts over writing bits to a buffer.
 pub trait Write {
+    /// Reverts allow reverting writes. Doing so can be expensive so make sure it only happens in
+    /// the cold path. This is useful for writing/validating data at the same time.
+    type Revert;
+    fn get_revert(&mut self) -> Self::Revert;
+    fn revert(&mut self, revert: Self::Revert);
+
     /// Writes a bit. If `v` is always `false` use [`Self::write_false`].
     fn write_bit(&mut self, v: bool);
     /// Writes up to 64 bits. The index of `word`'s most significant 1 must be < `bits`.
     /// `bits` must be in range `0..=64`.
     fn write_bits(&mut self, word: Word, bits: usize);
-    /// Writes bytes.
+    /// Writes `bytes`.
     fn write_bytes(&mut self, bytes: &[u8]);
+    /// Writes `bytes` with a [`ByteEncoding`]. Returns if the bytes are valid according to
+    /// [`ByteEncoding::validate`].
+    fn write_encoded_bytes<C: ByteEncoding>(&mut self, bytes: &[u8]) -> bool;
     /// Writes `false`. Might be faster than `writer.write_bit(false)`.
     #[inline(always)]
     fn write_false(&mut self) {

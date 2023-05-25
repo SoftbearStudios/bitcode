@@ -1,4 +1,5 @@
 use crate::buffer::BufferTrait;
+use crate::encoding::ByteEncoding;
 use crate::read::Read;
 use crate::word::*;
 use crate::write::Write;
@@ -85,6 +86,14 @@ pub struct BitWriter {
 }
 
 impl Write for BitWriter {
+    type Revert = usize;
+    fn get_revert(&mut self) -> Self::Revert {
+        self.bits.len()
+    }
+    fn revert(&mut self, index: Self::Revert) {
+        self.bits.truncate(index);
+    }
+
     fn write_bit(&mut self, v: bool) {
         self.bits.push(v);
     }
@@ -97,6 +106,17 @@ impl Write for BitWriter {
     fn write_bytes(&mut self, bytes: &[u8]) {
         self.bits
             .extend_from_bitslice(BitSlice::<u8, Lsb0>::from_slice(bytes));
+    }
+
+    fn write_encoded_bytes<C: ByteEncoding>(&mut self, bytes: &[u8]) -> bool {
+        for b in bytes {
+            let word = *b as Word;
+            if !C::validate(word, 1) {
+                return false;
+            }
+            self.write_bits(C::pack(word), C::BITS_PER_BYTE)
+        }
+        true
     }
 }
 
@@ -166,6 +186,28 @@ impl Read for BitReader<'_> {
         }
 
         tmp.as_mut_bits()[..slice.len()].copy_from_bitslice(slice);
+        *self.read_bytes_buf = tmp;
+        Ok(&self.read_bytes_buf[..len])
+    }
+
+    fn read_encoded_bytes<C: ByteEncoding>(&mut self, len: usize) -> Result<&[u8]> {
+        let mut tmp = std::mem::take(self.read_bytes_buf);
+
+        let bits = len
+            .checked_mul(C::BITS_PER_BYTE)
+            .ok_or_else(|| E::Eof.e())?;
+        let slice = self.read_slice(bits)?;
+
+        // Only allocate after reserve_read to prevent memory exhaustion attacks.
+        if tmp.len() < len {
+            tmp = vec![0; len.next_power_of_two()].into_boxed_slice()
+        }
+
+        for (dst, src) in tmp[..len].iter_mut().zip(slice.chunks(C::BITS_PER_BYTE)) {
+            let mut byte = [0u8];
+            byte.as_mut_bits()[..C::BITS_PER_BYTE].copy_from_bitslice(src);
+            *dst = C::unpack(byte[0] as Word) as u8;
+        }
         *self.read_bytes_buf = tmp;
         Ok(&self.read_bytes_buf[..len])
     }

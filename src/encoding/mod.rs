@@ -1,10 +1,11 @@
+mod bit_string;
 mod expect_normalized_float;
 mod expected_range_u64;
 mod gamma;
 mod prelude;
 
-use crate::Decode;
-use crate::Encode;
+use crate::{Decode, Encode};
+pub use bit_string::*;
 pub use expect_normalized_float::ExpectNormalizedFloat;
 pub use expected_range_u64::ExpectedRangeU64;
 pub use gamma::Gamma;

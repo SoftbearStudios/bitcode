@@ -92,6 +92,7 @@ impl<'de, C: Encoding, R: Read> Deserializer<'de> for BitcodeDeserializer<'_, C,
     impl_de!(deserialize_char, visit_char);
     impl_de!(deserialize_string, visit_string);
 
+    #[inline(always)] // Makes #[bitcode(with_serde)] ArrayString much faster.
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,

@@ -1,39 +1,40 @@
 # Bitcode
-
-[![Build](https://github.com/SoftbearStudios/bitcode/actions/workflows/build.yml/badge.svg)](https://github.com/SoftbearStudios/bitcode/actions/workflows/build.yml)
 [![Documentation](https://docs.rs/bitcode/badge.svg)](https://docs.rs/bitcode)
+[![crates.io](https://img.shields.io/crates/v/bitcode.svg)](https://crates.io/crates/bitcode)
+[![Build](https://github.com/SoftbearStudios/bitcode/actions/workflows/build.yml/badge.svg)](https://github.com/SoftbearStudios/bitcode/actions/workflows/build.yml)
+[![unsafe forbidden](https://img.shields.io/badge/unsafe-forbidden-success.svg)](https://github.com/rust-secure-code/safety-dance/)
 
-A bitwise encoder/decoder similar to [bincode](https://github.com/bincode-org/bincode).
+A bitwise encoder/decoder similar to [bincode](https://github.com/bincode-org/bincode), which attempts to shrink the serialized size without sacrificing speed (as would be the case with compression).
 
-## Motivation
-
-We noticed relatively low entropy in data serialized with [bincode](https://github.com/bincode-org/bincode). This library attempts to shrink the serialized size without sacrificing too much speed (as would be the case with compression).
-
-Bitcode does not attempt to have a stable format, so we are free to optimize it.
+The format may change between major versions, so we are free to optimize it.
 
 ## Comparison with [bincode](https://github.com/bincode-org/bincode)
 
-### Features (serde)
+### Features
 
 - Bitwise serialization
 - [Gamma](https://en.wikipedia.org/wiki/Elias_gamma_coding) encoded lengths and enum variant indices
-- Implemented in 100% safe Rust
 
 ### Additional features with `#[derive(bitcode::Encode, bitcode::Decode)]`
 
 - Enums use the fewest possible bits, e.g. an enum with 4 variants uses 2 bits
-- Specify frequency of enum variants with `#[bitcode_hint(frequency = 123)` to use [Huffman](https://en.wikipedia.org/wiki/Huffman_coding) coding
-- Opt into [Gamma](https://en.wikipedia.org/wiki/Elias_gamma_coding) encoded integers with `#[bitcode_hint(gamma)]`
-- Specify expected range of integers with `#[bitcode_hint(expected_range = "50..100"]`
-- Hint that floats are expected to be between 0 and 1 with `#[bitcode_hint(expected_range = "0.0..1.0"]` (makes `f32` ~25 bits and `f64` ~54 bits)
-- Serialization with `bitcode::encode` will never return an error unless you:
-- Fall back to serde on specific fields with `#[bitcode(with_serde)]`
+- Apply attributes to fields/enum variants:
+
+| Attribute                                     | Type          | Result                                                                                                     |
+|-----------------------------------------------|---------------|------------------------------------------------------------------------------------------------------------|
+| `#[bitcode_hint(ascii)]`                      | String        | Uses 7 bits per character                                                                                  |
+| `#[bitcode_hint(ascii_lowercase)]`            | String        | Uses 5 bits per character                                                                                  |
+| `#[bitcode_hint(expected_range = "50..100"]`  | u8-u64        | Uses log2(range.end - range.start) bits                                                                    |
+| `#[bitcode_hint(expected_range = "0.0..1.0"]` | f32/f64       | Uses ~25 bits for `f32` and ~54 bits for `f64`                                                             |
+| `#[bitcode_hint(frequency = 123)`             | enum variant  | Frequent variants use fewer bits (see [Huffman coding](https://en.wikipedia.org/wiki/Huffman_coding))      |
+| `#[bitcode_hint(gamma)]`                      | i8-i64/u8-u64 | Small integers use fewer bits (see [Elias gamma coding](https://en.wikipedia.org/wiki/Elias_gamma_coding)) |
+| `#[bitcode(with_serde)]`                      | T: Serialize  | Uses `serde::Serialize` instead of `bitcode::Encode`                                                       |
 
 ### Limitations
 
 - Doesn't support streaming APIs
-- Format is unstable between versions
-- When using `feature = "derive"`, structs/enums that contain themselves must be labeled with `#[bitcode(recursive)]` or you will get a compile error
+- Format may change between major versions
+- With `feature = "derive"`, types containing themselves must use `#[bitcode(recursive)]` to compile
 
 ## Benchmarks vs. [bincode](https://github.com/bincode-org/bincode) and [postcard](https://github.com/jamesmunns/postcard)
 
@@ -41,13 +42,12 @@ Bitcode does not attempt to have a stable format, so we are free to optimize it.
 
 | Format           | Serialize | Deserialize |
 |------------------|-----------|-------------|
-| Bitcode (derive) | 6,312     | 25,370      |
-| Bitcode (serde)  | 10,015    | 41,223      |
-| Bincode          | 8,247     | 23,317      |
-| Bincode (varint) | 9,872     | 30,138      |
-| Postcard         | 13,836    | 31,453      |
+| Bitcode (derive) | 6,035     | 23,955      |
+| Bitcode (serde)  | 9,828     | 40,457      |
+| Bincode          | 7,966     | 22,182      |
+| Bincode (varint) | 10,520    | 28,874      |
+| Postcard         | 12,872    | 35,148      |
 
-Aims to be as fast as [bincode](https://github.com/bincode-org/bincode) and [postcard](https://github.com/jamesmunns/postcard).
 See [rust serialization benchmark](https://github.com/djkoloski/rust_serialization_benchmark) for more benchmarks.
 
 ### Size (bits)
@@ -99,12 +99,11 @@ enum DataEnum {
 }
 ```
 In the table below, **Size (bytes)** is the average size of a randomly generated `Data` struct.
-**Zero Bytes** are the percentage of bytes that are 0 in the output.
-If the result contains a large percentage of zero bytes, that is a sign that it could be compressed more.
+**Zero Bytes** is the percentage of bytes that are 0 in the output.
 
 | Format                 | Size (bytes) | Zero Bytes |
 |------------------------|--------------|------------|
-| Bitcode (derive)       | 6.5          | 0.25%      |
+| Bitcode (derive)       | 6.2          | 0.23%      |
 | Bitcode (serde)        | 6.7          | 0.19%      |
 | Bincode                | 20.3         | 65.9%      |
 | Bincode (varint)       | 10.9         | 27.7%      |
@@ -112,31 +111,6 @@ If the result contains a large percentage of zero bytes, that is a sign that it 
 | Bincode (Deflate Fast) | 8.4          | 0.88%      |
 | Bincode (Deflate Best) | 7.8          | 0.29%      |
 | Postcard               | 10.7         | 28.3%      |
-| ideal (max entropy)    |              | 0.39%      |
-
-### A note on enums
-
-When using serde to serialize enums. Enum variants are encoded such that variants declared earlier will occupy fewer
-bits. It is advantageous to sort variant declarations from most common to least common.
-
-This limitation can be avoided by using bitcode's derive macros.
-
-## Testing
-
-### Fuzzing
-
-```
-cargo install cargo-fuzz
-cargo fuzz run fuzz
-```
-
-### 32-bit
-
-```
-sudo apt install gcc-multilib
-rustup target add i686-unknown-linux-gnu
-cargo test --target i686-unknown-linux-gnu
-```
 
 ## Acknowledgement
 

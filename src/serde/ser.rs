@@ -51,6 +51,7 @@ impl<C: Encoding, W: Write> BitcodeSerializer<'_, C, W> {
 
 macro_rules! impl_ser {
     ($name:ident, $a:ty) => {
+        #[inline(always)]
         fn $name(self, v: $a) -> Result<Self::Ok> {
             v.encode(self.encoding, self.writer)
         }
@@ -90,11 +91,13 @@ impl<C: Encoding, W: Write> Serializer for BitcodeSerializer<'_, C, W> {
         Ok(())
     }
 
+    #[inline(always)]
     fn serialize_none(self) -> Result<Self::Ok> {
         self.writer.write_false();
         Ok(())
     }
 
+    #[inline(always)]
     fn serialize_some<T: ?Sized>(self, value: &T) -> Result<Self::Ok>
     where
         T: Serialize,
@@ -141,16 +144,19 @@ impl<C: Encoding, W: Write> Serializer for BitcodeSerializer<'_, C, W> {
         value.serialize(self)
     }
 
+    #[inline(always)]
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq> {
         let len = len.expect("sequence must have len");
         reborrow!(self).serialize_len(len)?;
         Ok(self)
     }
 
+    #[inline(always)]
     fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple> {
         Ok(self)
     }
 
+    #[inline(always)]
     fn serialize_tuple_struct(
         self,
         _name: &'static str,
@@ -159,6 +165,7 @@ impl<C: Encoding, W: Write> Serializer for BitcodeSerializer<'_, C, W> {
         Ok(self)
     }
 
+    #[inline(always)]
     fn serialize_tuple_variant(
         self,
         _name: &'static str,
@@ -170,16 +177,19 @@ impl<C: Encoding, W: Write> Serializer for BitcodeSerializer<'_, C, W> {
         Ok(self)
     }
 
+    #[inline(always)]
     fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap> {
         let len = len.expect("sequence must have len");
         reborrow!(self).serialize_len(len)?;
         Ok(self)
     }
 
+    #[inline(always)]
     fn serialize_struct(self, _name: &'static str, _len: usize) -> Result<Self::SerializeStruct> {
         Ok(self)
     }
 
+    #[inline(always)]
     fn serialize_struct_variant(
         self,
         _name: &'static str,
@@ -191,6 +201,7 @@ impl<C: Encoding, W: Write> Serializer for BitcodeSerializer<'_, C, W> {
         Ok(self)
     }
 
+    #[inline(always)]
     fn is_human_readable(&self) -> bool {
         false
     }

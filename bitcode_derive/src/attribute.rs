@@ -22,6 +22,8 @@ impl BitcodeAttr {
             _ if is_hint => match nested {
                 Meta::Path(p) => {
                     let encoding = match path.as_str() {
+                        "ascii" => Encoding::Ascii,
+                        "ascii_lowercase" => Encoding::AsciiLowercase,
                         "fixed" => Encoding::Fixed,
                         "gamma" => Encoding::Gamma,
                         _ => return err(p, "unknown hint"),
@@ -133,6 +135,8 @@ impl BitcodeAttr {
 
 #[derive(Copy, Clone, Debug)]
 enum Encoding {
+    Ascii,
+    AsciiLowercase,
     Fixed,
     ExpectNormalizedFloat,
     ExpectedRangeU64 { min: u64, max: u64 },
@@ -143,6 +147,8 @@ impl Encoding {
     fn tokens(&self) -> TokenStream {
         let private = private();
         match self {
+            Self::Ascii => quote! { #private::BitString(#private::Ascii) },
+            Self::AsciiLowercase => quote! { #private::BitString(#private::AsciiLowercase) },
             Self::Fixed => quote! { #private::Fixed },
             Self::ExpectNormalizedFloat => quote! { #private::ExpectNormalizedFloat },
             Self::ExpectedRangeU64 { min, max } => {

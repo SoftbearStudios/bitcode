@@ -1,3 +1,4 @@
+use crate::encoding::ByteEncoding;
 use crate::read::Read;
 use crate::word::*;
 use crate::write::Write;
@@ -88,6 +89,14 @@ impl Register {
 }
 
 impl Write for Register {
+    type Revert = ();
+    fn get_revert(&mut self) -> Self::Revert {
+        unimplemented!()
+    }
+    fn revert(&mut self, _: Self::Revert) {
+        unimplemented!()
+    }
+
     #[inline(always)]
     fn write_bit(&mut self, v: bool) {
         self.write_bits(v as Word, 1);
@@ -100,6 +109,10 @@ impl Write for Register {
     }
 
     fn write_bytes(&mut self, _: &[u8]) {
+        unimplemented!()
+    }
+
+    fn write_encoded_bytes<C: ByteEncoding>(&mut self, _: &[u8]) -> bool {
         unimplemented!()
     }
 }
@@ -130,6 +143,10 @@ impl Read for Register {
     }
 
     fn read_bytes(&mut self, _: usize) -> Result<&[u8]> {
+        unimplemented!()
+    }
+
+    fn read_encoded_bytes<C: ByteEncoding>(&mut self, _: usize) -> Result<&[u8]> {
         unimplemented!()
     }
 

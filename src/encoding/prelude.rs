@@ -62,7 +62,7 @@ pub mod bench_prelude {
 
     #[macro_export]
     macro_rules! bench_encoding {
-        ($encoding:path, $dataset:path) => {
+        ($encoding:expr, $dataset:path) => {
             #[bench]
             fn encode(b: &mut Bencher) {
                 bench_encode(b, $encoding, $dataset());

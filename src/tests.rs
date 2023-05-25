@@ -187,20 +187,24 @@ fn test_array_string() {
     // Serialize one field has with serde.
     #[derive(Clone, Debug, PartialEq, Encode, Decode, Serialize, Deserialize)]
     struct MyStruct1<const N: usize> {
+        #[bitcode_hint(ascii_lowercase)]
         #[bitcode(with_serde)]
         inner: ArrayString<N>,
         #[bitcode_hint(gamma)]
         foo: i32,
     }
 
-    let short = MyStruct1 {
-        inner: ArrayString::<5>::from("abcde").unwrap(),
-        foo: 5,
-    };
-    the_same(short);
+    for i in 0..=20 {
+        let short = MyStruct1 {
+            inner: ArrayString::<20>::from(&"a".repeat(i)).unwrap(),
+            foo: 5,
+        };
+        the_same_once(short);
+    }
 
     // Serialize whole struct with serde.
     #[derive(Clone, Debug, PartialEq, Encode, Decode, Serialize, Deserialize)]
+    #[bitcode_hint(ascii)]
     #[bitcode(with_serde)]
     struct MyStruct2<const N: usize> {
         inner: ArrayString<N>,
@@ -209,7 +213,7 @@ fn test_array_string() {
     let long = MyStruct2 {
         inner: ArrayString::<150>::from(&"abcde".repeat(30)).unwrap(),
     };
-    the_same(long);
+    the_same_once(long);
 
     // Serialize whole variant with serde.
     #[derive(Clone, Debug, PartialEq, Encode, Decode, Serialize, Deserialize)]
@@ -219,7 +223,7 @@ fn test_array_string() {
     }
 
     let medium = MyEnum::A(ArrayString::<25>::from(&"abcde".repeat(5)).unwrap());
-    the_same(medium);
+    the_same_once(medium);
 }
 
 #[test]

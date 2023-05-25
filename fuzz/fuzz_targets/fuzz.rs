@@ -112,6 +112,8 @@ fuzz_target!(|data: &[u8]| {
         K(#[bitcode_hint(expected_range = "200..5000")] u32),
         L(#[bitcode_hint(gamma)] i8),
         M(#[bitcode_hint(gamma)] u64),
+        N(#[bitcode_hint(ascii)] String),
+        O(#[bitcode_hint(ascii_lowercase)] String),
     }
 
     #[derive(Serialize, Deserialize, Encode, Decode, Debug)]

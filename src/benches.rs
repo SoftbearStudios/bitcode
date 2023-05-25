@@ -22,6 +22,7 @@ struct Data {
     x: Option<f32>,
     y: Option<i8>,
     z: u16,
+    #[bitcode_hint(ascii)]
     s: StringImpl,
     e: DataEnum,
 }
@@ -55,7 +56,7 @@ enum DataEnum {
     #[default]
     #[bitcode_hint(frequency = 10)]
     Bar,
-    Baz(StringImpl),
+    Baz(#[bitcode_hint(ascii)] StringImpl),
     Foo(Option<u8>),
 }
 
@@ -301,11 +302,6 @@ mod tests {
 
         // TODO compressed postcard.
         print_results("Postcard", postcard_serialize(data));
-
-        println!(
-            "| ideal (max entropy)    |              | {:.2}%      |",
-            100.0 / 255.0
-        );
     }
 
     #[test]
