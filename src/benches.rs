@@ -264,47 +264,98 @@ bench!(
     postcard
 );
 
-#[cfg(all(test, debug_assertions))]
+#[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant};
+
     use super::*;
 
+    // cargo test comparison1 --release -- --nocapture --include-ignored
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "don't run in parallel with other benchmarks"
+    )]
     fn comparison1() {
         let data = &random_data(10000);
-        let print_results = |name: &'static str, b: Vec<u8>| {
-            let zeros = 100.0 * b.iter().filter(|&&b| b == 0).count() as f32 / b.len() as f32;
-            let precision = 2 - (zeros.log10().ceil() as usize).min(1);
+        let print_results =
+            |name: &'static str, ser: fn(&[Data]) -> Vec<u8>, de: fn(&[u8]) -> Vec<Data>| {
+                let b = ser(&data);
+                let zeros = 100.0 * b.iter().filter(|&&b| b == 0).count() as f32 / b.len() as f32;
+                let _precision = 2 - (zeros.log10().ceil() as usize).min(1);
 
-            println!(
-                "| {name:<22} | {:<12.1} | {zeros:>4.1$}%      |",
-                b.len() as f32 / data.len() as f32,
-                precision,
-            );
-        };
+                fn benchmark_ns(f: impl Fn()) -> usize {
+                    const WARMUP: usize = 10;
+                    let start = Instant::now();
+                    for _ in 0..WARMUP {
+                        f();
+                    }
+                    let warmup_duration = start.elapsed();
+                    let per_second = (WARMUP as f32 / warmup_duration.as_secs_f32()) as usize;
+                    let samples: usize = (per_second / 4).max(10);
+                    let mut duration = Duration::ZERO;
+                    for _ in 0..samples {
+                        let start = Instant::now();
+                        f();
+                        duration += start.elapsed();
+                    }
+                    duration.as_nanos() as usize / samples
+                }
 
-        println!("| Format                 | Size (bytes) | Zero Bytes |");
-        println!("|------------------------|--------------|------------|");
-        print_results("Bitcode (derive)", bitcode_encode(data));
-        print_results("Bitcode (serde)", bitcode_serialize(data));
-        print_results("Bincode", bincode_fixint_serialize(data));
-        print_results("Bincode (varint)", bincode_varint_serialize(data));
+                let ser_time = benchmark_ns(|| {
+                    black_box(ser(black_box(&data)));
+                }) / data.len();
+
+                let de_time = benchmark_ns(|| {
+                    black_box(de(black_box(&b)));
+                }) / data.len();
+
+                //  {zeros:>4.1$}%
+                println!(
+                    "| {name:<22} | {:<12.1} | {ser_time:<10}     | {de_time:<10}       |",
+                    b.len() as f32 / data.len() as f32,
+                    //precision,
+                );
+            };
+
+        println!("| Format                 | Size (bytes) | Serialize (ns) | Deserialize (ns) |");
+        println!("|------------------------|--------------|----------------|------------------|");
+        print_results("Bitcode (derive)", bitcode_encode, bitcode_decode);
+        print_results("Bitcode (serde)", bitcode_serialize, bitcode_deserialize);
+        print_results(
+            "Bincode",
+            bincode_fixint_serialize,
+            bincode_fixint_deserialize,
+        );
+        print_results(
+            "Bincode (varint)",
+            bincode_varint_serialize,
+            bincode_varint_deserialize,
+        );
 
         // These use varint since it makes the result smaller and actually speeds up compression.
-        print_results("Bincode (LZ4)", bincode_lz4_serialize(data));
+        print_results(
+            "Bincode (LZ4)",
+            bincode_lz4_serialize,
+            bincode_lz4_deserialize,
+        );
         print_results(
             "Bincode (Deflate Fast)",
-            bincode_flate2_fast_serialize(data),
+            bincode_flate2_fast_serialize,
+            bincode_flate2_fast_deserialize,
         );
         print_results(
             "Bincode (Deflate Best)",
-            bincode_flate2_best_serialize(data),
+            bincode_flate2_best_serialize,
+            bincode_flate2_best_deserialize,
         );
 
         // TODO compressed postcard.
-        print_results("Postcard", postcard_serialize(data));
+        print_results("Postcard", postcard_serialize, postcard_deserialize);
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     fn comparison2() {
         use std::ops::RangeInclusive;
 
