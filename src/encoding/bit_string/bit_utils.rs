@@ -5,7 +5,7 @@ use bitintr::{Pdep, Pext};
 pub fn pack_lsb<const BITS: usize>(word: Word) -> Word {
     let mask = Word::from_le_bytes([(1 << BITS) - 1; 8]);
 
-    if cfg!(target_feature = "bmi2") {
+    if cfg!(all(target_feature = "bmi2", not(miri))) {
         word.pext(mask)
     } else {
         // Mask off bits that we don't care about.
@@ -26,7 +26,7 @@ pub fn pack_lsb<const BITS: usize>(word: Word) -> Word {
 
 #[inline(always)]
 pub fn unpack_lsb<const BITS: usize>(word: Word) -> Word {
-    if cfg!(target_feature = "bmi2") {
+    if cfg!(all(target_feature = "bmi2", not(miri))) {
         let mask = Word::from_le_bytes([(1 << BITS) - 1; 8]);
         word.pdep(mask)
     } else {
