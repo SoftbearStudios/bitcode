@@ -584,7 +584,7 @@ impl<'a> Read for WordReader<'a> {
         let remaining_bytes = len - whole_words_len * WORD_BYTES;
         debug_assert!((1..=8).contains(&remaining_bytes));
         *words.last_mut().unwrap() = C::unpack(self.inner.peek_reserved_bits(WORD_BITS));
-        self.inner.index += remaining_bytes * C::BITS_PER_BYTE as usize;
+        self.inner.index += remaining_bytes * C::BITS_PER_BYTE;
 
         // Swap bytes in each word (that was written to) if big endian and bytemuck to bytes.
         if cfg!(target_endian = "big") {
