@@ -5,8 +5,9 @@ use crate::nightly::{max, min, utf8_char_width};
 use crate::read::Read;
 use crate::write::Write;
 use crate::{Result, E};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::{CStr, CString};
-use std::hash::Hash;
+use std::hash::{BuildHasher, Hash};
 use std::marker::PhantomData;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::num::*;
@@ -217,6 +218,7 @@ impl Encode for char {
     const ENCODE_MIN: usize = 8;
     const ENCODE_MAX: usize = 32;
 
+    #[inline(always)]
     fn encode(&self, _: impl Encoding, writer: &mut impl Write) -> Result<()> {
         let mut buf = [0; 4];
         let n = self.encode_utf8(&mut buf).len();
@@ -228,19 +230,15 @@ impl Encode for char {
 impl Decode for char {
     impl_dec_from_enc!();
 
+    #[inline(always)]
     fn decode(_: impl Encoding, reader: &mut impl Read) -> Result<Self> {
-        let first = u8::decode(Fixed, reader)?;
-        let len = utf8_char_width(first);
+        let peek = reader.peek_bits()? as u32;
+        let first = peek as u8;
+        let n = utf8_char_width(first);
+        reader.advance(n * u8::BITS as usize);
+        let bytes = &peek.to_le_bytes()[..n];
 
-        let bytes = if len > 1 {
-            let remaining = reader.read_bits((len - 1) * u8::BITS as usize)?;
-            first as u32 | (remaining as u32) << u8::BITS
-        } else {
-            first as u32
-        }
-        .to_le_bytes();
-
-        let s = std::str::from_utf8(&bytes[..len]).map_err(|_| E::Invalid("char").e())?;
+        let s = std::str::from_utf8(bytes).map_err(|_| E::Invalid("char").e())?;
         debug_assert_eq!(s.chars().count(), 1);
         Ok(s.chars().next().unwrap())
     }
@@ -290,7 +288,7 @@ impl<T: Decode> Decode for Option<T> {
 }
 
 macro_rules! impl_either {
-    ($typ: path, $a: ident, $a_t:ty, $b:ident, $b_t: ty, $is_b: ident $(,$($generic: ident);*)*) => {
+    ($typ: path, $a: ident, $a_t:ty, $b:ident, $b_t: ty $(,$($generic: ident);*)*) => {
         impl $(<$($generic: Encode),*>)* Encode for $typ {
             const ENCODE_MIN: usize = 1 + min(<$a_t>::ENCODE_MIN, <$b_t>::ENCODE_MIN);
             const ENCODE_MAX: usize = max(<$a_t>::ENCODE_MAX, <$b_t>::ENCODE_MAX).saturating_add(1);
@@ -298,15 +296,13 @@ macro_rules! impl_either {
             fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
                 match self {
                     Self::$a(a) => {
-                        debug_assert!(!self.$is_b());
+                        writer.write_false();
                         optimized_enc!(encoding, writer);
-                        enc!(false, bool); // TODO use write_false.
                         enc!(a, $a_t);
                         end_enc!();
                         Ok(())
                     },
                     Self::$b(b) => {
-                        debug_assert!(self.$is_b());
                         optimized_enc!(encoding, writer);
                         enc!(true, bool);
                         enc!(b, $b_t);
@@ -338,7 +334,7 @@ macro_rules! impl_either {
     }
 }
 
-impl_either!(std::result::Result<T, E>, Ok, T, Err, E, is_err, T ; E);
+impl_either!(std::result::Result<T, E>, Ok, T, Err, E, T ; E);
 
 macro_rules! impl_wrapper {
     ($(::$ptr: ident)*) => {
@@ -385,7 +381,7 @@ macro_rules! impl_smart_ptr {
             impl_dec_same!(Vec<T>);
 
             fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
-                Ok(Vec::<T>::decode(encoding, reader)?.into())
+                Ok(Vec::<T>::decode(encoding, reader)?.into()) // TODO avoid Vec<T> allocation for Rc<[T]> and Arc<[T]>.
             }
         }
 
@@ -403,7 +399,7 @@ impl_smart_ptr!(::std::boxed::Box);
 impl_smart_ptr!(::std::rc::Rc);
 impl_smart_ptr!(::std::sync::Arc);
 
-// Writes multiple elements per flush. TODO use on VecDeque::as_slices.
+// Writes multiple elements per flush.
 #[cfg_attr(not(debug_assertions), inline(always))]
 fn encode_elements<T: Encode>(
     elements: &[T],
@@ -537,7 +533,8 @@ impl<const N: usize, T: Decode> Decode for [T; N] {
 // Implement faster encoding of &[u8] or more generally any &[bytemuck::Pod] that encodes the same.
 impl<T: Encode> Encode for [T] {
     const ENCODE_MIN: usize = 1;
-    const ENCODE_MAX: usize = usize::MAX;
+    // [()] max bits is 127 (gamma of u64::MAX - 1).
+    const ENCODE_MAX: usize = (T::ENCODE_MAX.saturating_mul(usize::MAX)).saturating_add(127);
 
     fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
         self.len().encode(Gamma, writer)?;
@@ -558,7 +555,8 @@ impl<T: Encode> Encode for Vec<T> {
 // Implement faster decoding of Vec<u8> or more generally any Vec<bytemuck::Pod> that encodes the same.
 impl<T: Decode> Decode for Vec<T> {
     const DECODE_MIN: usize = 1;
-    const DECODE_MAX: usize = usize::MAX;
+    // Vec<()> max bits is 127 (gamma of u64::MAX - 1).
+    const DECODE_MAX: usize = (T::DECODE_MAX.saturating_mul(usize::MAX)).saturating_add(127);
 
     fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
         let len = usize::decode(Gamma, reader)?;
@@ -567,18 +565,23 @@ impl<T: Decode> Decode for Vec<T> {
     }
 }
 
+macro_rules! impl_iter_encode {
+    ($item:ty) => {
+        impl_enc_same!([$item]);
+        fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
+            self.len().encode(Gamma, writer)?;
+            for t in self {
+                t.encode(encoding, writer)?;
+            }
+            Ok(())
+        }
+    };
+}
+
 macro_rules! impl_collection {
     ($collection: ident $(,$bound: ident)*) => {
         impl<T: Encode $(+ $bound)*> Encode for std::collections::$collection<T> {
-            impl_enc_same!([T]);
-
-            fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
-                self.len().encode(Gamma, writer)?;
-                for t in self {
-                    t.encode(encoding, writer)?;
-                }
-                Ok(())
-            }
+            impl_iter_encode!(T);
         }
 
         impl<T: Decode $(+ $bound)*> Decode for std::collections::$collection<T> {
@@ -594,15 +597,42 @@ macro_rules! impl_collection {
     }
 }
 
-impl_collection!(VecDeque);
-impl_collection!(HashSet, Hash, Eq);
 impl_collection!(BTreeSet, Ord);
-impl_collection!(BinaryHeap, Ord);
 impl_collection!(LinkedList);
 
+// Some collections can be efficiently created from a Vec such as BinaryHeap/VecDeque.
+macro_rules! impl_collection_decode_from_vec {
+    ($collection: ident $(,$bound: ident)*) => {
+        impl<T: Decode $(+ $bound)*> Decode for std::collections::$collection<T> {
+            impl_dec_same!(Vec<T>);
+
+            fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
+                Ok(Vec::decode(encoding, reader)?.into())
+            }
+        }
+    }
+}
+
+impl<T: Encode> Encode for std::collections::VecDeque<T> {
+    impl_enc_same!([T]);
+
+    fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
+        self.len().encode(Gamma, writer)?;
+        let (a, b) = self.as_slices();
+        encode_elements(a, encoding, writer)?;
+        encode_elements(b, encoding, writer)
+    }
+}
+impl_collection_decode_from_vec!(VecDeque);
+
+impl<T: Encode + Ord> Encode for std::collections::BinaryHeap<T> {
+    // TODO optimize with encode_elements(binary_heap.as_slice(), ..) once it's stable.
+    impl_iter_encode!(T);
+}
+impl_collection_decode_from_vec!(BinaryHeap, Ord);
+
 impl Encode for str {
-    const ENCODE_MIN: usize = 1;
-    const ENCODE_MAX: usize = usize::MAX;
+    impl_enc_same!([u8]);
 
     #[inline(always)]
     fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
@@ -630,8 +660,7 @@ impl Decode for String {
 }
 
 impl Encode for CStr {
-    const ENCODE_MIN: usize = 1;
-    const ENCODE_MAX: usize = usize::MAX;
+    impl_enc_same!(str);
 
     #[inline(always)]
     fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
@@ -641,7 +670,7 @@ impl Encode for CStr {
 }
 
 impl Encode for CString {
-    impl_enc_same!(str);
+    impl_enc_same!(CStr);
 
     #[inline(always)]
     fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
@@ -658,63 +687,93 @@ impl Decode for CString {
     }
 }
 
-macro_rules! impl_map {
-    ($collection: ident $(,$bound: ident)*) => {
-        impl<K: Encode, V: Encode> Encode for std::collections::$collection<K, V> {
-            impl_enc_same!([(K, V)]);
+impl<K: Encode, V: Encode> Encode for BTreeMap<K, V> {
+    impl_iter_encode!((K, V));
+}
 
-            fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
-                self.len().encode(Gamma, writer)?;
-                for t in self.iter() {
-                    t.encode(encoding, writer)?;
-                }
-                Ok(())
-            }
-        }
+impl<K: Decode + Ord, V: Decode> Decode for BTreeMap<K, V> {
+    impl_dec_same!(Vec<(K, V)>);
 
-        impl<K: Decode $(+ $bound)*, V: Decode> Decode for std::collections::$collection<K, V> {
-            impl_dec_same!(Vec<(K, V)>);
+    fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
+        let len = usize::decode(Gamma, reader)?;
+        guard_len::<(K, V)>(len, encoding, reader)?;
 
-            fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
-                let len = usize::decode(Gamma, reader)?;
-                guard_len::<(K, V)>(len, encoding, reader)?;
-
-                (0..len)
-                    .map(|_| <(K, V)>::decode(encoding, reader))
-                    .collect()
-            }
-        }
+        // Collect is faster than insert for BTreeMap since it can add the items in bulk once it
+        // ensures they are sorted.
+        (0..len)
+            .map(|_| <(K, V)>::decode(encoding, reader))
+            .collect()
     }
 }
 
-impl_map!(HashMap, Hash, Eq);
-impl_map!(BTreeMap, Ord);
+impl<K: Encode, V: Encode, S> Encode for HashMap<K, V, S> {
+    impl_iter_encode!((K, V));
+}
+
+impl<K: Decode + Hash + Eq, V: Decode, S: BuildHasher + Default> Decode for HashMap<K, V, S> {
+    impl_dec_same!(Vec<(K, V)>);
+
+    fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
+        let len = usize::decode(Gamma, reader)?;
+        guard_len::<(K, V)>(len, encoding, reader)?;
+
+        // Insert is faster than collect for HashMap since it only reserves size_hint / 2 in collect.
+        let mut map = Self::with_capacity_and_hasher(len, Default::default());
+        for _ in 0..len {
+            let (k, v) = <(K, V)>::decode(encoding, reader)?;
+            map.insert(k, v);
+        }
+        Ok(map)
+    }
+}
+
+impl<T: Encode, S> Encode for HashSet<T, S> {
+    impl_iter_encode!(T);
+}
+
+impl<T: Decode + Hash + Eq, S: BuildHasher + Default> Decode for HashSet<T, S> {
+    impl_dec_same!(Vec<T>);
+
+    fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
+        let len = usize::decode(Gamma, reader)?;
+        guard_len::<T>(len, encoding, reader)?;
+
+        // Insert is faster than collect for HashSet since it only reserves size_hint / 2 in collect.
+        let mut set = Self::with_capacity_and_hasher(len, Default::default());
+        for _ in 0..len {
+            set.insert(T::decode(encoding, reader)?);
+        }
+        Ok(set)
+    }
+}
 
 macro_rules! impl_ipvx_addr {
-    ($addr: ident, $bytes: expr) => {
+    ($addr:ident, $bytes:expr, $int:ty) => {
         impl Encode for $addr {
             impl_enc_const!($bytes * u8::BITS as usize);
 
-            fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
-                self.octets().encode(encoding, writer)
+            #[inline(always)]
+            fn encode(&self, _: impl Encoding, writer: &mut impl Write) -> Result<()> {
+                <$int>::from_le_bytes(self.octets()).encode(Fixed, writer)
             }
         }
 
         impl Decode for $addr {
             impl_dec_from_enc!();
 
-            fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
-                Ok(Self::from(<[u8; $bytes] as Decode>::decode(
-                    encoding, reader,
-                )?))
+            #[inline(always)]
+            fn decode(_: impl Encoding, reader: &mut impl Read) -> Result<Self> {
+                Ok(Self::from(
+                    <$int as Decode>::decode(Fixed, reader)?.to_le_bytes(),
+                ))
             }
         }
     };
 }
 
-impl_ipvx_addr!(Ipv4Addr, 4);
-impl_ipvx_addr!(Ipv6Addr, 16);
-impl_either!(IpAddr, V4, Ipv4Addr, V6, Ipv6Addr, is_ipv6);
+impl_ipvx_addr!(Ipv4Addr, 4, u32);
+impl_ipvx_addr!(Ipv6Addr, 16, u128);
+impl_either!(IpAddr, V4, Ipv4Addr, V6, Ipv6Addr);
 
 macro_rules! impl_socket_addr_vx {
     ($addr:ident, $ip_addr:ident, $bytes:expr $(,$extra: expr)*) => {
@@ -750,7 +809,7 @@ macro_rules! impl_socket_addr_vx {
 
 impl_socket_addr_vx!(SocketAddrV4, Ipv4Addr, 4 + 2);
 impl_socket_addr_vx!(SocketAddrV6, Ipv6Addr, 16 + 2, 0, 0);
-impl_either!(SocketAddr, V4, SocketAddrV4, V6, SocketAddrV6, is_ipv6);
+impl_either!(SocketAddr, V4, SocketAddrV4, V6, SocketAddrV6);
 
 impl<T> Encode for PhantomData<T> {
     impl_enc_const!(0);
@@ -768,7 +827,7 @@ impl<T> Decode for PhantomData<T> {
     }
 }
 
-// TODO Cell, Duration, maybe RefCell, maybe Range/RangeInclusive/Bound.
+// TODO Duration (as 94 bit integer), Range, RangeInclusive maybe Bound, Cell.
 
 // Allows `&str` and `&[T]` to implement encode.
 impl<'a, T: Encode + ?Sized> Encode for &'a T {
@@ -855,4 +914,109 @@ impl_tuples! {
     14 => (0 T0 1 T1 2 T2 3 T3 4 T4 5 T5 6 T6 7 T7 8 T8 9 T9 10 T10 11 T11 12 T12 13 T13)
     15 => (0 T0 1 T1 2 T2 3 T3 4 T4 5 T5 6 T6 7 T7 8 T8 9 T9 10 T10 11 T11 12 T12 13 T13 14 T14)
     16 => (0 T0 1 T1 2 T2 3 T3 4 T4 5 T5 6 T6 7 T7 8 T8 9 T9 10 T10 11 T11 12 T12 13 T13 14 T14 15 T15)
+}
+
+#[cfg(all(test, not(miri)))]
+mod tests {
+    use paste::paste;
+    use std::net::*;
+    use test::{black_box, Bencher};
+
+    macro_rules! bench {
+        ($name:ident, $t:ty, $v:expr) => {
+            paste! {
+                #[bench]
+                fn [<bench_ $name _encode>](b: &mut Bencher) {
+                    let mut buffer = crate::Buffer::new();
+                    let v = vec![$v; 1000];
+                    let _ = buffer.encode(&v).unwrap();
+
+                    b.iter(|| {
+                        let v = black_box(v.as_slice());
+                        let bytes = buffer.encode(v).unwrap();
+                        black_box(bytes);
+                    })
+                }
+
+                #[bench]
+                fn [<bench_ $name _decode>](b: &mut Bencher) {
+                    let mut buffer = crate::Buffer::new();
+                    let v = vec![$v; 1000];
+
+                    let bytes = buffer.encode(&v).unwrap().to_vec();
+                    let decoded: Vec<$t> = buffer.decode(&bytes).unwrap();
+                    assert_eq!(v, decoded);
+
+                    b.iter(|| {
+                        let bytes = black_box(bytes.as_slice());
+                        black_box(buffer.decode::<Vec<$t>>(bytes).unwrap())
+                    })
+                }
+            }
+        };
+    }
+
+    bench!(char, char, 'a'); // TODO bench on random chars.
+    bench!(ipv4_addr, Ipv4Addr, Ipv4Addr::from([1, 2, 3, 4]));
+    bench!(ipv6_addr, Ipv6Addr, Ipv6Addr::from([4; 16]));
+    bench!(
+        socket_addr_v4,
+        SocketAddrV4,
+        SocketAddrV4::new(Ipv4Addr::from([1, 2, 3, 4]), 1234)
+    );
+    bench!(
+        socket_addr_v6,
+        SocketAddrV6,
+        SocketAddrV6::new(Ipv6Addr::from([4; 16]), 1234, 0, 0)
+    );
+
+    macro_rules! bench_map_or_set {
+        ($name:ident, $t:ty, $f:expr) => {
+            paste! {
+                #[bench]
+                fn [<bench_ $name _encode>](b: &mut Bencher) {
+                    let mut buffer = crate::Buffer::new();
+                    let v = $t::from_iter((0u16..1000).map($f));
+                    let _ = buffer.encode(&v).unwrap();
+
+                    b.iter(|| {
+                        let v = black_box(&v);
+                        let bytes = buffer.encode(v).unwrap();
+                        black_box(bytes);
+                    })
+                }
+
+                #[bench]
+                fn [<bench_ $name _decode>](b: &mut Bencher) {
+                    let mut buffer = crate::Buffer::new();
+                    let v = $t::from_iter((0u16..1000).map($f));
+
+                    let bytes = buffer.encode(&v).unwrap().to_vec();
+                    let decoded: $t = buffer.decode(&bytes).unwrap();
+                    assert_eq!(v, decoded);
+
+                    b.iter(|| {
+                        let bytes = black_box(bytes.as_slice());
+                        black_box(buffer.decode::<$t>(bytes).unwrap())
+                    })
+                }
+            }
+        };
+    }
+
+    macro_rules! bench_map {
+        ($name:ident, $t:ident) => {
+            bench_map_or_set!($name, std::collections::$t::<u16, u16>, |v| (v, v));
+        };
+    }
+    bench_map!(btree_map, BTreeMap);
+    bench_map!(hash_map, HashMap);
+
+    macro_rules! bench_set {
+        ($name:ident, $t:ident) => {
+            bench_map_or_set!($name, std::collections::$t::<u16>, |v| v);
+        };
+    }
+    bench_set!(btree_set, BTreeSet);
+    bench_set!(hash_set, HashSet);
 }

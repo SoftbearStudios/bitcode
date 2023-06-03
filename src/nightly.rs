@@ -3,7 +3,7 @@
 use std::num::NonZeroU64;
 
 #[inline(always)]
-pub fn div_ceil(me: usize, rhs: usize) -> usize {
+pub const fn div_ceil(me: usize, rhs: usize) -> usize {
     let d = me / rhs;
     let r = me % rhs;
     if r > 0 && rhs > 0 {

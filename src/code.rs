@@ -171,6 +171,7 @@ pub use optimized_enc;
 // These benchmarks ensure that optimized_enc is working. They all run about 8 times faster with optimized_enc.
 #[cfg(all(test, not(miri)))]
 mod optimized_enc_tests {
+    use std::collections::{BinaryHeap, VecDeque};
     use test::{black_box, Bencher};
 
     type A = u8;
@@ -224,7 +225,19 @@ mod optimized_enc_tests {
     }
 
     #[bench]
-    fn bench_byte_slice(b: &mut Bencher) {
+    fn bench_bool_slice(b: &mut Bencher) {
+        let mut buffer = crate::Buffer::new();
+        let foo = vec![false; 8 * 1000];
+
+        b.iter(|| {
+            let foo = black_box(foo.as_slice());
+            let bytes = buffer.encode(foo).unwrap();
+            black_box(bytes);
+        })
+    }
+
+    #[bench]
+    fn bench_vec(b: &mut Bencher) {
         let mut buffer = crate::Buffer::new();
         let foo = vec![0u8; 8 * 1000];
 
@@ -236,12 +249,30 @@ mod optimized_enc_tests {
     }
 
     #[bench]
-    fn bench_bool_slice(b: &mut Bencher) {
+    fn bench_vec_deque(b: &mut Bencher) {
         let mut buffer = crate::Buffer::new();
-        let foo = vec![false; 8 * 1000];
+        let mut foo = VecDeque::from(vec![0u8; 8000]);
+        for _ in 0..4000 {
+            // Make it not contiguous.
+            foo.pop_front().unwrap();
+            foo.push_back(1u8);
+        }
 
         b.iter(|| {
-            let foo = black_box(foo.as_slice());
+            let foo = black_box(&foo);
+            let bytes = buffer.encode(foo).unwrap();
+            black_box(bytes);
+        })
+    }
+
+    // BinaryHeap::encode isn't optimized yet.
+    #[bench]
+    fn bench_binary_heap(b: &mut Bencher) {
+        let mut buffer = crate::Buffer::new();
+        let foo = BinaryHeap::from_iter((0u16..8000).map(|v| v as u8));
+
+        b.iter(|| {
+            let foo = black_box(&foo);
             let bytes = buffer.encode(foo).unwrap();
             black_box(bytes);
         })
@@ -344,6 +375,7 @@ pub use optimized_dec;
 // These benchmarks ensure that optimized_dec is working. They run 4-8 times faster with optimized_dec.
 #[cfg(all(test, not(miri)))]
 mod optimized_dec_tests {
+    use std::collections::{BTreeSet, BinaryHeap, VecDeque};
     use test::{black_box, Bencher};
 
     type A = u8;
@@ -429,6 +461,48 @@ mod optimized_dec_tests {
         let bytes = buffer.encode(&foo).unwrap().to_vec();
         let decoded: T = buffer.decode(&bytes).unwrap();
         assert_eq!(foo, decoded);
+
+        b.iter(|| {
+            let bytes = black_box(bytes.as_slice());
+            black_box(buffer.decode::<T>(bytes).unwrap())
+        })
+    }
+
+    #[bench]
+    fn bench_vec_deque(b: &mut Bencher) {
+        let mut buffer = crate::Buffer::new();
+        let mut foo = VecDeque::from(vec![0u8; 8000]);
+        for _ in 0..4000 {
+            // Make it not contiguous.
+            foo.pop_front().unwrap();
+            foo.push_back(1u8);
+        }
+        type T = VecDeque<u8>;
+
+        let bytes = buffer.encode(&foo).unwrap().to_vec();
+        let decoded: T = buffer.decode(&bytes).unwrap();
+        assert_eq!(foo, decoded);
+
+        b.iter(|| {
+            let bytes = black_box(bytes.as_slice());
+            black_box(buffer.decode::<T>(bytes).unwrap())
+        })
+    }
+
+    #[bench]
+    fn bench_binary_heap(b: &mut Bencher) {
+        let mut buffer = crate::Buffer::new();
+        let foo = BinaryHeap::from_iter((0u16..8000).map(|v| v as u8));
+        type T = BinaryHeap<u8>;
+
+        let bytes = buffer.encode(&foo).unwrap().to_vec();
+        let decoded: T = buffer.decode(&bytes).unwrap();
+
+        // Binary heaps can't be compared directly.
+        assert_eq!(
+            BTreeSet::from_iter(foo.iter().copied()),
+            BTreeSet::from_iter(decoded.iter().copied())
+        );
 
         b.iter(|| {
             let bytes = black_box(bytes.as_slice());

@@ -4,7 +4,7 @@ extern crate bitcode;
 use bitcode::{Decode, Encode};
 use bitvec::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::CString;
 
 fuzz_target!(|data: &[u8]| {
@@ -114,6 +114,7 @@ fuzz_target!(|data: &[u8]| {
         M(#[bitcode_hint(gamma)] u64),
         N(#[bitcode_hint(ascii)] String),
         O(#[bitcode_hint(ascii_lowercase)] String),
+        P(BTreeMap<u16, u8>),
     }
 
     #[derive(Serialize, Deserialize, Encode, Decode, Debug)]
