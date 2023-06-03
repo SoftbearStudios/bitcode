@@ -67,6 +67,7 @@ See [rust serialization benchmark](https://github.com/djkoloski/rust_serializati
 | Option<()>          | 1                | 1               | 8       | 8                | 8        |
 | Result<(), ()>      | 1                | 1-3             | 32      | 8                | 8        |
 | enum { A, B, C, D } | 2                | 1-5             | 32      | 8                | 8        |
+| Duration            | 94               | 96              | 96      | 16-112           | 16-120   |
 
 | Value               | Bitcode (derive) | Bitcode (serde) | Bincode | Bincode (varint) | Postcard |
 |---------------------|------------------|-----------------|---------|------------------|----------|

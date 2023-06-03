@@ -11,6 +11,7 @@ use std::hash::{BuildHasher, Hash};
 use std::marker::PhantomData;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::num::*;
+use std::time::Duration;
 
 macro_rules! impl_enc_const {
     ($v:expr) => {
@@ -811,6 +812,30 @@ impl_socket_addr_vx!(SocketAddrV4, Ipv4Addr, 4 + 2);
 impl_socket_addr_vx!(SocketAddrV6, Ipv6Addr, 16 + 2, 0, 0);
 impl_either!(SocketAddr, V4, SocketAddrV4, V6, SocketAddrV6);
 
+impl Encode for Duration {
+    impl_enc_const!(94); // 64 bits seconds + 30 bits nanoseconds
+
+    fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
+        encoding.write_u128::<{ Self::ENCODE_MAX }>(writer, self.as_nanos());
+        Ok(())
+    }
+}
+
+impl Decode for Duration {
+    impl_dec_from_enc!();
+
+    fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
+        let nanos = encoding.read_u128::<{ Self::DECODE_MAX }>(reader)?;
+
+        // Manual implementation of Duration::from_nanos since it takes a u64 instead of a u128.
+        const NANOS_PER_SEC: u128 = Duration::new(1, 0).as_nanos();
+        let secs = (nanos / NANOS_PER_SEC)
+            .try_into()
+            .map_err(|_| E::Invalid("Duration").e())?;
+        Ok(Duration::new(secs, (nanos % NANOS_PER_SEC) as u32))
+    }
+}
+
 impl<T> Encode for PhantomData<T> {
     impl_enc_const!(0);
 
@@ -827,7 +852,7 @@ impl<T> Decode for PhantomData<T> {
     }
 }
 
-// TODO Duration (as 94 bit integer), Range, RangeInclusive maybe Bound, Cell.
+// TODO maybe Atomic*, Bound, Cell, Range, RangeInclusive, SystemTime.
 
 // Allows `&str` and `&[T]` to implement encode.
 impl<'a, T: Encode + ?Sized> Encode for &'a T {
@@ -920,6 +945,7 @@ impl_tuples! {
 mod tests {
     use paste::paste;
     use std::net::*;
+    use std::time::Duration;
     use test::{black_box, Bencher};
 
     macro_rules! bench {
@@ -957,6 +983,7 @@ mod tests {
     }
 
     bench!(char, char, 'a'); // TODO bench on random chars.
+    bench!(duration, Duration, Duration::new(123, 456));
     bench!(ipv4_addr, Ipv4Addr, Ipv4Addr::from([1, 2, 3, 4]));
     bench!(ipv6_addr, Ipv6Addr, Ipv6Addr::from([4; 16]));
     bench!(

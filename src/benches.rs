@@ -267,6 +267,7 @@ bench!(
 #[cfg(all(test, debug_assertions))]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn comparison1() {
@@ -385,6 +386,10 @@ mod tests {
         compare("Option<()>", None..=Some(()));
         compare("Result<(), ()>", Ok(())..=Err(()));
         compare("enum { A, B, C, D }", Enum::A..=Enum::D);
+        compare(
+            "Duration",
+            Duration::ZERO..=Duration::new(u64::MAX, 999_999_999),
+        );
 
         println!();
         println!("| Value               | Bitcode (derive) | Bitcode (serde) | Bincode | Bincode (varint) | Postcard |");
