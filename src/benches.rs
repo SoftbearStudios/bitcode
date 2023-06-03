@@ -266,10 +266,8 @@ bench!(
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
-
     use super::*;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     // cargo test comparison1 --release -- --nocapture --include-ignored
     #[test]
