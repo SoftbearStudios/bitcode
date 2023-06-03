@@ -38,19 +38,7 @@ The format may change between major versions, so we are free to optimize it.
 
 ## Benchmarks vs. [bincode](https://github.com/bincode-org/bincode) and [postcard](https://github.com/jamesmunns/postcard)
 
-### Speed (nanoseconds)
-
-| Format           | Serialize | Deserialize |
-|------------------|-----------|-------------|
-| Bitcode (derive) | 6,035     | 23,955      |
-| Bitcode (serde)  | 9,828     | 40,457      |
-| Bincode          | 7,966     | 22,182      |
-| Bincode (varint) | 10,520    | 28,874      |
-| Postcard         | 12,872    | 35,148      |
-
-See [rust serialization benchmark](https://github.com/djkoloski/rust_serialization_benchmark) for more benchmarks.
-
-### Size (bits)
+### Primitives (size in bits)
 
 | Type                | Bitcode (derive) | Bitcode (serde) | Bincode | Bincode (varint) | Postcard |
 |---------------------|------------------|-----------------|---------|------------------|----------|
@@ -69,6 +57,8 @@ See [rust serialization benchmark](https://github.com/djkoloski/rust_serializati
 | enum { A, B, C, D } | 2                | 1-5             | 32      | 8                | 8        |
 | Duration            | 94               | 96              | 96      | 16-112           | 16-120   |
 
+### Values (size in bits)
+
 | Value               | Bitcode (derive) | Bitcode (serde) | Bincode | Bincode (varint) | Postcard |
 |---------------------|------------------|-----------------|---------|------------------|----------|
 | [true; 4]           | 4                | 4               | 32      | 32               | 32       |
@@ -81,37 +71,18 @@ See [rust serialization benchmark](https://github.com/djkoloski/rust_serializati
 | "abcd1234"          | 71               | 71              | 128     | 72               | 72       |
 
 
-### Random Struct Benchmark
+### Random [Structs and Enums](https://github.com/SoftbearStudios/bitcode/blob/2a47235eee64f4a7c49ad1841a5b509abd2d0e99/src/benches.rs#L16-L88) (average size and speed)
 
-The following data structure was used for benchmarking.
-```rust
-struct Data {
-    x: Option<f32>,
-    y: Option<i8>,
-    z: u16,
-    s: String,
-    e: DataEnum,
-}
-
-enum DataEnum {
-    Bar,
-    Baz(String),
-    Foo(Option<u8>),
-}
-```
-In the table below, **Size (bytes)** is the average size of a randomly generated `Data` struct.
-**Zero Bytes** is the percentage of bytes that are 0 in the output.
-
-| Format                 | Size (bytes) | Zero Bytes |
-|------------------------|--------------|------------|
-| Bitcode (derive)       | 6.2          | 0.23%      |
-| Bitcode (serde)        | 6.7          | 0.19%      |
-| Bincode                | 20.3         | 65.9%      |
-| Bincode (varint)       | 10.9         | 27.7%      |
-| Bincode (LZ4)          | 9.9          | 13.9%      |
-| Bincode (Deflate Fast) | 8.4          | 0.88%      |
-| Bincode (Deflate Best) | 7.8          | 0.29%      |
-| Postcard               | 10.7         | 28.3%      |
+| Format                 | Size (bytes) | Serialize (ns) | Deserialize (ns) |
+|------------------------|--------------|----------------|------------------|
+| Bitcode (derive)       | 6.2          | 14             | 50               |
+| Bitcode (serde)        | 6.7          | 18             | 59               |
+| Bincode                | 20.3         | 17             | 61               |
+| Bincode (varint)       | 10.9         | 26             | 68               |
+| Bincode (LZ4)          | 9.9          | 58             | 73               |
+| Bincode (Deflate Fast) | 8.4          | 336            | 279              |
+| Bincode (Deflate Best) | 7.8          | 1990           | 275              |
+| Postcard               | 10.7         | 21             | 57               |
 
 ## Acknowledgement
 
