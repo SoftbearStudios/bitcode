@@ -271,10 +271,7 @@ mod tests {
 
     // cargo test comparison1 --release -- --nocapture --include-ignored
     #[test]
-    #[cfg_attr(
-        not(debug_assertions),
-        ignore = "don't run in parallel with other benchmarks"
-    )]
+    #[ignore = "don't run unless --include-ignored"]
     fn comparison1() {
         let data = &random_data(10000);
         let print_results =
