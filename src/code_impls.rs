@@ -1,7 +1,7 @@
 use crate::code::{optimized_dec, optimized_enc, Decode, Encode};
 use crate::encoding::{Encoding, Fixed, Gamma};
 use crate::guard::guard_len;
-use crate::nightly::{max, min, utf8_char_width};
+use crate::nightly::{max, min};
 use crate::read::Read;
 use crate::write::Write;
 use crate::{Result, E};
@@ -216,14 +216,11 @@ impl_non_zero!(NonZeroU8, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroUsize);
 impl_non_zero!(NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroIsize);
 
 impl Encode for char {
-    const ENCODE_MIN: usize = 8;
-    const ENCODE_MAX: usize = 32;
+    impl_enc_const!(21);
 
     #[inline(always)]
-    fn encode(&self, _: impl Encoding, writer: &mut impl Write) -> Result<()> {
-        let mut buf = [0; 4];
-        let n = self.encode_utf8(&mut buf).len();
-        writer.write_bits(u32::from_le_bytes(buf) as u64, n * u8::BITS as usize);
+    fn encode(&self, encoding: impl Encoding, writer: &mut impl Write) -> Result<()> {
+        encoding.write_u64::<21>(writer, *self as u64);
         Ok(())
     }
 }
@@ -232,16 +229,9 @@ impl Decode for char {
     impl_dec_from_enc!();
 
     #[inline(always)]
-    fn decode(_: impl Encoding, reader: &mut impl Read) -> Result<Self> {
-        let peek = reader.peek_bits()? as u32;
-        let first = peek as u8;
-        let n = utf8_char_width(first);
-        reader.advance(n * u8::BITS as usize);
-        let bytes = &peek.to_le_bytes()[..n];
-
-        let s = std::str::from_utf8(bytes).map_err(|_| E::Invalid("char").e())?;
-        debug_assert_eq!(s.chars().count(), 1);
-        Ok(s.chars().next().unwrap())
+    fn decode(encoding: impl Encoding, reader: &mut impl Read) -> Result<Self> {
+        let bits = encoding.read_u64::<21>(reader)? as u32;
+        char::from_u32(bits).ok_or_else(|| E::Invalid("char").e())
     }
 }
 

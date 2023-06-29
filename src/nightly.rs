@@ -27,19 +27,6 @@ pub const fn ilog2_non_zero_u64(me: NonZeroU64) -> u32 {
     u64::BITS - 1 - me.leading_zeros()
 }
 
-#[inline(always)]
-pub fn utf8_char_width(b: u8) -> usize {
-    if b < 128 {
-        1
-    } else if b < 224 {
-        2
-    } else if b < 240 {
-        3
-    } else {
-        4
-    }
-}
-
 /// `<usize as Ord>::min` isn't const yet.
 pub const fn min(a: usize, b: usize) -> usize {
     if a < b {
