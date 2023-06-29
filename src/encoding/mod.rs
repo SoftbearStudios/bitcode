@@ -2,9 +2,9 @@ use crate::{Decode, Encode};
 use prelude::*;
 use std::num::NonZeroUsize;
 
-#[cfg(feature = "simdutf8")]
+#[cfg(all(feature = "simdutf8", not(miri)))]
 use simdutf8::basic::from_utf8;
-#[cfg(not(feature = "simdutf8"))]
+#[cfg(not(all(feature = "simdutf8", not(miri))))]
 use std::str::from_utf8;
 
 mod bit_string;
