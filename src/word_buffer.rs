@@ -7,6 +7,7 @@ use crate::write::Write;
 use crate::{Result, E};
 use from_bytes_or_zeroed::FromBytesOrZeroed;
 use std::array;
+use std::num::NonZeroUsize;
 
 /// A fast [`Buffer`] that operates on [`Word`]s.
 #[derive(Debug, Default)]
@@ -262,7 +263,6 @@ impl WordWriter {
         let shl = bit_start % WORD_BITS;
         let shr = WORD_BITS - shl;
 
-        // TODO use word_copy.
         if shl == 0 {
             self.words[start..end].copy_from_slice(src)
         } else {
@@ -436,39 +436,14 @@ impl WordReaderInner<'_> {
         v
     }
 
-    #[inline(never)]
-    fn read_reserved_words(&mut self, dst: &mut [Word]) {
-        let start = self.index / WORD_BITS;
-        let offset = self.index % WORD_BITS;
-        self.index += dst.len() * WORD_BITS;
-
-        let end = start + div_ceil(offset, WORD_BITS) + dst.len();
-        let src = &self.words[start..end];
-        word_copy(src, dst, offset);
-    }
-
-    /// Faster [`Self::reserve_read_bytes`] that can elide bounds checks for `bits` in 1..=64.
+    /// Faster [`Read::reserve_bits`] that can elide bounds checks for `bits` in range `1..=64`.
     #[inline(always)]
-    fn reserve_read_1_to_64(&self, bits: usize) -> Result<()> {
+    fn reserve_1_to_64_bits(&self, bits: usize) -> Result<()> {
         debug_assert!((1..=WORD_BITS).contains(&bits));
 
         let read = self.index / WORD_BITS;
         let len = self.words.len();
         if read + 1 >= len {
-            // TODO hint as unlikely.
-            Err(E::Eof.e())
-        } else {
-            Ok(())
-        }
-    }
-
-    /// Checks that `bytes` exist.
-    #[inline(always)]
-    fn reserve_read_bytes(&self, bytes: usize) -> Result<()> {
-        let whole_words_len = bytes / WORD_BYTES;
-
-        let read = self.index / WORD_BITS + 1 + whole_words_len;
-        if read >= self.words.len() {
             // TODO hint as unlikely.
             Err(E::Eof.e())
         } else {
@@ -490,13 +465,13 @@ impl<'a> Read for WordReader<'a> {
 
     #[inline(always)]
     fn peek_bits(&mut self) -> Result<Word> {
-        self.inner.reserve_read_1_to_64(64)?;
+        self.inner.reserve_1_to_64_bits(64)?;
         Ok(self.inner.peek_reserved_bits(64))
     }
 
     #[inline(always)]
     fn read_bit(&mut self) -> Result<bool> {
-        self.inner.reserve_read_1_to_64(1)?;
+        self.inner.reserve_1_to_64_bits(1)?;
 
         let bit_index = self.inner.index;
         self.inner.index += 1;
@@ -509,55 +484,59 @@ impl<'a> Read for WordReader<'a> {
 
     #[inline(always)]
     fn read_bits(&mut self, bits: usize) -> Result<Word> {
-        self.inner.reserve_read_1_to_64(bits)?;
+        self.inner.reserve_1_to_64_bits(bits)?;
         Ok(self.inner.read_reserved_bits(bits))
     }
 
-    #[inline(always)]
-    fn read_bytes(&mut self, len: usize) -> Result<&[u8]> {
-        // TODO get this to elide bounds checks.
-        self.inner.reserve_read_bytes(len)?;
+    #[inline(never)]
+    fn read_bytes(&mut self, len: NonZeroUsize) -> Result<&[u8]> {
+        // We read the `[u8]` as `[Word]` and then truncate it.
+        let len = len.get();
+        let words_len = (len - 1) / WORD_BYTES + 1;
+        let src_len = words_len + 1;
 
-        // Only allocate after reserve_read to prevent memory exhaustion attacks.
-        let whole_words_len = len / WORD_BYTES;
-        let word_len = whole_words_len + 1;
-
-        let buf = &mut *self.read_bytes_buf;
-        let words = if let Some(slice) = buf.get_mut(..word_len) {
-            slice
+        let start = self.inner.index / WORD_BITS;
+        let src = if let Some(src) = self.inner.words.get(start..start + src_len) {
+            src
         } else {
-            alloc_read_bytes_buf(buf, word_len);
-            &mut buf[..word_len]
+            return Err(E::Eof.e());
         };
 
-        let whole_words = &mut words[..whole_words_len];
-        if whole_words.len() < 4 {
-            for w in whole_words {
-                *w = self.inner.read_reserved_bits(WORD_BITS);
-            }
+        // Only allocate after src is reserved to prevent memory exhaustion attacks.
+        let buf = &mut *self.read_bytes_buf;
+        let dst = if let Some(slice) = buf.get_mut(..words_len) {
+            slice
         } else {
-            self.inner.read_reserved_words(whole_words);
-        }
+            alloc_read_bytes_buf(buf, words_len);
+            &mut buf[..words_len]
+        };
 
-        // We can read the whole word (the caller will ignore the extra).
-        // We even read it if we'll use none of it's bytes to avoid a branch.
-        *words.last_mut().unwrap() = self.inner.peek_reserved_bits(WORD_BITS);
-        self.inner.index += (len % WORD_BYTES) * u8::BITS as usize;
+        // If offset is 0 we would shl by 64 which is invalid so we just copy the slice. If shl by
+        // 64 resulted in 0 we wouldn't need this special case.
+        let offset = self.inner.index % WORD_BITS;
+        if offset == 0 {
+            let src = &src[..words_len];
+            dst.copy_from_slice(src);
+        } else {
+            let shl = WORD_BITS - offset;
+            let shr = offset;
+
+            for (i, w) in dst.iter_mut().enumerate() {
+                *w = (src[i] >> shr) | (src[i + 1] << shl);
+            }
+        }
+        self.inner.index += len * u8::BITS as usize;
 
         // Swap bytes in each word (that was written to) if big endian and bytemuck to bytes.
         if cfg!(target_endian = "big") {
-            words.iter_mut().for_each(|w| *w = w.swap_bytes());
+            dst.iter_mut().for_each(|w| *w = w.swap_bytes());
         }
         Ok(&bytemuck::cast_slice(self.read_bytes_buf)[..len])
     }
 
     #[inline(always)]
-    fn read_encoded_bytes<C: ByteEncoding>(&mut self, len: usize) -> Result<&[u8]> {
-        // Early return on len 0 so we can compute len - 1.
-        if len == 0 {
-            return Ok(&[]);
-        }
-
+    fn read_encoded_bytes<C: ByteEncoding>(&mut self, len: NonZeroUsize) -> Result<&[u8]> {
+        let len = len.get();
         let whole_words_len = (len - 1) / WORD_BYTES;
         let word_len = whole_words_len + 1;
 
@@ -595,7 +574,17 @@ impl<'a> Read for WordReader<'a> {
 
     #[inline(always)]
     fn reserve_bits(&self, bits: usize) -> Result<()> {
-        self.inner.reserve_read_bytes(bits / u8::BITS as usize)
+        // TODO could make this overestimate remaining bits by a small amount to simplify logic.
+        let whole_words_len = bits / WORD_BITS;
+        let words_len = whole_words_len + 1;
+
+        let read = self.inner.index / WORD_BITS + words_len;
+        if read >= self.inner.words.len() {
+            // TODO hint as unlikely.
+            Err(E::Eof.e())
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -603,25 +592,4 @@ impl<'a> Read for WordReader<'a> {
 fn alloc_read_bytes_buf(buf: &mut Box<[Word]>, len: usize) {
     let new_cap = len.next_power_of_two().max(16);
     *buf = bytemuck::allocation::zeroed_slice_box(new_cap);
-}
-
-/// Copies words from `src` to `dst` offset by `offset`.
-fn word_copy(src: &[Word], dst: &mut [Word], offset: usize) {
-    if offset == 0 {
-        dst.copy_from_slice(src)
-    } else {
-        debug_assert_eq!(src.len(), dst.len() + 1);
-
-        let shl = WORD_BITS - offset;
-        let shr = offset;
-
-        // Do bounds check outside loop. Makes compiler go brrr
-        assert!(dst.len() < src.len());
-
-        for (i, w) in dst.iter_mut().enumerate() {
-            let a = src[i];
-            let b = src[i + 1];
-            *w = (a >> shr) | (b << shl)
-        }
-    }
 }

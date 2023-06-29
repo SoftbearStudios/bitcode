@@ -210,7 +210,7 @@ fn bench_bitcode_buffer_deserialize(b: &mut Bencher) {
 
 #[bench]
 fn bench_bitcode_long_string_serialize(b: &mut Bencher) {
-    let data = "abcde12345".repeat(1000);
+    let data = "abcde1234☺".repeat(1000);
     let mut buf = Buffer::new();
     buf.serialize(&data).unwrap();
     b.iter(|| {
@@ -220,7 +220,7 @@ fn bench_bitcode_long_string_serialize(b: &mut Bencher) {
 
 #[bench]
 fn bench_bitcode_long_string_deserialize(b: &mut Bencher) {
-    let data = "abcde12345".repeat(1000);
+    let data = "abcde1234☺".repeat(1000);
     let mut buf = Buffer::new();
     let bytes = buf.serialize(&data).unwrap().to_vec();
     assert_eq!(buf.deserialize::<String>(&bytes).unwrap(), data);

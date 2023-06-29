@@ -100,13 +100,12 @@
 //! assert_eq!(popular_post, 11)
 //! ```
 
-// Actually required see https://doc.rust-lang.org/beta/unstable-book/library-features/test.html
-#[cfg(test)]
-extern crate core;
+// https://doc.rust-lang.org/beta/unstable-book/library-features/test.html
 #[cfg(test)]
 extern crate test;
 
 // Fixes derive macro in tests/doc tests.
+#[cfg(test)]
 extern crate self as bitcode;
 
 pub use buffer::Buffer;

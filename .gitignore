@@ -1,5 +1,6 @@
 /target
 /Cargo.lock
+/bitcode_derive/Cargo.lock
 .idea
 perf.data
 perf.data.old

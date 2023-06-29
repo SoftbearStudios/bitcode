@@ -1,6 +1,7 @@
+use crate::encoding::ByteEncoding;
 use crate::word::Word;
 use crate::Result;
-use bitcode::encoding::ByteEncoding;
+use std::num::NonZeroUsize;
 
 /// Abstracts over reading bits from a buffer.
 pub trait Read {
@@ -13,9 +14,9 @@ pub trait Read {
     /// Reads up to 64 bits. `bits` must be in range `1..=64`.
     fn read_bits(&mut self, bits: usize) -> Result<Word>;
     /// Reads `len` bytes.
-    fn read_bytes(&mut self, len: usize) -> Result<&[u8]>;
+    fn read_bytes(&mut self, len: NonZeroUsize) -> Result<&[u8]>;
     /// Reads `len` with a [`ByteEncoding`].
-    fn read_encoded_bytes<C: ByteEncoding>(&mut self, len: usize) -> Result<&[u8]>;
+    fn read_encoded_bytes<C: ByteEncoding>(&mut self, len: NonZeroUsize) -> Result<&[u8]>;
     /// Ensures that at least `bits` remain. Never underreports remaining bits.
     fn reserve_bits(&self, bits: usize) -> Result<()>;
 }
@@ -28,6 +29,7 @@ mod tests {
     use crate::read::Read;
     use crate::word_buffer::WordBuffer;
     use paste::paste;
+    use std::num::NonZeroUsize;
     use test::{black_box, Bencher};
 
     fn bench_start_read<T: BufferTrait>(b: &mut Bencher) {
@@ -75,6 +77,7 @@ mod tests {
         let mut buf = T::default();
         let _ = buf.start_read(&bytes);
 
+        let byte_count = NonZeroUsize::new(byte_count).expect("must be >= 0");
         b.iter(|| {
             let buf = black_box(&mut buf);
             let (mut reader, _) = buf.start_read(black_box(&bytes));
@@ -85,16 +88,21 @@ mod tests {
         });
     }
 
-    fn random_lengths(min: usize, max: usize) -> Vec<usize> {
+    fn random_lengths(min: NonZeroUsize, max: NonZeroUsize) -> Vec<NonZeroUsize> {
         use rand::prelude::*;
         let mut rng = rand_chacha::ChaCha20Rng::from_seed(Default::default());
 
-        (0..TIMES).map(|_| rng.gen_range(min..=max)).collect()
+        (0..TIMES)
+            .map(|_| NonZeroUsize::new(rng.gen_range(min.get()..=max.get())).unwrap())
+            .collect()
     }
 
     fn bench_read_bytes_range<T: BufferTrait>(b: &mut Bencher, min: usize, max: usize) {
+        let min = NonZeroUsize::new(min).expect("must be >= 0");
+        let max = NonZeroUsize::new(max).expect("must be >= 0");
+
         let lens = random_lengths(min, max);
-        let total_len: usize = lens.iter().copied().sum();
+        let total_len: usize = lens.iter().map(|l| l.get()).sum();
         let bytes = vec![123u8; total_len + 1];
 
         let mut buf = T::default();
@@ -163,9 +171,10 @@ mod tests {
             bench_read_bytes!($name, $T, 10);
             bench_read_bytes!($name, $T, 100);
             bench_read_bytes!($name, $T, 1000);
+            bench_read_bytes!($name, $T, 10000);
 
-            bench_read_bytes_range!($name, $T, 0, 8);
-            bench_read_bytes_range!($name, $T, 0, 16);
+            bench_read_bytes_range!($name, $T, 1, 8);
+            bench_read_bytes_range!($name, $T, 1, 16);
         };
     }
 
