@@ -158,7 +158,7 @@ macro_rules! optimized_enc {
         // Call once done encoding.
         macro_rules! end_enc {
             () => {
-                flush!();
+                let _ = flush!();
                 let _ = i;
                 #[allow(clippy::drop_non_drop)]
                 drop(buf);
@@ -362,7 +362,7 @@ macro_rules! optimized_dec {
         // Call once done decoding.
         macro_rules! end_dec {
             () => {
-                flush!();
+                let _ = flush!();
                 let _ = i;
                 #[allow(clippy::drop_non_drop)]
                 drop(buf);
