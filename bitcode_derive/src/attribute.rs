@@ -432,6 +432,7 @@ impl VariantEncoding {
                 let variants = variants?;
 
                 quote! {
+                    #[allow(clippy::verbose_bit_mask)]
                     Ok(match dec_variant_peek!() {
                         #variants,
                     })
