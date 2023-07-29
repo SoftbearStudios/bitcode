@@ -84,6 +84,10 @@ The format may change between major versions, so we are free to optimize it.
 | Bincode (Deflate Best) | 7.8          | 1990           | 275              |
 | Postcard               | 10.7         | 21             | 57               |
 
+### More benchmarks
+
+[rust_serialization_benchmark](https://david.kolo.ski/rust_serialization_benchmark/)
+
 ## Acknowledgement
 
 Some test cases were derived from [bincode](https://github.com/bincode-org/bincode) (see comment in `tests.rs`).
