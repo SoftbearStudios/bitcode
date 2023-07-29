@@ -1,6 +1,7 @@
 use crate::encoding::prelude::*;
 use crate::encoding::{Fixed, Gamma};
-use crate::{Decode, Encode};
+use crate::Encode;
+use std::num::NonZeroUsize;
 
 mod ascii;
 mod ascii_lowercase;
@@ -38,18 +39,13 @@ impl<C: ByteEncoding> Encoding for BitString<C> {
     }
 
     #[inline(always)]
-    fn read_byte_str(self, reader: &mut impl Read) -> Result<&[u8]> {
-        let len = usize::decode(Gamma, reader)?;
-        if len == 0 {
-            return Ok(&[]);
-        }
-
+    fn read_bytes(self, reader: &mut impl Read, len: NonZeroUsize) -> Result<&[u8]> {
         let is_valid = !reader.read_bit()?;
         if is_valid {
             reader.read_encoded_bytes::<C>(len)
         } else {
             #[cold]
-            fn cold(reader: &mut impl Read, len: usize) -> Result<&[u8]> {
+            fn cold(reader: &mut impl Read, len: NonZeroUsize) -> Result<&[u8]> {
                 reader.read_bytes(len)
             }
             cold(reader, len)

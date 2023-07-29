@@ -51,10 +51,11 @@ The format may change between major versions, so we are free to optimize it.
 | usize/isize         | 64               | 64              | 64      | 8-72             | 8-80     |
 | f32                 | 32               | 32              | 32      | 32               | 32       |
 | f64                 | 64               | 64              | 64      | 64               | 64       |
-| char                | 8-32             | 8-32            | 8-32    | 8-32             | 16-40    |
+| char                | 21               | 21              | 8-32    | 8-32             | 16-40    |
 | Option<()>          | 1                | 1               | 8       | 8                | 8        |
 | Result<(), ()>      | 1                | 1-3             | 32      | 8                | 8        |
 | enum { A, B, C, D } | 2                | 1-5             | 32      | 8                | 8        |
+| Duration            | 94               | 96              | 96      | 16-112           | 16-120   |
 
 ### Values (size in bits)
 

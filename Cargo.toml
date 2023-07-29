@@ -20,6 +20,7 @@ bytemuck = { version = "1.13", features = [ "extern_crate_alloc" ] }
 from_bytes_or_zeroed = "0.1"
 residua-zigzag = "0.1.0"
 serde = { version = "1.0", optional = true }
+simdutf8 = { version = "0.1.4", optional = true }
 
 [dev-dependencies]
 arrayvec = { version = "0.7.2", features = [ "serde" ] }
@@ -36,8 +37,7 @@ serde = { version = "1.0.159", features = [ "derive" ] }
 
 [features]
 derive = [ "bitcode_derive" ]
-serde = [ "dep:serde" ]
-default = [ "derive" ]
+default = [ "derive", "simdutf8" ]
 
 [package.metadata.docs.rs]
 features = ["serde"]

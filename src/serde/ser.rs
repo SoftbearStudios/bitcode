@@ -40,11 +40,11 @@ macro_rules! reborrow {
 }
 
 impl<C: Encoding, W: Write> BitcodeSerializer<'_, C, W> {
-    fn serialize_len(self, len: usize) -> Result<()> {
+    fn write_len(self, len: usize) -> Result<()> {
         len.encode(Gamma, self.writer)
     }
 
-    fn serialize_variant_index(self, variant_index: u32) -> Result<()> {
+    fn write_variant_index(self, variant_index: u32) -> Result<()> {
         variant_index.encode(Gamma, self.writer)
     }
 }
@@ -86,7 +86,7 @@ impl<C: Encoding, W: Write> Serializer for BitcodeSerializer<'_, C, W> {
     impl_ser!(serialize_str, &str);
 
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok> {
-        reborrow!(self).serialize_len(v.len())?;
+        reborrow!(self).write_len(v.len())?;
         self.writer.write_bytes(v);
         Ok(())
     }
@@ -120,7 +120,7 @@ impl<C: Encoding, W: Write> Serializer for BitcodeSerializer<'_, C, W> {
         variant_index: u32,
         _variant: &'static str,
     ) -> Result<Self::Ok> {
-        self.serialize_variant_index(variant_index)
+        self.write_variant_index(variant_index)
     }
 
     fn serialize_newtype_struct<T: ?Sized>(self, _name: &'static str, value: &T) -> Result<Self::Ok>
@@ -140,14 +140,14 @@ impl<C: Encoding, W: Write> Serializer for BitcodeSerializer<'_, C, W> {
     where
         T: Serialize,
     {
-        reborrow!(self).serialize_variant_index(variant_index)?;
+        reborrow!(self).write_variant_index(variant_index)?;
         value.serialize(self)
     }
 
     #[inline(always)]
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq> {
         let len = len.expect("sequence must have len");
-        reborrow!(self).serialize_len(len)?;
+        reborrow!(self).write_len(len)?;
         Ok(self)
     }
 
@@ -173,14 +173,14 @@ impl<C: Encoding, W: Write> Serializer for BitcodeSerializer<'_, C, W> {
         _variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeTupleVariant> {
-        reborrow!(self).serialize_variant_index(variant_index)?;
+        reborrow!(self).write_variant_index(variant_index)?;
         Ok(self)
     }
 
     #[inline(always)]
     fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap> {
         let len = len.expect("sequence must have len");
-        reborrow!(self).serialize_len(len)?;
+        reborrow!(self).write_len(len)?;
         Ok(self)
     }
 
@@ -197,7 +197,7 @@ impl<C: Encoding, W: Write> Serializer for BitcodeSerializer<'_, C, W> {
         _variant: &'static str,
         _len: usize,
     ) -> Result<Self::SerializeStructVariant> {
-        reborrow!(self).serialize_variant_index(variant_index)?;
+        reborrow!(self).write_variant_index(variant_index)?;
         Ok(self)
     }
 

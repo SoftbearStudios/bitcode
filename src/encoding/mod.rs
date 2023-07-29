@@ -1,15 +1,22 @@
+use crate::{Decode, Encode};
+use prelude::*;
+use std::num::NonZeroUsize;
+
+#[cfg(all(feature = "simdutf8", not(miri)))]
+use simdutf8::basic::from_utf8;
+#[cfg(not(all(feature = "simdutf8", not(miri))))]
+use std::str::from_utf8;
+
 mod bit_string;
 mod expect_normalized_float;
 mod expected_range_u64;
 mod gamma;
 mod prelude;
 
-use crate::{Decode, Encode};
 pub use bit_string::*;
 pub use expect_normalized_float::ExpectNormalizedFloat;
 pub use expected_range_u64::ExpectedRangeU64;
 pub use gamma::Gamma;
-use prelude::*;
 
 pub trait Encoding: Copy {
     fn is_fixed(self) -> bool {
@@ -77,7 +84,12 @@ pub trait Encoding: Copy {
 
     #[inline(always)]
     fn read_str(self, reader: &mut impl Read) -> Result<&str> {
-        std::str::from_utf8(self.read_byte_str(reader)?).map_err(|_| E::Invalid("utf8").e())
+        let len = usize::decode(Gamma, reader)?;
+        if let Some(len) = NonZeroUsize::new(len) {
+            from_utf8(self.read_bytes(reader, len)?).map_err(|_| E::Invalid("utf8").e())
+        } else {
+            Ok("")
+        }
     }
 
     #[inline(always)]
@@ -89,6 +101,15 @@ pub trait Encoding: Copy {
     #[inline(always)]
     fn read_byte_str(self, reader: &mut impl Read) -> Result<&[u8]> {
         let len = usize::decode(Gamma, reader)?;
+        if let Some(len) = NonZeroUsize::new(len) {
+            self.read_bytes(reader, len)
+        } else {
+            Ok(&[])
+        }
+    }
+
+    #[inline(always)]
+    fn read_bytes(self, reader: &mut impl Read, len: NonZeroUsize) -> Result<&[u8]> {
         reader.read_bytes(len)
     }
 }

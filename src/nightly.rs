@@ -3,7 +3,7 @@
 use std::num::NonZeroU64;
 
 #[inline(always)]
-pub fn div_ceil(me: usize, rhs: usize) -> usize {
+pub const fn div_ceil(me: usize, rhs: usize) -> usize {
     let d = me / rhs;
     let r = me % rhs;
     if r > 0 && rhs > 0 {
@@ -25,19 +25,6 @@ pub const fn ilog2_u64(me: u64) -> u32 {
 #[inline(always)]
 pub const fn ilog2_non_zero_u64(me: NonZeroU64) -> u32 {
     u64::BITS - 1 - me.leading_zeros()
-}
-
-#[inline(always)]
-pub fn utf8_char_width(b: u8) -> usize {
-    if b < 128 {
-        1
-    } else if b < 224 {
-        2
-    } else if b < 240 {
-        3
-    } else {
-        4
-    }
 }
 
 /// `<usize as Ord>::min` isn't const yet.

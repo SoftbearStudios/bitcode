@@ -8,6 +8,7 @@ use serde::de::{
     VariantAccess, Visitor,
 };
 use serde::Deserializer;
+use std::num::NonZeroUsize;
 
 pub fn deserialize_internal<B: BufferTrait, T: DeserializeOwned>(
     buffer: &mut B,
@@ -42,12 +43,6 @@ macro_rules! reborrow {
 impl<C: Encoding, R: Read> BitcodeDeserializer<'_, C, R> {
     fn read_len(self) -> Result<usize> {
         usize::decode(Gamma, self.reader)
-    }
-
-    #[inline]
-    fn read_len_and_bytes(&mut self) -> Result<&[u8]> {
-        let len = reborrow!(self).read_len()?;
-        self.reader.read_bytes(len)
     }
 
     fn read_variant_index(self) -> Result<u32> {
@@ -100,11 +95,18 @@ impl<'de, C: Encoding, R: Read> Deserializer<'de> for BitcodeDeserializer<'_, C,
         visitor.visit_str(self.encoding.read_str(self.reader)?)
     }
 
-    fn deserialize_bytes<V>(mut self, visitor: V) -> Result<V::Value>
+    fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        visitor.visit_bytes(self.read_len_and_bytes()?)
+        let len = reborrow!(self).read_len()?;
+        let bytes = if let Some(len) = NonZeroUsize::new(len) {
+            self.reader.read_bytes(len)?
+        } else {
+            &[]
+        };
+
+        visitor.visit_bytes(bytes)
     }
 
     fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value>

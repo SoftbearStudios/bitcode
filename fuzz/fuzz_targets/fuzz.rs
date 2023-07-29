@@ -4,8 +4,9 @@ extern crate bitcode;
 use bitcode::{Decode, Encode};
 use bitvec::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ffi::CString;
+use std::time::Duration;
 
 fuzz_target!(|data: &[u8]| {
     if data.len() < 3 {
@@ -114,6 +115,8 @@ fuzz_target!(|data: &[u8]| {
         M(#[bitcode_hint(gamma)] u64),
         N(#[bitcode_hint(ascii)] String),
         O(#[bitcode_hint(ascii_lowercase)] String),
+        P(BTreeMap<u16, u8>),
+        Q(Duration),
     }
 
     #[derive(Serialize, Deserialize, Encode, Decode, Debug)]

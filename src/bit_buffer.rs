@@ -6,6 +6,7 @@ use crate::write::Write;
 use crate::{Result, E};
 use bitvec::domain::Domain;
 use bitvec::prelude::*;
+use std::num::NonZeroUsize;
 
 /// A slow proof of concept [`Buffer`] that uses [`BitVec`]. Useful for comparison.
 #[derive(Debug, Default)]
@@ -171,7 +172,9 @@ impl Read for BitReader<'_> {
         Ok(Word::from_le_bytes(v))
     }
 
-    fn read_bytes(&mut self, len: usize) -> Result<&[u8]> {
+    fn read_bytes(&mut self, len: NonZeroUsize) -> Result<&[u8]> {
+        let len = len.get();
+
         // Take to avoid borrowing issue.
         let mut tmp = std::mem::take(self.read_bytes_buf);
 
@@ -190,7 +193,10 @@ impl Read for BitReader<'_> {
         Ok(&self.read_bytes_buf[..len])
     }
 
-    fn read_encoded_bytes<C: ByteEncoding>(&mut self, len: usize) -> Result<&[u8]> {
+    fn read_encoded_bytes<C: ByteEncoding>(&mut self, len: NonZeroUsize) -> Result<&[u8]> {
+        let len = len.get();
+
+        // Take to avoid borrowing issue.
         let mut tmp = std::mem::take(self.read_bytes_buf);
 
         let bits = len

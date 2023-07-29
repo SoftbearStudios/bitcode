@@ -18,7 +18,13 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
+          # Nightly toolchain must ship the `rust-std` component for
+          # `i686-unknown-linux-gnu` and `mips64-unknown-linux-gnuabi64`.
+          # In practice, `rust-std` almost always ships for
+          # `i686-unknown-linux-gnu` so we just need to check this page for a
+          # compatible nightly:
+          # https://rust-lang.github.io/rustup-components-history/mips64-unknown-linux-gnuabi64.html
+          toolchain: nightly-2023-07-04
           override: true
           components: rustfmt, miri
       - name: Lint

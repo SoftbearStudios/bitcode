@@ -3,6 +3,7 @@ use crate::read::Read;
 use crate::word::*;
 use crate::write::Write;
 use crate::Result;
+use std::num::NonZeroUsize;
 
 /// A writer that can only hold 64 bits, but only uses registers instead of load/store.
 pub struct RegisterWriter<'a, W: Write> {
@@ -142,11 +143,11 @@ impl Read for Register {
         Ok(v)
     }
 
-    fn read_bytes(&mut self, _: usize) -> Result<&[u8]> {
+    fn read_bytes(&mut self, _: NonZeroUsize) -> Result<&[u8]> {
         unimplemented!()
     }
 
-    fn read_encoded_bytes<C: ByteEncoding>(&mut self, _: usize) -> Result<&[u8]> {
+    fn read_encoded_bytes<C: ByteEncoding>(&mut self, _: NonZeroUsize) -> Result<&[u8]> {
         unimplemented!()
     }
 

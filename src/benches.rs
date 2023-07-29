@@ -210,7 +210,7 @@ fn bench_bitcode_buffer_deserialize(b: &mut Bencher) {
 
 #[bench]
 fn bench_bitcode_long_string_serialize(b: &mut Bencher) {
-    let data = "abcde12345".repeat(1000);
+    let data = "abcde1234☺".repeat(1000);
     let mut buf = Buffer::new();
     buf.serialize(&data).unwrap();
     b.iter(|| {
@@ -220,7 +220,7 @@ fn bench_bitcode_long_string_serialize(b: &mut Bencher) {
 
 #[bench]
 fn bench_bitcode_long_string_deserialize(b: &mut Bencher) {
-    let data = "abcde12345".repeat(1000);
+    let data = "abcde1234☺".repeat(1000);
     let mut buf = Buffer::new();
     let bytes = buf.serialize(&data).unwrap().to_vec();
     assert_eq!(buf.deserialize::<String>(&bytes).unwrap(), data);
@@ -266,16 +266,12 @@ bench!(
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
-
     use super::*;
+    use std::time::{Duration, Instant};
 
     // cargo test comparison1 --release -- --nocapture --include-ignored
     #[test]
-    #[cfg_attr(
-        not(debug_assertions),
-        ignore = "don't run in parallel with other benchmarks"
-    )]
+    #[ignore = "don't run unless --include-ignored"]
     fn comparison1() {
         let data = &random_data(10000);
         let print_results =
@@ -436,6 +432,10 @@ mod tests {
         compare("Option<()>", None..=Some(()));
         compare("Result<(), ()>", Ok(())..=Err(()));
         compare("enum { A, B, C, D }", Enum::A..=Enum::D);
+        compare(
+            "Duration",
+            Duration::ZERO..=Duration::new(u64::MAX, 999_999_999),
+        );
 
         println!();
         println!("| Value               | Bitcode (derive) | Bitcode (serde) | Bincode | Bincode (varint) | Postcard |");

@@ -1,6 +1,6 @@
 use crate::encoding::bit_string::bit_utils::{pack_lsb, unpack_lsb};
+use crate::encoding::bit_string::ByteEncoding;
 use crate::encoding::prelude::*;
-use bitcode::encoding::bit_string::ByteEncoding;
 
 #[derive(Copy, Clone)]
 pub struct AsciiLowercase;
