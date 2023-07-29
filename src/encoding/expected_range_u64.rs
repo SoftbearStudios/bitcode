@@ -15,7 +15,7 @@ impl<const MIN: u64, const MAX: u64> ExpectedRangeU64<MIN, MAX> {
         if Self::RANGE.is_power_of_two() {
             None
         } else {
-            Some(Self::RANGE + 1)
+            Some(Self::RANGE)
         }
     }
 

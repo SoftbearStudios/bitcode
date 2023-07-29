@@ -543,3 +543,18 @@ fn test_fixed_size_array() {
     the_same([1u64, 2, 3, 4, 5, 6, 7, 8]);
     the_same([0u8; 19]);
 }
+
+#[test]
+fn expected_range_bug() {
+    #[derive(Encode, Decode, Serialize, Deserialize, PartialEq, Debug, Clone)]
+    pub struct UVec2 {
+        x: u16,
+        y: u16,
+    }
+
+    #[derive(Encode, Decode, Serialize, Deserialize, PartialEq, Debug, Clone)]
+    pub struct Wrapper(#[bitcode_hint(expected_range = "0..31")] UVec2);
+
+    let val = Wrapper(UVec2 { x: 500, y: 512 });
+    the_same(val);
+}
