@@ -57,6 +57,8 @@ The format may change between major versions, so we are free to optimize it.
 | enum { A, B, C, D } | 2                | 1-5             | 32      | 8                | 8        |
 | Duration            | 94               | 96              | 96      | 16-112           | 16-120   |
 
+<sup>These are defaults, and can be optimized with hints in the case of Bitcode (derive) or custom `impl Serialize` in the case of `serde` serializers.</sup>
+
 ### Values (size in bits)
 
 | Value               | Bitcode (derive) | Bitcode (serde) | Bincode | Bincode (varint) | Postcard |
