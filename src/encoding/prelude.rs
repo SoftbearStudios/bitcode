@@ -5,7 +5,7 @@ pub use crate::word::*;
 pub use crate::write::Write;
 pub(crate) use crate::{Result, E};
 
-#[cfg(all(test))]
+#[cfg(test)]
 pub mod test_prelude {
     pub use super::*;
     pub use crate::{Decode, Encode};
