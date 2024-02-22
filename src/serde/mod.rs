@@ -1,81 +1,52 @@
-use crate::{Buffer, Error, Result};
-use serde::{de::DeserializeOwned, Serialize};
+use crate::error::{err, error_from_display, Error};
 use std::fmt::Display;
 
-pub(crate) mod de;
-pub(crate) mod ser;
+mod de;
+mod guard;
+mod ser;
+mod variant;
 
-/// Serializes a `T:` [`Serialize`] into a [`Vec<u8>`].
-///
-/// **Warning:** The format is incompatible with [`decode`][`crate::decode`] and subject to change between versions.
-#[cfg_attr(doc, doc(cfg(feature = "serde")))]
-pub fn serialize<T: ?Sized>(t: &T) -> Result<Vec<u8>>
-where
-    T: Serialize,
-{
-    Ok(Buffer::new().serialize(t)?.to_vec())
+pub use de::*;
+pub use ser::*;
+
+fn type_changed<T>() -> Result<T, Error> {
+    err("type changed")
 }
 
-/// Deserializes a [`&[u8]`][`prim@slice`] into an instance of `T:` [`Deserialize`][`serde::Deserialize`].
-///
-/// **Warning:** The format is incompatible with [`encode`][`crate::encode`] and subject to change between versions.
-#[cfg_attr(doc, doc(cfg(feature = "serde")))]
-pub fn deserialize<T>(bytes: &[u8]) -> Result<T>
-where
-    T: DeserializeOwned,
-{
-    Buffer::new().deserialize(bytes)
+fn default_box_slice<T: Default>(len: usize) -> Box<[T]> {
+    let mut vec = vec![];
+    vec.resize_with(len, Default::default);
+    vec.into()
 }
 
-impl Buffer {
-    /// Serializes a `T:` [`Serialize`] into a [`&[u8]`][`prim@slice`]. Can reuse the buffer's
-    /// allocations.
-    ///
-    /// Even if you call `to_vec` on the [`&[u8]`][`prim@slice`], it's still more efficient than
-    /// [`serialize`].
-    ///
-    /// **Warning:** The format is incompatible with [`decode`][`Buffer::decode`] and subject to change between versions.
-    #[cfg_attr(doc, doc(cfg(feature = "serde")))]
-    pub fn serialize<T: ?Sized>(&mut self, t: &T) -> Result<&[u8]>
-    where
-        T: Serialize,
-    {
-        ser::serialize_internal(&mut self.0, t)
+#[inline(always)]
+fn get_mut_or_resize<T: Default>(vec: &mut Vec<T>, index: usize) -> &mut T {
+    if index >= vec.len() {
+        #[cold]
+        #[inline(never)]
+        fn cold<T: Default>(vec: &mut Vec<T>, index: usize) {
+            vec.resize_with(index + 1, Default::default)
+        }
+        cold(vec, index);
     }
-
-    /// Deserializes a [`&[u8]`][`prim@slice`] into an instance of `T:` [`Deserialize`][`serde::Deserialize`]. Can reuse
-    /// the buffer's allocations.
-    ///
-    /// **Warning:** The format is incompatible with [`encode`][`Buffer::encode`] and subject to change between versions.
-    #[cfg_attr(doc, doc(cfg(feature = "serde")))]
-    pub fn deserialize<T>(&mut self, bytes: &[u8]) -> Result<T>
-    where
-        T: DeserializeOwned,
-    {
-        de::deserialize_internal(&mut self.0, bytes)
-    }
+    // Safety we've just resized `vec.len()` to be > than `index`.
+    unsafe { vec.get_unchecked_mut(index) }
 }
 
 impl serde::ser::Error for Error {
-    fn custom<T>(_msg: T) -> Self
+    fn custom<T>(t: T) -> Self
     where
         T: Display,
     {
-        #[cfg(debug_assertions)]
-        return Self(crate::E::Custom(_msg.to_string()));
-        #[cfg(not(debug_assertions))]
-        Self(())
+        error_from_display(t)
     }
 }
 
 impl serde::de::Error for Error {
-    fn custom<T>(_msg: T) -> Self
+    fn custom<T>(t: T) -> Self
     where
         T: Display,
     {
-        #[cfg(debug_assertions)]
-        return Self(crate::E::Custom(_msg.to_string()));
-        #[cfg(not(debug_assertions))]
-        Self(())
+        error_from_display(t)
     }
 }

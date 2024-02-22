@@ -1,6 +1,3 @@
-use crate::decode::Decode;
-use crate::derive::Derive;
-use crate::encode::Encode;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::spanned::Spanned;
@@ -9,24 +6,21 @@ use syn::{parse_macro_input, DeriveInput};
 mod attribute;
 mod bound;
 mod decode;
-mod derive;
 mod encode;
-mod huffman;
+mod shared;
 
-#[proc_macro_derive(Encode, attributes(bitcode, bitcode_hint))]
+#[proc_macro_derive(Encode, attributes(bitcode))]
 pub fn derive_encode(input: TokenStream) -> TokenStream {
-    derive(Encode, input)
-}
-
-#[proc_macro_derive(Decode, attributes(bitcode, bitcode_hint))]
-pub fn derive_decode(input: TokenStream) -> TokenStream {
-    derive(Decode, input)
-}
-
-fn derive(derive: impl Derive, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    derive
-        .derive_impl(input)
+    encode::derive_impl(input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+#[proc_macro_derive(Decode, attributes(bitcode))]
+pub fn derive_decode(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    decode::derive_impl(input)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }

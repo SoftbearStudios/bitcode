@@ -1,0 +1,268 @@
+use crate::coder::{Buffer, Decoder, Encoder, Result, View};
+use crate::consume::consume_byte_arrays;
+use crate::error::{err, error};
+use crate::fast::{CowSlice, NextUnchecked, SliceImpl, VecImpl};
+use crate::pack::{pack_bytes, unpack_bytes};
+use std::num::NonZeroUsize;
+
+#[derive(Debug, Default)]
+pub struct LengthEncoder {
+    small: VecImpl<u8>,
+    large: Vec<u64>, // Not a FastVec because capacity isn't known.
+}
+
+impl Encoder<usize> for LengthEncoder {
+    #[inline(always)]
+    fn encode(&mut self, &v: &usize) {
+        unsafe {
+            let end_ptr = self.small.end_ptr();
+            if v < 255 {
+                *end_ptr = v as u8;
+            } else {
+                #[inline(never)]
+                #[cold] // TODO cold or only inline(never)?
+                unsafe fn encode_slow(end_ptr: *mut u8, large: &mut Vec<u64>, v: usize) {
+                    *end_ptr = 255;
+
+                    // Swap bytes if big endian, so we can cast large to little endian &[u8].
+                    #[cfg(target_endian = "little")]
+                    let v = v as u64;
+                    #[cfg(target_endian = "big")]
+                    let v = (v as u64).swap_bytes();
+                    large.push(v);
+                }
+                encode_slow(end_ptr, &mut self.large, v);
+            }
+            self.small.increment_len();
+        }
+    }
+}
+
+pub trait Len {
+    fn len(&self) -> usize;
+}
+
+impl<T> Len for &[T] {
+    #[inline(always)]
+    fn len(&self) -> usize {
+        <[T]>::len(self)
+    }
+}
+
+impl Len for &str {
+    #[inline(always)]
+    fn len(&self) -> usize {
+        str::len(self)
+    }
+}
+
+impl LengthEncoder {
+    /// Encodes a length known to be < `255`.
+    #[cfg(feature = "arrayvec")]
+    #[inline(always)]
+    pub fn encode_less_than_255(&mut self, n: usize) {
+        use crate::fast::PushUnchecked;
+        debug_assert!(n < 255);
+        unsafe { self.small.push_unchecked(n as u8) };
+    }
+
+    /// Encodes lengths less than `N`. Have to reserve `N * i.size_hint().1 elements`.
+    /// Skips calling encode for T::len() == 0. Returns `true` if it failed due to a length over `N`.
+    #[inline(always)]
+    pub fn encode_vectored_max_len<T: Len, const N: usize>(
+        &mut self,
+        i: impl Iterator<Item = T>,
+        mut enocde: impl FnMut(T),
+    ) -> bool {
+        debug_assert!(N <= 64);
+        let mut ptr = self.small.end_ptr();
+        for t in i {
+            let n = t.len();
+            unsafe {
+                *ptr = n as u8;
+                ptr = ptr.add(1);
+            }
+            if n == 0 {
+                continue;
+            }
+            if n > N {
+                // Don't set end ptr (elements won't be saved).
+                return true;
+            }
+            enocde(t);
+        }
+        self.small.set_end_ptr(ptr);
+        false
+    }
+
+    #[inline(always)]
+    pub fn encode_vectored_fallback<T: Len>(
+        &mut self,
+        i: impl Iterator<Item = T>,
+        mut reserve_and_encode_large: impl FnMut(T),
+    ) {
+        for v in i {
+            let n = v.len();
+            self.encode(&n);
+            reserve_and_encode_large(v);
+        }
+    }
+}
+
+impl Buffer for LengthEncoder {
+    fn collect_into(&mut self, out: &mut Vec<u8>) {
+        pack_bytes(self.small.as_mut_slice(), out);
+        self.small.clear();
+        out.extend_from_slice(bytemuck::cast_slice(self.large.as_slice()));
+        self.large.clear();
+    }
+
+    fn reserve(&mut self, additional: NonZeroUsize) {
+        self.small.reserve(additional.get()); // All lengths inhabit small, only large ones inhabit large.
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct LengthDecoder<'a> {
+    small: CowSlice<'a, u8>,
+    large: SliceImpl<'a, [u8; 8]>,
+    sum: usize,
+}
+
+impl<'a> LengthDecoder<'a> {
+    pub fn length(&self) -> usize {
+        self.sum
+    }
+
+    // For decoding lengths multiple times (e.g. ArrayVec, utf8 validation).
+    pub fn borrowed_clone<'me: 'a>(&'me self) -> LengthDecoder<'me> {
+        let mut small = CowSlice::default();
+        small.set_borrowed_slice_impl(self.small.ref_slice().clone());
+        Self {
+            small,
+            large: self.large.clone(),
+            sum: self.sum,
+        }
+    }
+
+    /// Returns if any of the decoded lengths are > `N`.
+    /// Safety: `length` must be the `length` passed to populate.
+    #[cfg_attr(not(feature = "arrayvec"), allow(unused))]
+    pub unsafe fn any_greater_than<const N: usize>(&self, length: usize) -> bool {
+        if N < 255 {
+            // Fast path: don't need to scan large lengths since there shouldn't be any.
+            // A large length will have a 255 in small which will be greater than N.
+            self.small
+                .as_slice(length)
+                .iter()
+                .copied()
+                .max()
+                .unwrap_or(0) as usize
+                > N
+        } else {
+            let mut decoder = self.borrowed_clone();
+            (0..length).any(|_| decoder.decode() > N)
+        }
+    }
+}
+
+impl<'a> View<'a> for LengthDecoder<'a> {
+    fn populate(&mut self, input: &mut &'a [u8], length: usize) -> Result<()> {
+        unpack_bytes(input, length, &mut self.small)?;
+        let small = unsafe { self.small.as_slice(length) };
+
+        // Summing &[u8] can't overflow since that would require > 2^56 bytes of memory.
+        let mut sum: u64 = small.iter().map(|&v| v as u64).sum();
+
+        // Fast path for small lengths: If sum(small) < 255 every small < 255 so large_length is 0.
+        if sum < 255 {
+            self.sum = sum as usize;
+            return Ok(());
+        }
+
+        // Every 255 byte indicates a large is present.
+        let large_length = small.iter().filter(|&&v| v == 255).count();
+        let large: &[[u8; 8]] = consume_byte_arrays(input, large_length)?;
+        self.large = large.into();
+
+        // Can't overflow since sum includes large_length many 255s.
+        sum -= large_length as u64 * 255;
+
+        // Summing &[u64] can overflow, so we check it.
+        for &v in large {
+            let v = u64::from_le_bytes(v);
+            sum = sum.checked_add(v).ok_or_else(|| error("length overflow"))?;
+        }
+        if sum >= HUGE_LEN {
+            return err("length overflow"); // Lets us optimize decode with unreachable_unchecked.
+        }
+        self.sum = sum.try_into().map_err(|_| error("length > usize::MAX"))?;
+        Ok(())
+    }
+}
+
+// isize::MAX / (largest type we want to allocate without possibility of overflow)
+const HUGE_LEN: u64 = 0x7FFFFFFF_FFFFFFFF / 4096;
+
+impl<'a> Decoder<'a, usize> for LengthDecoder<'a> {
+    #[inline(always)]
+    fn decode(&mut self) -> usize {
+        let length = unsafe {
+            let v = self.small.mut_slice().next_unchecked();
+
+            if v < 255 {
+                v as usize
+            } else {
+                #[cold]
+                unsafe fn cold(large: &mut SliceImpl<'_, [u8; 8]>) -> usize {
+                    u64::from_le_bytes(large.next_unchecked()) as usize
+                }
+                cold(&mut self.large)
+            }
+        };
+
+        // Allows some checks in Vec::with_capacity to be removed if lto = true.
+        // Safety: sum < HUGE_LEN is checked in populate so all elements have to be < HUGE_LEN.
+        if length as u64 >= HUGE_LEN {
+            unsafe { std::hint::unreachable_unchecked() }
+        }
+        length
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{LengthDecoder, LengthEncoder};
+    use crate::coder::{Buffer, Decoder, Encoder, View};
+    use std::num::NonZeroUsize;
+
+    #[test]
+    fn test() {
+        let mut encoder = LengthEncoder::default();
+        encoder.reserve(NonZeroUsize::new(3).unwrap());
+        encoder.encode(&1);
+        encoder.encode(&255);
+        encoder.encode(&2);
+        let bytes = encoder.collect();
+
+        let mut decoder = LengthDecoder::default();
+        decoder.populate(&mut bytes.as_slice(), 3).unwrap();
+        assert_eq!(decoder.decode(), 1);
+        assert_eq!(decoder.decode(), 255);
+        assert_eq!(decoder.decode(), 2);
+    }
+
+    #[cfg(target_pointer_width = "64")] // HUGE_LEN > u32::MAX
+    #[test]
+    fn huge_len() {
+        for (x, is_ok) in [(super::HUGE_LEN - 1, true), (super::HUGE_LEN, false)] {
+            let mut encoder = LengthEncoder::default();
+            encoder.reserve(NonZeroUsize::new(1).unwrap());
+            encoder.encode(&(x as usize));
+            let bytes = encoder.collect();
+
+            let mut decoder = LengthDecoder::default();
+            assert_eq!(decoder.populate(&mut bytes.as_slice(), 1).is_ok(), is_ok);
+        }
+    }
+}
