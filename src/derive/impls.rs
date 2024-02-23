@@ -240,13 +240,6 @@ macro_rules! impl_tuples {
 
                 impl<'a, $($name: Decode<'a>,)*> Decoder<'a, ($($name,)*)> for TupleDecoder<'a, $($name,)*> {
                     #[inline(always)]
-                    fn decode(&mut self) -> ($($name,)*) {
-                        (
-                            $(self.$n.decode(),)*
-                        )
-                    }
-
-                    #[inline(always)]
                     fn decode_in_place(&mut self, out: &mut MaybeUninit<($($name,)*)>) {
                         $(
                             self.$n.decode_in_place(crate::coder::uninit_field!(out.$n: $name));

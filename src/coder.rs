@@ -53,6 +53,8 @@ pub trait View<'a> {
     fn populate(&mut self, input: &mut &'a [u8], length: usize) -> Result<()>;
 }
 
+/// One of [`Decoder::decode`] and [`Decoder::decode_in_place`] must be implemented or calling
+/// either one will result in infinite recursion and a stack overflow.
 pub trait Decoder<'a, T>: View<'a> + Default {
     /// Returns a `Some(ptr)` to the current element if it can be decoded by copying.
     #[inline(always)]
@@ -69,29 +71,22 @@ pub trait Decoder<'a, T>: View<'a> + Default {
     }
 
     /// Decodes a single value. Can't error since `View::populate` has already validated the input.
-    fn decode(&mut self) -> T;
+    /// Prefer decode for primitives (since it's simpler) and decode_in_place for array/struct/tuple.
+    #[inline(always)]
+    fn decode(&mut self) -> T {
+        let mut out = MaybeUninit::uninit();
+        self.decode_in_place(&mut out);
+        unsafe { out.assume_init() }
+    }
 
     /// [`Self::decode`] without redundant copies. Only downside is panics will leak the value.
     /// The only panics out of our control are Hash/Ord/PartialEq for BinaryHeap/BTreeMap/HashMap.
     /// E.g. if a user PartialEq panics we will leak some memory which is an acceptable tradeoff.
-    /// TODO make this required and add default impl for Self::decode.
     #[inline(always)]
     fn decode_in_place(&mut self, out: &mut MaybeUninit<T>) {
         out.write(self.decode());
     }
 }
-
-macro_rules! decode_from_in_place {
-    ($t:ty) => {
-        #[inline(always)]
-        fn decode(&mut self) -> $t {
-            let mut out = std::mem::MaybeUninit::uninit();
-            self.decode_in_place(&mut out);
-            unsafe { out.assume_init() }
-        }
-    };
-}
-pub(crate) use decode_from_in_place;
 
 #[doc(hidden)]
 #[macro_export]

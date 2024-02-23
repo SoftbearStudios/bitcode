@@ -1,4 +1,4 @@
-use crate::coder::{decode_from_in_place, Decoder, Encoder, Result, View};
+use crate::coder::{Decoder, Encoder, Result, View};
 use crate::derive::vec::{unsafe_wild_copy, VecDecoder, VecEncoder};
 use crate::derive::{Decode, Encode};
 use crate::error::err;
@@ -74,7 +74,6 @@ impl<'a, const N: usize> View<'a> for ArrayStringDecoder<'a, N> {
     }
 }
 impl<'a, const N: usize> Decoder<'a, ArrayString<N>> for ArrayStringDecoder<'a, N> {
-    decode_from_in_place!(ArrayString<N>);
     #[inline(always)]
     fn decode_in_place(&mut self, out: &mut MaybeUninit<ArrayString<N>>) {
         let s: &str = self.0.decode();
@@ -152,7 +151,6 @@ impl<'a, T: Decode<'a>, const N: usize> View<'a> for ArrayVecDecoder<'a, T, N> {
     }
 }
 impl<'a, T: Decode<'a>, const N: usize> Decoder<'a, ArrayVec<T, N>> for ArrayVecDecoder<'a, T, N> {
-    decode_from_in_place!(ArrayVec<T, N>);
     #[inline(always)]
     fn decode_in_place(&mut self, out: &mut MaybeUninit<ArrayVec<T, N>>) {
         // Safety: We've ensured self.lengths.max_len() <= N in populate.

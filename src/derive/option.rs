@@ -2,6 +2,7 @@ use crate::coder::{Buffer, Decoder, Encoder, Result, View, MAX_VECTORED_CHUNK};
 use crate::derive::variant::{VariantDecoder, VariantEncoder};
 use crate::derive::{Decode, Encode};
 use crate::fast::{FastArrayVec, PushUnchecked};
+use std::mem::MaybeUninit;
 use std::num::NonZeroUsize;
 
 #[derive(Debug)]
@@ -110,11 +111,11 @@ impl<'a, T: Decode<'a>> View<'a> for OptionDecoder<'a, T> {
 
 impl<'a, T: Decode<'a>> Decoder<'a, Option<T>> for OptionDecoder<'a, T> {
     #[inline(always)]
-    fn decode(&mut self) -> Option<T> {
+    fn decode_in_place(&mut self, out: &mut MaybeUninit<Option<T>>) {
         if self.variants.decode() != 0 {
-            Some(self.some.decode())
+            out.write(Some(self.some.decode()));
         } else {
-            None
+            out.write(None);
         }
     }
 }

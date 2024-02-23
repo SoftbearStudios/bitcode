@@ -54,6 +54,7 @@ macro_rules! impl_struct {
                 }
             }
             impl<'a> crate::coder::Decoder<'a, $t> for StructDecoder<'a> {
+                // TODO use decode_in_place instead.
                 #[inline(always)]
                 fn decode(&mut self) -> $t {
                     $t::$new($(self.$f.decode()),+)

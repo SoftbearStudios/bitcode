@@ -57,11 +57,6 @@ impl<'a, T: Decode<'a>, const N: usize> View<'a> for ArrayDecoder<'a, T, N> {
 
 impl<'a, T: Decode<'a>, const N: usize> Decoder<'a, [T; N]> for ArrayDecoder<'a, T, N> {
     #[inline(always)]
-    fn decode(&mut self) -> [T; N] {
-        std::array::from_fn(|_| self.0.decode())
-    }
-
-    #[inline(always)]
     fn decode_in_place(&mut self, out: &mut MaybeUninit<[T; N]>) {
         // Safety: Equivalent to nightly MaybeUninit::transpose.
         let out = unsafe { &mut *(out.as_mut_ptr() as *mut [MaybeUninit<T>; N]) };

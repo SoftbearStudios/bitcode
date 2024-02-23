@@ -27,11 +27,11 @@ enum Item {
 }
 
 impl Item {
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 4] = [
         Self::Type,
         Self::Default,
         Self::Populate,
-        Self::Decode,
+        // No Self::Decode since it's only used for enum variants, not top level struct/enum.
         Self::DecodeInPlace,
     ];
     const COUNT: usize = Self::ALL.len();
@@ -58,6 +58,7 @@ impl Item {
             Self::Populate => quote! {
                 self.#global_field_name.populate(input, __length)?;
             },
+            // Only used by enum variants.
             Self::Decode => quote! {
                 let #field_name = self.#global_field_name.decode();
             },
@@ -167,7 +168,8 @@ impl Item {
                     #inners
                 }
             }
-            Self::Decode | Self::DecodeInPlace => {
+            Self::Decode => unimplemented!(),
+            Self::DecodeInPlace => {
                 if never {
                     return quote! {
                         // Safety: View::populate will error on length != 0 so decode won't be called.
@@ -264,7 +266,7 @@ impl Item {
 struct Output([TokenStream; Item::COUNT]);
 
 impl Output {
-    fn make_ghost(mut self) -> Self {
+    fn haunt(mut self) -> Self {
         let type_ = &mut self.0[Item::Type as usize];
         if type_.is_empty() {
             let de = de_lifetime();
@@ -320,7 +322,7 @@ pub fn derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
         }
         Data::Union(u) => err(&u.union_token, "unions are not supported")?,
     })
-    .make_ghost();
+    .haunt();
 
     bounds.apply_to_generics(&mut generics);
     let input_generics = generics.clone();
@@ -347,7 +349,7 @@ pub fn derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
 
     // Push de_param after bounding 'de: 'a.
     let de_param = GenericParam::Lifetime(LifetimeParam::new(de.clone()));
-    generics.params.push(de_param.clone()); // TODO bound to other lifetimes.
+    generics.params.push(de_param.clone());
     generics
         .make_where_clause()
         .predicates
@@ -361,8 +363,7 @@ pub fn derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
     generics.params.push(de_param); // Re-add de_param since remove_lifetimes removed it.
     let (decoder_impl_generics, decoder_generics, decoder_where_clause) = generics.split_for_impl();
 
-    let Output([type_body, default_body, populate_body, decode_body, decode_in_place_body]) =
-        output;
+    let Output([type_body, default_body, populate_body, decode_in_place_body]) = output;
     let decoder_ident = Ident::new(&format!("{ident}Decoder"), Span::call_site());
     let decoder_ty = quote! { #decoder_ident #decoder_generics };
     let private = private();
@@ -395,11 +396,6 @@ pub fn derive_impl(mut input: DeriveInput) -> Result<TokenStream> {
             }
 
             impl #impl_generics #private::Decoder<#de, #input_ty> for #decoder_ty #where_clause {
-                #[cfg_attr(not(debug_assertions), inline(always))]
-                fn decode(&mut self) -> #input_ty {
-                    #decode_body
-                }
-
                 #[cfg_attr(not(debug_assertions), inline(always))]
                 fn decode_in_place(&mut self, out: &mut std::mem::MaybeUninit<#input_ty>) {
                     #decode_in_place_body

@@ -290,8 +290,6 @@ impl<T: Encode> Encoder<Vec<T>> for VecEncoder<T> {
     }
 }
 impl<'a, T: Decode<'a>> Decoder<'a, Vec<T>> for VecDecoder<'a, T> {
-    crate::coder::decode_from_in_place!(Vec<T>);
-
     #[inline(always)]
     fn decode_in_place(&mut self, out: &mut MaybeUninit<Vec<T>>) {
         let length = self.lengths.decode();
