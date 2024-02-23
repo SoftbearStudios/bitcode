@@ -74,7 +74,8 @@ fuzz_target!(|data: &[u8]| {
                                 Vec<$typ>,
                                 HashMap<u16, $typ>,
                                 ArrayVec<$typ, 0>,
-                                ArrayVec<$typ, 5>
+                                ArrayVec<$typ, 5>,
+                                Result<$typ, u32>
                             );
                         }
                         #[allow(unused)]

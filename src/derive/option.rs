@@ -38,7 +38,7 @@ impl<T: Encode> Encoder<Option<T>> for OptionEncoder<T> {
         // Types with many vectorized encoders benefit from a &[&T] since encode_vectorized is still
         // faster even with the extra indirection. TODO vectored encoder count >= 8 instead of size_of.
         if std::mem::size_of::<T>() >= 64 {
-            let mut uninit = std::mem::MaybeUninit::uninit();
+            let mut uninit = MaybeUninit::uninit();
             let mut refs = FastArrayVec::<_, MAX_VECTORED_CHUNK>::new(&mut uninit);
 
             for t in i {

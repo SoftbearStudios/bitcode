@@ -4,6 +4,7 @@ use crate::derive::array::{ArrayDecoder, ArrayEncoder};
 use crate::derive::empty::EmptyCoder;
 use crate::derive::map::{MapDecoder, MapEncoder};
 use crate::derive::option::{OptionDecoder, OptionEncoder};
+use crate::derive::result::{ResultDecoder, ResultEncoder};
 use crate::derive::smart_ptr::{DerefEncoder, FromDecoder};
 use crate::derive::vec::{VecDecoder, VecEncoder};
 use crate::derive::{Decode, Encode};
@@ -160,6 +161,12 @@ impl<'a, K: Decode<'a> + Eq + Hash, V: Decode<'a>, S: BuildHasher + Default> Dec
     type Decoder = MapDecoder<'a, K, V>;
 }
 
+impl<T: Encode, E: Encode> Encode for std::result::Result<T, E> {
+    type Encoder = ResultEncoder<T, E>;
+}
+impl<'a, T: Decode<'a>, E: Decode<'a>> Decode<'a> for std::result::Result<T, E> {
+    type Decoder = ResultDecoder<'a, T, E>;
+}
 impl<T> Encode for PhantomData<T> {
     type Encoder = EmptyCoder;
 }

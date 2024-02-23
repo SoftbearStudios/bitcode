@@ -8,6 +8,7 @@ mod empty;
 mod impls;
 mod map;
 mod option;
+mod result;
 mod smart_ptr;
 mod variant;
 pub(crate) mod vec;
