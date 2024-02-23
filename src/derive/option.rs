@@ -44,7 +44,7 @@ impl<T: Encode> Encoder<Option<T>> for OptionEncoder<T> {
             for t in i {
                 self.variants.encode(&(t.is_some() as u8));
                 if let Some(t) = t {
-                    // Safety: Even if all `Some` won't write more than MAX_VECTORED_CHUNK elements.
+                    // Safety: encode_vectored guarantees less than `MAX_VECTORED_CHUNK` items.
                     unsafe { refs.push_unchecked(t) };
                 }
             }
@@ -56,19 +56,18 @@ impl<T: Encode> Encoder<Option<T>> for OptionEncoder<T> {
             self.some.reserve(some_count);
             self.some.encode_vectored(refs.iter().copied());
         } else {
-            let mut some_count = 0;
-            for t in i.clone() {
-                let is_some = t.is_some() as u8;
-                some_count += is_some as usize;
-                self.variants.encode(&is_some);
-            }
+            // Safety: encode_vectored guarantees `i.size_hint().1.unwrap() != 0`.
+            let size_hint =
+                unsafe { NonZeroUsize::new(i.size_hint().1.unwrap()).unwrap_unchecked() };
+            // size_of::<T>() is small, so we can just assume all elements are Some.
+            // This will waste a maximum of `MAX_VECTORED_CHUNK * size_of::<T>()` bytes.
+            self.some.reserve(size_hint);
 
-            let Some(some_sum) = NonZeroUsize::new(some_count) else {
-                return;
-            };
-            self.some.reserve(some_sum);
-            for t in i.flatten() {
-                self.some.encode(t);
+            for option in i {
+                self.variants.encode(&(option.is_some() as u8));
+                if let Some(t) = option {
+                    self.some.encode(t);
+                }
             }
         }
     }
@@ -127,4 +126,13 @@ mod tests {
         crate::random_data(1000)
     }
     crate::bench_encode_decode!(option_vec: Vec<_>);
+}
+
+#[cfg(test)]
+mod tests2 {
+    #[rustfmt::skip]
+    fn bench_data() -> Vec<Option<u16>> {
+        crate::random_data(1000)
+    }
+    crate::bench_encode_decode!(option_u16_vec: Vec<_>);
 }

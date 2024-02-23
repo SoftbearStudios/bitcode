@@ -37,7 +37,11 @@ pub trait Encoder<T: ?Sized>: Buffer + Default {
     fn encode(&mut self, t: &T);
 
     /// Calls [`Self::encode`] once for every item in `i`. Only use this with **FAST** iterators.
-    // #[inline(always)]
+    /// # Safety
+    /// `i` must have an accurate `i.size_hint().1.unwrap()` that != 0 and is <= [`MAX_VECTORED_CHUNK`].
+    /// Currently, the non-map iterators that uphold these requirements are:
+    /// - vec.rs
+    /// - option.rs
     fn encode_vectored<'a>(&mut self, i: impl Iterator<Item = &'a T> + Clone)
     where
         T: 'a,
