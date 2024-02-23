@@ -64,7 +64,7 @@ pub trait Decoder<'a, T>: View<'a> + Default {
 
     /// Assuming [`Self::as_primitive_ptr`] returns `Some(ptr)`, this advances `ptr` by `n`.
     /// # Safety
-    /// All advances and decodes must not pass `Self::populate(_, length)`.
+    /// All advances and decodes must not pass `self.populate(_, length)`.
     unsafe fn as_primitive_advance(&mut self, n: usize) {
         let _ = n;
         unreachable!();
