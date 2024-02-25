@@ -8,7 +8,7 @@ use std::num::NonZeroUsize;
 #[derive(Debug, Default)]
 pub struct LengthEncoder {
     small: VecImpl<u8>,
-    large: Vec<u64>, // Not a FastVec because capacity isn't known.
+    large: Vec<u64>, // TODO IntEncoder<usize> (handles endian and uses smaller integers).
 }
 
 impl Encoder<usize> for LengthEncoder {
@@ -19,16 +19,16 @@ impl Encoder<usize> for LengthEncoder {
             if v < 255 {
                 *end_ptr = v as u8;
             } else {
+                #[cold]
                 #[inline(never)]
-                #[cold] // TODO cold or only inline(never)?
                 unsafe fn encode_slow(end_ptr: *mut u8, large: &mut Vec<u64>, v: usize) {
                     *end_ptr = 255;
 
                     // Swap bytes if big endian, so we can cast large to little endian &[u8].
-                    #[cfg(target_endian = "little")]
-                    let v = v as u64;
-                    #[cfg(target_endian = "big")]
-                    let v = (v as u64).swap_bytes();
+                    let mut v = v as u64;
+                    if cfg!(target_endian = "big") {
+                        v = v.swap_bytes();
+                    }
                     large.push(v);
                 }
                 encode_slow(end_ptr, &mut self.large, v);
@@ -125,7 +125,7 @@ impl Buffer for LengthEncoder {
 #[derive(Debug, Default)]
 pub struct LengthDecoder<'a> {
     small: CowSlice<'a, u8>,
-    large: SliceImpl<'a, [u8; 8]>,
+    large: SliceImpl<'a, [u8; 8]>, // TODO IntDecoder<usize>.
     sum: usize,
 }
 

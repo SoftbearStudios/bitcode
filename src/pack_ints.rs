@@ -56,49 +56,48 @@ impl Packing {
 pub trait Int:
     Copy + Default + Into<u128> + Ord + Pod + Sized + std::ops::Sub<Output = Self> + std::ops::SubAssign
 {
-    type Ule: Pod + Default; // Unaligned little endian.
+    // Unaligned native endian. TODO could be aligned on big endian since we always have to copy.
+    type Une: Pod + Default;
     const MIN: Self;
     const MAX: Self;
-    fn read(input: &mut &[u8]) -> Result<Self::Ule>;
+    fn read(input: &mut &[u8]) -> Result<Self>;
     fn write(v: Self, out: &mut Vec<u8>);
-    fn wrapping_add(lhs: Self::Ule, rhs: Self::Ule) -> Self::Ule;
+    fn wrapping_add(self, rhs: Self::Une) -> Self::Une;
     #[cfg(test)]
-    fn from_unaligned(unaligned: Self::Ule) -> Self;
+    fn from_unaligned(unaligned: Self::Une) -> Self;
     fn pack128(v: &[Self], out: &mut Vec<u8>);
     fn pack64(v: &[Self], out: &mut Vec<u8>);
     fn pack32(v: &[Self], out: &mut Vec<u8>);
     fn pack16(v: &[Self], out: &mut Vec<u8>);
     fn pack8(v: &mut [Self], out: &mut Vec<u8>);
-    fn unpack128<'a>(v: &'a [[u8; 16]], out: &mut CowSlice<'a, Self::Ule>) -> Result<()>;
-    fn unpack64<'a>(v: &'a [[u8; 8]], out: &mut CowSlice<'a, Self::Ule>) -> Result<()>;
-    fn unpack32<'a>(v: &'a [[u8; 4]], out: &mut CowSlice<'a, Self::Ule>) -> Result<()>;
-    fn unpack16<'a>(v: &'a [[u8; 2]], out: &mut CowSlice<'a, Self::Ule>) -> Result<()>;
+    fn unpack128<'a>(v: &'a [[u8; 16]], out: &mut CowSlice<'a, Self::Une>) -> Result<()>;
+    fn unpack64<'a>(v: &'a [[u8; 8]], out: &mut CowSlice<'a, Self::Une>) -> Result<()>;
+    fn unpack32<'a>(v: &'a [[u8; 4]], out: &mut CowSlice<'a, Self::Une>) -> Result<()>;
+    fn unpack16<'a>(v: &'a [[u8; 2]], out: &mut CowSlice<'a, Self::Une>) -> Result<()>;
     fn unpack8<'a>(
         input: &mut &'a [u8],
         length: usize,
-        out: &mut CowSlice<'a, Self::Ule>,
+        out: &mut CowSlice<'a, Self::Une>,
     ) -> Result<()>;
 }
 
 macro_rules! impl_simple {
     () => {
-        type Ule = [u8; std::mem::size_of::<Self>()];
+        type Une = [u8; std::mem::size_of::<Self>()];
         const MIN: Self = Self::MIN;
         const MAX: Self = Self::MAX;
-        fn read(input: &mut &[u8]) -> Result<Self::Ule> {
-            Ok(consume_byte_arrays(input, 1)?[0])
+        fn read(input: &mut &[u8]) -> Result<Self> {
+            Ok(Self::from_le_bytes(consume_byte_arrays(input, 1)?[0]))
         }
         fn write(v: Self, out: &mut Vec<u8>) {
             out.extend_from_slice(&v.to_le_bytes());
         }
-        fn wrapping_add(lhs: Self::Ule, rhs: Self::Ule) -> Self::Ule {
-            Self::from_le_bytes(lhs)
-                .wrapping_add(Self::from_le_bytes(rhs))
-                .to_le_bytes()
+        fn wrapping_add(self, rhs: Self::Une) -> Self::Une {
+            self.wrapping_add(Self::from_ne_bytes(rhs)).to_ne_bytes()
         }
         #[cfg(test)]
-        fn from_unaligned(unaligned: Self::Ule) -> Self {
-            Self::from_le_bytes(unaligned)
+        fn from_unaligned(unaligned: Self::Une) -> Self {
+            Self::from_ne_bytes(unaligned)
         }
     };
 }
@@ -107,7 +106,7 @@ macro_rules! impl_unreachable {
         fn $pack(_: &[Self], _: &mut Vec<u8>) {
             unimplemented!();
         }
-        fn $unpack<'a>(_: &'a [<$t as Int>::Ule], _: &mut CowSlice<'a, Self::Ule>) -> Result<()> {
+        fn $unpack<'a>(_: &'a [<$t as Int>::Une], _: &mut CowSlice<'a, Self::Une>) -> Result<()> {
             invalid_packing()
         }
     };
@@ -115,10 +114,21 @@ macro_rules! impl_unreachable {
 macro_rules! impl_self {
     ($pack:ident, $unpack:ident) => {
         fn $pack(v: &[Self], out: &mut Vec<u8>) {
-            out.extend_from_slice(bytemuck::cast_slice(&v)) // TODO big endian swap bytes.
+            // If we're little endian we can copy directly because we encode in little endian.
+            if cfg!(target_endian = "little") {
+                out.extend_from_slice(bytemuck::cast_slice(&v));
+            } else {
+                out.extend(v.iter().flat_map(|&v| v.to_le_bytes()));
+            }
         }
-        fn $unpack<'a>(v: &'a [Self::Ule], out: &mut CowSlice<'a, Self::Ule>) -> Result<()> {
-            out.set_borrowed(v);
+        fn $unpack<'a>(v: &'a [Self::Une], out: &mut CowSlice<'a, Self::Une>) -> Result<()> {
+            // If we're little endian we can borrow the input since we encode in little endian.
+            if cfg!(target_endian = "little") {
+                out.set_borrowed(v);
+            } else {
+                out.set_owned()
+                    .extend(v.iter().map(|&v| Self::from_le_bytes(v).to_ne_bytes()));
+            }
             Ok(())
         }
     };
@@ -128,11 +138,10 @@ macro_rules! impl_smaller {
         fn $pack(v: &[Self], out: &mut Vec<u8>) {
             out.extend(v.iter().flat_map(|&v| (v as $t).to_le_bytes()))
         }
-        fn $unpack<'a>(v: &'a [<$t as Int>::Ule], out: &mut CowSlice<'a, Self::Ule>) -> Result<()> {
-            let mut set_owned = out.set_owned();
-            set_owned.extend(
+        fn $unpack<'a>(v: &'a [<$t as Int>::Une], out: &mut CowSlice<'a, Self::Une>) -> Result<()> {
+            out.set_owned().extend(
                 v.iter()
-                    .map(|&v| (<$t>::from_le_bytes(v) as Self).to_le_bytes()),
+                    .map(|&v| (<$t>::from_le_bytes(v) as Self).to_ne_bytes()),
             );
             Ok(())
         }
@@ -159,7 +168,7 @@ macro_rules! impl_u8 {
                 pack_bytes(bytes, out);
             })
         }
-        fn unpack8(input: &mut &[u8], length: usize, out: &mut CowSlice<Self::Ule>) -> Result<()> {
+        fn unpack8(input: &mut &[u8], length: usize, out: &mut CowSlice<Self::Une>) -> Result<()> {
             with_scratch(|allocation| {
                 // unpack_bytes might not result in a copy, but if it does we want to avoid an allocation.
                 let mut bytes = CowSlice::with_allocation(std::mem::take(allocation));
@@ -167,7 +176,7 @@ macro_rules! impl_u8 {
                 // Safety: unpack_bytes ensures bytes has length of `length`.
                 let slice = unsafe { bytes.as_slice(length) };
                 out.set_owned()
-                    .extend(slice.iter().map(|&v| (v as Self).to_le_bytes()));
+                    .extend(slice.iter().map(|&v| (v as Self).to_ne_bytes()));
                 *allocation = bytes.into_allocation();
                 Ok(())
             })
@@ -234,7 +243,7 @@ fn minmax<T: Int>(v: &[T]) -> (T, T) {
     (min, max)
 }
 
-/// Like [`pack_bytes`] but for larger integers.
+/// Like [`pack_bytes`] but for larger integers. Handles endian conversion.
 pub fn pack_ints<T: Int>(ints: &mut [T], out: &mut Vec<u8>) {
     // Passes through u8s and length <= 1 since they can't be compressed.
     let p = if std::mem::size_of::<T>() == 1 || ints.len() <= 1 {
@@ -281,11 +290,11 @@ pub fn pack_ints<T: Int>(ints: &mut [T], out: &mut Vec<u8>) {
     }
 }
 
-/// Opposite of [`pack_ints`]. Unpacks into `T::Ule` aka unaligned little endian.
+/// Opposite of [`pack_ints`]. Unpacks into `T::Une` aka unaligned native endian.
 pub fn unpack_ints<'a, T: Int>(
     input: &mut &'a [u8],
     length: usize,
-    out: &mut CowSlice<'a, T::Ule>,
+    out: &mut CowSlice<'a, T::Une>,
 ) -> Result<()> {
     // Passes through u8s and length <= 1 since they can't be compressed.
     let (p, min) = if std::mem::size_of::<T>() == 1 || length <= 1 {
@@ -306,7 +315,7 @@ pub fn unpack_ints<'a, T: Int>(
         // Has to be owned to have min.
         out.mut_owned(|out| {
             for v in out {
-                *v = T::wrapping_add(*v, min);
+                *v = min.wrapping_add(*v);
             }
         })
     }
@@ -384,7 +393,7 @@ mod tests {
     fn bench_unpack_ints<T: Int + Debug>(b: &mut Bencher, src: &[T]) {
         let mut packed = vec![];
         pack_ints(&mut src.to_vec(), &mut packed);
-        let mut out = CowSlice::with_allocation(Vec::<T::Ule>::with_capacity(src.len()));
+        let mut out = CowSlice::with_allocation(Vec::<T::Une>::with_capacity(src.len()));
         b.iter(|| {
             let length = src.len();
             unpack_ints::<T>(

@@ -374,10 +374,15 @@ fn pack_arithmetic<const FACTOR: usize>(bytes: &[u8], out: &mut Vec<u8>) {
         unsafe {
             packed.get_unchecked_mut(i).write(
                 if FACTOR == 2 && cfg!(all(target_feature = "bmi2", not(miri))) {
-                    // Could use on any pow2 FACTOR, but only 2 is faster (target-cpu=native).
-                    let chunk = (bytes.as_ptr() as *const u8 as *const [u8; 8]).add(i);
-                    let chunk = u64::from_le_bytes(*chunk);
-                    std::arch::x86_64::_pext_u64(chunk, 0x0101010101010101) as u8
+                    #[cfg(not(target_feature = "bmi2"))]
+                    unreachable!();
+                    #[cfg(target_feature = "bmi2")]
+                    {
+                        // Could use on any pow2 FACTOR, but only 2 is faster (target-cpu=native).
+                        let chunk = (bytes.as_ptr() as *const u8 as *const [u8; 8]).add(i);
+                        let chunk = u64::from_le_bytes(*chunk);
+                        std::arch::x86_64::_pext_u64(chunk, 0x0101010101010101) as u8
+                    }
                 } else {
                     let mut acc = 0;
                     for byte_index in 0..divisor {
@@ -422,9 +427,14 @@ fn unpack_arithmetic<const FACTOR: usize>(
         unsafe {
             let mut packed = *packed.get_unchecked(i);
             if FACTOR == 2 && cfg!(all(target_feature = "bmi2", not(miri))) {
-                // Could use on any pow2 FACTOR, but only 2 is faster (target-cpu=native).
-                let chunk = std::arch::x86_64::_pdep_u64(packed as u64, 0x0101010101010101);
-                *(unpacked.as_mut_ptr() as *mut [u8; 8]).add(i) = chunk.to_le_bytes();
+                #[cfg(not(target_feature = "bmi2"))]
+                unreachable!();
+                #[cfg(target_feature = "bmi2")]
+                {
+                    // Could use on any pow2 FACTOR, but only 2 is faster (target-cpu=native).
+                    let chunk = std::arch::x86_64::_pdep_u64(packed as u64, 0x0101010101010101);
+                    *(unpacked.as_mut_ptr() as *mut [u8; 8]).add(i) = chunk.to_le_bytes();
+                }
             } else {
                 for byte in unpacked.get_unchecked_mut(i * divisor..i * divisor + divisor) {
                     byte.write(packed % FACTOR as u8);

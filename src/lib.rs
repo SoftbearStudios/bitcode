@@ -9,10 +9,6 @@ extern crate self as bitcode;
 #[cfg(test)]
 extern crate test;
 
-// Missing many calls to swap_bytes throughout the codebase.
-#[cfg(target_endian = "big")]
-compile_error!("big endian is not yet supported");
-
 mod bool;
 mod coder;
 mod consume;

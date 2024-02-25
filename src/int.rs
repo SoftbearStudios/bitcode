@@ -21,7 +21,6 @@ impl<T: Int, P: NoUninit> Encoder<P> for IntEncoder<T> {
 
     #[inline(always)]
     fn encode(&mut self, p: &P) {
-        // TODO swap byte order if big endian.
         let t = bytemuck::must_cast(*p);
         unsafe { self.0.push_unchecked(t) };
     }
@@ -39,7 +38,7 @@ impl<T: Int> Buffer for IntEncoder<T> {
 }
 
 #[derive(Debug, Default)]
-pub struct IntDecoder<'a, T: Int>(CowSlice<'a, T::Ule>);
+pub struct IntDecoder<'a, T: Int>(CowSlice<'a, T::Une>);
 
 impl<'a, T: Int> IntDecoder<'a, T> {
     // For CheckedIntDecoder.
@@ -62,7 +61,6 @@ impl<'a, T: Int, P: Pod> Decoder<'a, P> for IntDecoder<'a, T> {
     #[inline(always)]
     fn decode(&mut self) -> P {
         let v = unsafe { self.0.mut_slice().next_unchecked() };
-        // TODO swap byte order if big endian.
         bytemuck::must_cast(v)
     }
 }
