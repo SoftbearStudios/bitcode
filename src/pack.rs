@@ -358,6 +358,12 @@ fn factor_to_divisor<const FACTOR: usize>() -> usize {
     }
 }
 
+const BMI2: bool = cfg!(all(
+    target_arch = "x86_64",
+    target_feature = "bmi2",
+    not(miri)
+));
+
 /// Packs multiple bytes into one. All the bytes must be < `FACTOR`.
 /// Factors 2,4,16 are bit packing. Factors 3,6 are arithmetic coding.
 fn pack_arithmetic<const FACTOR: usize>(bytes: &[u8], out: &mut Vec<u8>) {
@@ -372,26 +378,24 @@ fn pack_arithmetic<const FACTOR: usize>(bytes: &[u8], out: &mut Vec<u8>) {
 
     for i in 0..floor {
         unsafe {
-            packed.get_unchecked_mut(i).write(
-                if FACTOR == 2 && cfg!(all(target_feature = "bmi2", not(miri))) {
-                    #[cfg(not(target_feature = "bmi2"))]
-                    unreachable!();
-                    #[cfg(target_feature = "bmi2")]
-                    {
-                        // Could use on any pow2 FACTOR, but only 2 is faster (target-cpu=native).
-                        let chunk = (bytes.as_ptr() as *const u8 as *const [u8; 8]).add(i);
-                        let chunk = u64::from_le_bytes(*chunk);
-                        std::arch::x86_64::_pext_u64(chunk, 0x0101010101010101) as u8
-                    }
-                } else {
-                    let mut acc = 0;
-                    for byte_index in 0..divisor {
-                        let byte = *bytes.get_unchecked(i * divisor + byte_index);
-                        acc += byte * (FACTOR as u8).pow(byte_index as u32);
-                    }
-                    acc
-                },
-            );
+            packed.get_unchecked_mut(i).write(if FACTOR == 2 && BMI2 {
+                #[cfg(not(all(target_arch = "x86_64", target_feature = "bmi2")))]
+                unreachable!();
+                #[cfg(all(target_arch = "x86_64", target_feature = "bmi2"))]
+                {
+                    // Could use on any pow2 FACTOR, but only 2 is faster (target-cpu=native).
+                    let chunk = (bytes.as_ptr() as *const u8 as *const [u8; 8]).add(i);
+                    let chunk = u64::from_le_bytes(*chunk);
+                    std::arch::x86_64::_pext_u64(chunk, 0x0101010101010101) as u8
+                }
+            } else {
+                let mut acc = 0;
+                for byte_index in 0..divisor {
+                    let byte = *bytes.get_unchecked(i * divisor + byte_index);
+                    acc += byte * (FACTOR as u8).pow(byte_index as u32);
+                }
+                acc
+            });
         }
     }
     if floor < ceil {
@@ -426,10 +430,10 @@ fn unpack_arithmetic<const FACTOR: usize>(
     for i in 0..floor {
         unsafe {
             let mut packed = *packed.get_unchecked(i);
-            if FACTOR == 2 && cfg!(all(target_feature = "bmi2", not(miri))) {
-                #[cfg(not(target_feature = "bmi2"))]
+            if FACTOR == 2 && BMI2 {
+                #[cfg(not(all(target_arch = "x86_64", target_feature = "bmi2")))]
                 unreachable!();
-                #[cfg(target_feature = "bmi2")]
+                #[cfg(all(target_arch = "x86_64", target_feature = "bmi2"))]
                 {
                     // Could use on any pow2 FACTOR, but only 2 is faster (target-cpu=native).
                     let chunk = std::arch::x86_64::_pdep_u64(packed as u64, 0x0101010101010101);
