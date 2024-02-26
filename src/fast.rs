@@ -5,10 +5,11 @@ use std::mem::MaybeUninit;
 pub type VecImpl<T> = FastVec<T>;
 pub type SliceImpl<'a, T> = FastSlice<'a, T>;
 
+/// Implementation of [`Vec`] that optimizes push_unchecked at the cost of as_slice being slower.
 pub struct FastVec<T> {
-    start: *mut T, // TODO NonNull/Unique?
-    end: *mut T,
-    capacity: usize,
+    start: *mut T,    // vec.as_mut_ptr()
+    end: *mut T,      // vec.as_mut_ptr().add(vec.len())
+    capacity: *mut T, // vec.as_mut_ptr().add(vec.capacity())
     _spooky: PhantomData<Vec<T>>,
 }
 
@@ -32,11 +33,18 @@ impl<T> Drop for FastVec<T> {
     }
 }
 
+/// Replacement for `feature = "ptr_sub_ptr"` which isn't yet stable.
+#[inline(always)]
+fn sub_ptr<T>(ptr: *mut T, origin: *mut T) -> usize {
+    // unsafe { ptr.sub_ptr(origin) }
+    (ptr as usize - origin as usize) / std::mem::size_of::<T>()
+}
+
 impl<T> From<FastVec<T>> for Vec<T> {
     fn from(fast: FastVec<T>) -> Self {
         let start = fast.start;
         let length = fast.len();
-        let capacity = fast.capacity;
+        let capacity = sub_ptr(fast.capacity, fast.start);
         std::mem::forget(fast);
         unsafe { Vec::from_raw_parts(start, length, capacity) }
     }
@@ -44,9 +52,10 @@ impl<T> From<FastVec<T>> for Vec<T> {
 
 impl<T> From<Vec<T>> for FastVec<T> {
     fn from(mut vec: Vec<T>) -> Self {
+        assert_ne!(std::mem::size_of::<T>(), 0);
         let start = vec.as_mut_ptr();
         let end = unsafe { start.add(vec.len()) };
-        let capacity = vec.capacity();
+        let capacity = unsafe { start.add(vec.capacity()) };
         std::mem::forget(vec);
         Self {
             start,
@@ -58,6 +67,10 @@ impl<T> From<Vec<T>> for FastVec<T> {
 }
 
 impl<T> FastVec<T> {
+    fn len(&self) -> usize {
+        sub_ptr(self.end, self.start)
+    }
+
     pub fn as_slice(&self) -> &[T] {
         unsafe { std::slice::from_raw_parts(self.start, self.len()) }
     }
@@ -71,9 +84,7 @@ impl<T> FastVec<T> {
     }
 
     pub fn reserve(&mut self, additional: usize) {
-        // check copied from RawVec::grow_amortized
-        let len = self.len();
-        if additional > self.capacity.wrapping_sub(len) {
+        if additional > sub_ptr(self.capacity, self.end) {
             #[cold]
             #[inline(never)]
             fn reserve_slow<T>(me: &mut FastVec<T>, additional: usize) {
@@ -101,14 +112,10 @@ impl<T> FastVec<T> {
         }
     }
 
-    fn len(&self) -> usize {
-        (self.end as usize - self.start as usize) / std::mem::size_of::<T>() // TODO sub_ptr.
-    }
-
     /// Get a pointer to write to without incrementing length.
     #[inline(always)]
     pub fn end_ptr(&mut self) -> *mut T {
-        debug_assert!(self.len() <= self.capacity);
+        debug_assert!(self.end <= self.capacity);
         self.end
     }
 
@@ -116,7 +123,7 @@ impl<T> FastVec<T> {
     #[inline(always)]
     pub fn set_end_ptr(&mut self, end: *mut T) {
         self.end = end;
-        debug_assert!(self.len() <= self.capacity);
+        debug_assert!(self.end <= self.capacity);
     }
 
     /// Increments length by 1.
@@ -127,7 +134,7 @@ impl<T> FastVec<T> {
     #[inline(always)]
     pub unsafe fn increment_len(&mut self) {
         self.end = self.end.add(1);
-        debug_assert!(self.len() <= self.capacity);
+        debug_assert!(self.end <= self.capacity);
     }
 }
 
@@ -140,7 +147,7 @@ pub trait PushUnchecked<T> {
 impl<T> PushUnchecked<T> for FastVec<T> {
     #[inline(always)]
     unsafe fn push_unchecked(&mut self, t: T) {
-        debug_assert!(self.len() < self.capacity);
+        debug_assert!(self.end < self.capacity);
         std::ptr::write(self.end, t);
         self.end = self.end.add(1);
     }
@@ -444,12 +451,12 @@ mod tests {
         assert_eq!(vec.as_slice(), [1, 2]);
     }
 
-    // TODO benchmark with u32 instead of just u8.
     const N: usize = 1000;
+    type VecT = Vec<u32>;
 
     #[bench]
     fn bench_next_unchecked(b: &mut Bencher) {
-        let src = vec![0u8; N];
+        let src: VecT = vec![0; N];
         b.iter(|| {
             let mut slice = src.as_slice();
             for _ in 0..black_box(N) {
@@ -460,7 +467,7 @@ mod tests {
 
     #[bench]
     fn bench_next_unchecked_fast(b: &mut Bencher) {
-        let src = vec![0u8; N];
+        let src: VecT = vec![0; N];
         b.iter(|| {
             let mut fast_slice = FastSlice::from(src.as_slice());
             for _ in 0..black_box(N) {
@@ -470,8 +477,36 @@ mod tests {
     }
 
     #[bench]
+    fn bench_push(b: &mut Bencher) {
+        let mut buffer = VecT::with_capacity(N);
+        b.iter(|| {
+            buffer.clear();
+            let vec = black_box(&mut buffer);
+            for _ in 0..black_box(N) {
+                let v = black_box(&mut *vec);
+                v.push(black_box(0));
+            }
+        });
+    }
+
+    #[bench]
+    fn bench_push_fast(b: &mut Bencher) {
+        let mut buffer = VecT::with_capacity(N);
+        b.iter(|| {
+            buffer.clear();
+            let mut vec = black_box(FastVec::from(std::mem::take(&mut buffer)));
+            for _ in 0..black_box(N) {
+                let v = black_box(&mut vec);
+                v.reserve(1);
+                unsafe { v.push_unchecked(black_box(0)) };
+            }
+            buffer = vec.into();
+        });
+    }
+
+    #[bench]
     fn bench_push_unchecked(b: &mut Bencher) {
-        let mut buffer = Vec::with_capacity(N);
+        let mut buffer = VecT::with_capacity(N);
         b.iter(|| {
             buffer.clear();
             let vec = black_box(&mut buffer);
@@ -484,7 +519,7 @@ mod tests {
 
     #[bench]
     fn bench_push_unchecked_fast(b: &mut Bencher) {
-        let mut buffer = Vec::with_capacity(N);
+        let mut buffer = VecT::with_capacity(N);
         b.iter(|| {
             buffer.clear();
             let mut vec = black_box(FastVec::from(std::mem::take(&mut buffer)));
@@ -498,7 +533,7 @@ mod tests {
 
     #[bench]
     fn bench_reserve(b: &mut Bencher) {
-        let mut buffer = Vec::<u8>::with_capacity(N);
+        let mut buffer = VecT::with_capacity(N);
         b.iter(|| {
             buffer.clear();
             let vec = black_box(&mut buffer);
@@ -510,7 +545,7 @@ mod tests {
 
     #[bench]
     fn bench_reserve_fast(b: &mut Bencher) {
-        let mut buffer = Vec::<u8>::with_capacity(N);
+        let mut buffer = VecT::with_capacity(N);
         b.iter(|| {
             buffer.clear();
             let mut vec = black_box(FastVec::from(std::mem::take(&mut buffer)));
