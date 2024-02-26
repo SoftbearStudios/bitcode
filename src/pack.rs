@@ -71,6 +71,10 @@ pub fn unpack_bools(input: &mut &[u8], length: usize, out: &mut CowSlice<bool>) 
     unpack_arithmetic::<2>(input, length, out)
 }
 
+fn skip_packing(length: usize) -> bool {
+    length <= 2 // Packing takes at least 2 bytes, so it can only expand <= 2 bytes.
+}
+
 /// Packs multiple bytes into single bytes and writes them to `out`. This only works if
 /// `max - min < 16`, otherwise this just copies `bytes` to `out`.
 ///
@@ -79,14 +83,9 @@ pub fn unpack_bools(input: &mut &[u8], length: usize, out: &mut CowSlice<bool>) 
 ///
 /// Mutates `bytes` to avoid copying them. The remaining `bytes` should be considered garbage.
 pub fn pack_bytes(bytes: &mut [u8], out: &mut Vec<u8>) {
-    // Pass through bytes.len() <= 1.
-    match bytes {
-        [] => return,
-        [v] => {
-            out.push(*v);
-            return;
-        }
-        _ => (),
+    if skip_packing(bytes.len()) {
+        out.extend_from_slice(bytes);
+        return;
     }
 
     let mut min = 255;
@@ -127,14 +126,9 @@ pub fn unpack_bytes<'a>(
     length: usize,
     out: &mut CowSlice<'a, u8>,
 ) -> Result<()> {
-    // Pass through length <= 1.
-    match length {
-        0 => return Ok(()),
-        1 => {
-            out.set_borrowed(consume_bytes(input, 1)?);
-            return Ok(());
-        }
-        _ => (),
+    if skip_packing(length) {
+        out.set_borrowed(consume_bytes(input, length)?);
+        return Ok(());
     }
 
     let (p, offset_by_min) = Packing::read(input)?;
