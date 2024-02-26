@@ -44,8 +44,8 @@ macro_rules! impl_int {
         )+
     }
 }
-impl_int!(u8 => u8, u16 => u16, u32 => u32, u64 => u64, u128 => u128);
-impl_int!(i8 => u8, i16 => u16, i32 => u32, i64 => u64, i128 => u128);
+impl_int!(u8 => u8, u16 => u16, u32 => u32, u64 => u64, u128 => u128, usize => usize);
+impl_int!(i8 => u8, i16 => u16, i32 => u32, i64 => u64, i128 => u128, isize => usize);
 impl_int!(f64 => u64); // Totally an int...
 
 macro_rules! impl_checked_int {
@@ -60,8 +60,8 @@ macro_rules! impl_checked_int {
         )+
     }
 }
-impl_checked_int!(NonZeroU8 => u8, NonZeroU16 => u16, NonZeroU32 => u32, NonZeroU64 => u64, NonZeroU128 => u128);
-impl_checked_int!(NonZeroI8 => u8, NonZeroI16 => u16, NonZeroI32 => u32, NonZeroI64 => u64, NonZeroI128 => u128);
+impl_checked_int!(NonZeroU8 => u8, NonZeroU16 => u16, NonZeroU32 => u32, NonZeroU64 => u64, NonZeroU128 => u128, NonZeroUsize => usize);
+impl_checked_int!(NonZeroI8 => u8, NonZeroI16 => u16, NonZeroI32 => u32, NonZeroI64 => u64, NonZeroI128 => u128, NonZeroIsize => usize);
 impl_checked_int!(char => u32);
 
 macro_rules! impl_t {

@@ -395,14 +395,15 @@ impl<'borrowed, T> CowSlice<'borrowed, T> {
     /// **Panics**
     ///
     /// If self is not owned (set_owned hasn't been called).
-    pub fn mut_owned(&mut self, f: impl FnOnce(&mut Vec<T>)) {
-        assert_eq!(self.slice.ptr, self.vec.as_ptr());
+    pub fn mut_owned<R>(&mut self, f: impl FnOnce(&mut Vec<T>) -> R) -> R {
+        assert!(std::ptr::eq(self.slice.ptr, self.vec.as_ptr()), "not owned");
         // Clear self.slice before mutating self.vec, so we don't point to freed memory.
         self.slice = [].as_slice().into();
-        f(&mut self.vec);
+        let ret = f(&mut self.vec);
         // Safety: We clear `CowSlice.slice` whenever we mutate `CowSlice.vec`.
         let slice: &'borrowed [T] = unsafe { std::mem::transmute(self.vec.as_slice()) };
         self.slice = slice.into();
+        ret
     }
 }
 

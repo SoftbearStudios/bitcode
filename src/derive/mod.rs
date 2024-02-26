@@ -159,6 +159,8 @@ mod tests {
         test!(("abc", "123"), (&str, &str));
         test!(Vec::<Option<i16>>::new(), Vec<Option<i16>>);
         test!(vec![None, Some(1), None], Vec<Option<i16>>);
+        test!((0usize, 1isize), (usize, isize));
+        test!(vec![true; 255], Vec<bool>);
     }
 
     #[derive(Encode, Decode)]

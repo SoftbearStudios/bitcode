@@ -41,8 +41,8 @@ impl<T: Int> Buffer for IntEncoder<T> {
 pub struct IntDecoder<'a, T: Int>(CowSlice<'a, T::Une>);
 
 impl<'a, T: Int> IntDecoder<'a, T> {
-    // For CheckedIntDecoder.
-    fn borrowed_clone<'me: 'a>(&'me self) -> IntDecoder<'me, T> {
+    // For CheckedIntDecoder/LengthDecoder.
+    pub(crate) fn borrowed_clone<'me: 'a>(&'me self) -> IntDecoder<'me, T> {
         let mut cow = CowSlice::default();
         cow.set_borrowed_slice_impl(self.0.ref_slice().clone());
         Self(cow)

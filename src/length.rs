@@ -1,14 +1,14 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
-use crate::consume::consume_byte_arrays;
 use crate::error::{err, error};
-use crate::fast::{CowSlice, NextUnchecked, SliceImpl, VecImpl};
+use crate::fast::{CowSlice, NextUnchecked, VecImpl};
+use crate::int::{IntDecoder, IntEncoder};
 use crate::pack::{pack_bytes, unpack_bytes};
 use std::num::NonZeroUsize;
 
 #[derive(Debug, Default)]
 pub struct LengthEncoder {
     small: VecImpl<u8>,
-    large: Vec<u64>, // TODO IntEncoder<usize> (handles endian and uses smaller integers).
+    large: IntEncoder<usize>,
 }
 
 impl Encoder<usize> for LengthEncoder {
@@ -21,15 +21,10 @@ impl Encoder<usize> for LengthEncoder {
             } else {
                 #[cold]
                 #[inline(never)]
-                unsafe fn encode_slow(end_ptr: *mut u8, large: &mut Vec<u64>, v: usize) {
+                unsafe fn encode_slow(end_ptr: *mut u8, large: &mut IntEncoder<usize>, v: usize) {
                     *end_ptr = 255;
-
-                    // Swap bytes if big endian, so we can cast large to little endian &[u8].
-                    let mut v = v as u64;
-                    if cfg!(target_endian = "big") {
-                        v = v.swap_bytes();
-                    }
-                    large.push(v);
+                    large.reserve(NonZeroUsize::new(1).unwrap());
+                    large.encode(&v);
                 }
                 encode_slow(end_ptr, &mut self.large, v);
             }
@@ -113,8 +108,7 @@ impl Buffer for LengthEncoder {
     fn collect_into(&mut self, out: &mut Vec<u8>) {
         pack_bytes(self.small.as_mut_slice(), out);
         self.small.clear();
-        out.extend_from_slice(bytemuck::cast_slice(self.large.as_slice()));
-        self.large.clear();
+        self.large.collect_into(out);
     }
 
     fn reserve(&mut self, additional: NonZeroUsize) {
@@ -125,7 +119,7 @@ impl Buffer for LengthEncoder {
 #[derive(Debug, Default)]
 pub struct LengthDecoder<'a> {
     small: CowSlice<'a, u8>,
-    large: SliceImpl<'a, [u8; 8]>, // TODO IntDecoder<usize>.
+    large: IntDecoder<'a, usize>,
     sum: usize,
 }
 
@@ -140,7 +134,7 @@ impl<'a> LengthDecoder<'a> {
         small.set_borrowed_slice_impl(self.small.ref_slice().clone());
         Self {
             small,
-            large: self.large.clone(),
+            large: self.large.borrowed_clone(),
             sum: self.sum,
         }
     }
@@ -182,16 +176,18 @@ impl<'a> View<'a> for LengthDecoder<'a> {
 
         // Every 255 byte indicates a large is present.
         let large_length = small.iter().filter(|&&v| v == 255).count();
-        let large: &[[u8; 8]] = consume_byte_arrays(input, large_length)?;
-        self.large = large.into();
+        self.large.populate(input, large_length)?;
 
         // Can't overflow since sum includes large_length many 255s.
         sum -= large_length as u64 * 255;
 
         // Summing &[u64] can overflow, so we check it.
-        for &v in large {
-            let v = u64::from_le_bytes(v);
-            sum = sum.checked_add(v).ok_or_else(|| error("length overflow"))?;
+        let mut decoder = self.large.borrowed_clone();
+        for _ in 0..large_length {
+            let v: usize = decoder.decode();
+            sum = sum
+                .checked_add(v as u64)
+                .ok_or_else(|| error("length overflow"))?;
         }
         if sum >= HUGE_LEN {
             return err("length overflow"); // Lets us optimize decode with unreachable_unchecked.
@@ -214,8 +210,8 @@ impl<'a> Decoder<'a, usize> for LengthDecoder<'a> {
                 v as usize
             } else {
                 #[cold]
-                unsafe fn cold(large: &mut SliceImpl<'_, [u8; 8]>) -> usize {
-                    u64::from_le_bytes(large.next_unchecked()) as usize
+                unsafe fn cold(large: &mut IntDecoder<'_, usize>) -> usize {
+                    large.decode()
                 }
                 cold(&mut self.large)
             }

@@ -35,6 +35,7 @@ type ErrorImpl = ();
 /// # Release mode
 /// In release mode, the error is a zero-sized type for efficiency.
 #[derive(Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Error(ErrorImpl);
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
