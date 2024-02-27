@@ -36,6 +36,6 @@ zstd = "0.13.0"
 derive = [ "bitcode_derive" ]
 default = [ "derive" ]
 
-# TODO halfs speed of benches_borrowed::bench_splitcode_decode
+# TODO halfs speed of benches_borrowed::bench_bitcode_decode
 #[profile.bench]
 #lto = true
