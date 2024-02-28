@@ -80,7 +80,7 @@ impl<'a, const N: usize> Decoder<'a, ArrayString<N>> for ArrayStringDecoder<'a, 
         let array_string = out.write(ArrayString::new());
 
         // Avoid copying lots of memory for 1 byte strings.
-        // TODO miri doesn't like ArrayString::as_mut_str().as_mut_ptr(), replace with ArrayString::as_mut_str() when available.
+        // TODO miri doesn't like ArrayString::as_mut_str().as_mut_ptr(), replace with ArrayString::as_mut_ptr() when available.
         if N > 64 || cfg!(miri) {
             // Safety: We've ensured `self.lengths.max_len() <= N` in populate.
             unsafe { array_string.try_push_str(s).unwrap_unchecked() };
