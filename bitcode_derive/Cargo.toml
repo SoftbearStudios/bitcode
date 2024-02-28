@@ -1,12 +1,11 @@
 [package]
 name = "bitcode_derive"
 authors = [ "Cai Bear", "Finn Bear" ]
-version = "0.6.0"
+version = "0.6.0-alpha.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/SoftbearStudios/bitcode/"
 description = "Implementation of #[derive(Encode, Decode)] for bitcode"
-publish = false # TODO remove when ready
 
 [lib]
 proc-macro = true
