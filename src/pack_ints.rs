@@ -19,7 +19,7 @@ enum Packing {
 }
 
 impl Packing {
-    fn new<T: Int>(max: T) -> Self {
+    fn new<T: SizedUInt>(max: T) -> Self {
         let max: u128 = max.try_into().unwrap_or_else(|_| unreachable!()); // From<usize> isn't implemented for u128.
         #[allow(clippy::match_overlapping_arm)] // Just make sure not to reorder them.
         match max {
@@ -31,43 +31,20 @@ impl Packing {
         }
     }
 
-    fn no_packing<T: Int>() -> Self {
-        // usize must encode like u64.
-        if T::IS_USIZE {
-            Self::new(u64::MAX)
-        } else {
-            Self::new(T::MAX)
-        }
-    }
-
-    fn write<T: Int>(self, out: &mut Vec<u8>, offset_by_min: bool) {
+    fn write<T: SizedUInt>(self, out: &mut Vec<u8>, offset_by_min: bool) {
         // Encoded in such a way such that 0 is no packing and higher numbers are smaller packing.
         // Also makes no packing with offset_by_min = true is unrepresentable.
-        out.push((self as u8 - Self::no_packing::<T>() as u8) * 2 - offset_by_min as u8);
+        out.push((self as u8 - Self::new(T::MAX) as u8) * 2 - offset_by_min as u8);
     }
 
-    fn read<T: Int>(input: &mut &[u8]) -> Result<(Self, bool)> {
+    fn read<T: SizedUInt>(input: &mut &[u8]) -> Result<(Self, bool)> {
         let v = consume_byte(input)?;
-        let p_u8 = crate::nightly::div_ceil_u8(v, 2) + Self::no_packing::<T>() as u8;
+        let p_u8 = crate::nightly::div_ceil_u8(v, 2) + Self::new(T::MAX) as u8;
         let offset_by_min = v & 1 != 0;
         let p = match p_u8 {
             0 => Self::_128,
-            1 => {
-                if T::IS_USIZE && cfg!(target_pointer_width = "32") {
-                    return Err(usize_too_big());
-                } else {
-                    Self::_64
-                }
-            }
-            2 => {
-                if offset_by_min && T::IS_USIZE && cfg!(target_pointer_width = "32") {
-                    // Offsetting u32 would result in u64. If we didn't have this check the
-                    // mut_owned() call would panic (since on 32 bit usize borrows u32).
-                    return Err(usize_too_big());
-                } else {
-                    Self::_32
-                }
-            }
+            1 => Self::_64,
+            2 => Self::_32,
             3 => Self::_16,
             4 => Self::_8,
             _ => return invalid_packing(),
@@ -77,24 +54,102 @@ impl Packing {
     }
 }
 
-pub(crate) fn usize_too_big() -> Error {
-    error("encountered a usize greater than u32::MAX on a 32 bit platform")
+fn usize_too_big() -> Error {
+    error("encountered a isize/usize with more than 32 bits on a 32 bit platform")
 }
 
-// Default bound makes #[derive(Default)] on IntEncoder/IntDecoder work.
-pub trait Int:
-    Copy + Default + TryInto<u128> + Ord + Pod + Sized + std::ops::Sub<Output = Self>
-{
-    // usize must encode like u64, so it needs a special case.
-    const IS_USIZE: bool = false;
+pub trait Int: Copy + std::fmt::Debug + Default + Ord + Pod + Sized {
     // Unaligned native endian. TODO could be aligned on big endian since we always have to copy.
     type Une: Pod + Default;
+    type Int: SizedInt;
+    fn from_unaligned(unaligned: Self::Une) -> Self {
+        bytemuck::must_cast(unaligned)
+    }
+    fn to_unaligned(self) -> Self::Une {
+        bytemuck::must_cast(self)
+    }
+    fn with_input(ints: &mut [Self], f: impl FnOnce(&mut [Self::Int]));
+    fn with_output<'a>(
+        out: &mut CowSlice<'a, Self::Une>,
+        length: usize,
+        f: impl FnOnce(&mut CowSlice<'a, <Self::Int as Int>::Une>) -> Result<()>,
+    ) -> Result<()>;
+}
+macro_rules! impl_usize_and_isize {
+    ($($isize:ident => $i64:ident),+) => {
+        $(
+            impl Int for $isize {
+                type Une = [u8; std::mem::size_of::<Self>()];
+                type Int = $i64;
+                fn with_input(ints: &mut [Self], f: impl FnOnce(&mut [Self::Int])) {
+                    if cfg!(target_pointer_width = "64") {
+                        f(bytemuck::cast_slice_mut(ints))
+                    } else {
+                        // 32 bit isize to i64 requires conversion. TODO reuse allocation.
+                        let mut ints: Vec<$i64> = ints.iter().map(|&v| v as $i64).collect();
+                        f(&mut ints);
+                    }
+                }
+                fn with_output<'a>(out: &mut CowSlice<'a, Self::Une>, length: usize, f: impl FnOnce(&mut CowSlice<'a, <Self::Int as Int>::Une>) -> Result<()>) -> Result<()> {
+                    if cfg!(target_pointer_width = "64") {
+                        // Safety: isize::Une == i64::Une on 64 bit.
+                        f(unsafe { std::mem::transmute(out) })
+                    } else {
+                        // i64 to 32 bit isize on requires checked conversion. TODO reuse allocations.
+                        let mut out_i64 = CowSlice::default();
+                        f(&mut out_i64)?;
+                        let out_i64 = unsafe { out_i64.as_slice(length) };
+                        let out_isize: Result<Vec<Self::Une>> = out_i64.iter().map(|&v| $i64::from_unaligned(v).try_into().map(Self::to_unaligned).map_err(|_| usize_too_big())).collect();
+                        *out.set_owned() = out_isize?;
+                        Ok(())
+                    }
+                }
+            }
+        )+
+    }
+}
+impl_usize_and_isize!(usize => u64, isize => i64);
+
+/// An [`Int`] that has a fixed size independent of platform (not usize).
+pub trait SizedInt: Int {
+    type Unsigned: SizedUInt;
     const MIN: Self;
     const MAX: Self;
+    fn to_unsigned(self) -> Self::Unsigned {
+        bytemuck::must_cast(self)
+    }
+}
+
+macro_rules! impl_int {
+    ($($int:ident => $uint:ident),+) => {
+        $(
+            impl Int for $int {
+                type Une = [u8; std::mem::size_of::<Self>()];
+                type Int = Self;
+                fn with_input(ints: &mut [Self], f: impl FnOnce(&mut [Self::Int])) {
+                    f(ints)
+                }
+                fn with_output<'a>(out: &mut CowSlice<'a, Self::Une>, _: usize, f: impl FnOnce(&mut CowSlice<'a, <Self::Int as Int>::Une>) -> Result<()>) -> Result<()> {
+                    f(out)
+                }
+            }
+            impl SizedInt for $int {
+                type Unsigned = $uint;
+                const MIN: Self = Self::MIN;
+                const MAX: Self = Self::MAX;
+            }
+        )+
+    }
+}
+impl_int!(u8 => u8, u16 => u16, u32 => u32, u64 => u64, u128 => u128);
+impl_int!(i8 => u8, i16 => u16, i32 => u32, i64 => u64, i128 => u128);
+
+/// A [`SizedInt`] that is unsigned.
+pub trait SizedUInt: SizedInt + TryInto<u128> {
     fn read(input: &mut &[u8]) -> Result<Self>;
     fn write(v: Self, out: &mut Vec<u8>);
     fn wrapping_add(self, rhs: Self::Une) -> Self::Une;
-    fn from_unaligned(unaligned: Self::Une) -> Self;
+    fn wrapping_sub(self, rhs: Self) -> Self;
     fn pack128(v: &[Self], out: &mut Vec<u8>);
     fn pack64(v: &[Self], out: &mut Vec<u8>);
     fn pack32(v: &[Self], out: &mut Vec<u8>);
@@ -113,30 +168,17 @@ pub trait Int:
 
 macro_rules! impl_simple {
     () => {
-        type Une = [u8; std::mem::size_of::<Self>()];
-        const MIN: Self = Self::MIN;
-        const MAX: Self = Self::MAX;
         fn read(input: &mut &[u8]) -> Result<Self> {
-            if Self::IS_USIZE {
-                u64::from_le_bytes(consume_byte_arrays(input, 1)?[0])
-                    .try_into()
-                    .map_err(|_| usize_too_big())
-            } else {
-                Ok(Self::from_le_bytes(consume_byte_arrays(input, 1)?[0]))
-            }
+            Ok(Self::from_le_bytes(consume_byte_arrays(input, 1)?[0]))
         }
         fn write(v: Self, out: &mut Vec<u8>) {
-            if Self::IS_USIZE {
-                out.extend_from_slice(&(v as u64).to_le_bytes());
-            } else {
-                out.extend_from_slice(&v.to_le_bytes());
-            }
+            out.extend_from_slice(&v.to_le_bytes());
         }
         fn wrapping_add(self, rhs: Self::Une) -> Self::Une {
             self.wrapping_add(Self::from_ne_bytes(rhs)).to_ne_bytes()
         }
-        fn from_unaligned(unaligned: Self::Une) -> Self {
-            Self::from_ne_bytes(unaligned)
+        fn wrapping_sub(self, rhs: Self) -> Self {
+            self.wrapping_sub(rhs)
         }
     };
 }
@@ -223,25 +265,7 @@ macro_rules! impl_u8 {
     };
 }
 
-impl Int for usize {
-    const IS_USIZE: bool = true;
-    impl_simple!();
-    impl_unreachable!(u128, pack128, unpack128);
-
-    #[cfg(target_pointer_width = "64")]
-    impl_self!(pack64, unpack64);
-    #[cfg(target_pointer_width = "64")]
-    impl_smaller!(u32, pack32, unpack32);
-
-    #[cfg(target_pointer_width = "32")]
-    impl_unreachable!(u64, pack64, unpack64);
-    #[cfg(target_pointer_width = "32")]
-    impl_self!(pack32, unpack32);
-
-    impl_smaller!(u16, pack16, unpack16);
-    impl_u8!();
-}
-impl Int for u128 {
+impl SizedUInt for u128 {
     impl_simple!();
     impl_self!(pack128, unpack128);
     impl_smaller!(u64, pack64, unpack64);
@@ -249,7 +273,7 @@ impl Int for u128 {
     impl_smaller!(u16, pack16, unpack16);
     impl_u8!();
 }
-impl Int for u64 {
+impl SizedUInt for u64 {
     impl_simple!();
     impl_unreachable!(u128, pack128, unpack128);
     impl_self!(pack64, unpack64);
@@ -257,7 +281,7 @@ impl Int for u64 {
     impl_smaller!(u16, pack16, unpack16);
     impl_u8!();
 }
-impl Int for u32 {
+impl SizedUInt for u32 {
     impl_simple!();
     impl_unreachable!(u128, pack128, unpack128);
     impl_unreachable!(u64, pack64, unpack64);
@@ -265,7 +289,7 @@ impl Int for u32 {
     impl_smaller!(u16, pack16, unpack16);
     impl_u8!();
 }
-impl Int for u16 {
+impl SizedUInt for u16 {
     impl_simple!();
     impl_unreachable!(u128, pack128, unpack128);
     impl_unreachable!(u64, pack64, unpack64);
@@ -273,7 +297,7 @@ impl Int for u16 {
     impl_self!(pack16, unpack16);
     impl_u8!();
 }
-impl Int for u8 {
+impl SizedUInt for u8 {
     impl_simple!();
     impl_unreachable!(u128, pack128, unpack128);
     impl_unreachable!(u64, pack64, unpack64);
@@ -290,7 +314,7 @@ impl Int for u8 {
     }
 }
 
-fn minmax<T: Int>(v: &[T]) -> (T, T) {
+pub fn minmax<T: SizedInt>(v: &[T]) -> (T, T) {
     let mut min = T::MAX;
     let mut max = T::MIN;
     for &v in v.iter() {
@@ -300,7 +324,7 @@ fn minmax<T: Int>(v: &[T]) -> (T, T) {
     (min, max)
 }
 
-fn skip_packing<T: Int>(length: usize) -> bool {
+fn skip_packing<T: SizedInt>(length: usize) -> bool {
     // Be careful using size_of::<T> since usize can be 4 or 8.
     if std::mem::size_of::<T>() == 1 {
         return true; // u8s can't be packed by pack_ints (only pack_bytes).
@@ -314,39 +338,74 @@ fn skip_packing<T: Int>(length: usize) -> bool {
 
 /// Like [`pack_bytes`] but for larger integers. Handles endian conversion.
 pub fn pack_ints<T: Int>(ints: &mut [T], out: &mut Vec<u8>) {
-    let p = if skip_packing::<T>(ints.len()) {
-        Packing::new(T::MAX)
+    T::with_input(ints, |ints| pack_ints_sized(ints, out));
+}
+
+/// [`pack_ints`] but after isize has been converted to i64.
+fn pack_ints_sized<T: SizedInt>(ints: &mut [T], out: &mut Vec<u8>) {
+    // Handle i8 right away since pack_bytes needs to know that it's signed.
+    // If we didn't have this special case [0i8, -1, 0, -1, 0, -1] couldn't be packed.
+    // Doesn't affect larger signed ints because they're made positive before pack_bytes::<u8> is called.
+    if std::mem::size_of::<T>() == 1 && T::MIN < T::default() {
+        let ints: &mut [i8] = bytemuck::must_cast_slice_mut(ints);
+        pack_bytes(ints, out);
+        return;
+    };
+
+    let (basic_packing, min_max) = if skip_packing::<T>(ints.len()) {
+        (Packing::new(T::Unsigned::MAX), None)
     } else {
         // Take a small sample to avoid wastefully scanning the whole slice.
         let (sample, remaining) = ints.split_at(ints.len().min(16));
         let (min, max) = minmax(sample);
 
-        // Only have to check packing(max - min) since it's always as good as just packing(max).
-        let none = Packing::new(T::MAX);
-        if Packing::new(max - min) == none {
-            none.write::<T>(out, false);
-            none
+        // Only have to check packing(max - min) since it's always as good as packing(max).
+        let none = Packing::new(T::Unsigned::MAX);
+        if Packing::new(max.to_unsigned().wrapping_sub(min.to_unsigned())) == none {
+            none.write::<T::Unsigned>(out, false);
+            (none, None)
         } else {
             let (remaining_min, remaining_max) = minmax(remaining);
             let min = min.min(remaining_min);
             let max = max.max(remaining_max);
 
-            // If subtracting min from all ints results in a better packing do it, otherwise don't bother.
-            // TODO ensure packing never expands data unnecessarily.
-            let p = Packing::new(max);
-            let p2 = Packing::new(max - min);
-            if p2 > p && ints.len() > 5 {
-                for b in ints.iter_mut() {
-                    *b = *b - min;
-                }
-                p2.write::<T>(out, true);
-                T::write(min, out);
-                p2
+            // Signed ints pack as unsigned ints if positive.
+            let basic_packing = if min >= T::default() {
+                Packing::new(max.to_unsigned())
             } else {
-                p.write::<T>(out, false);
-                p
-            }
+                none // Any negative can't be packed without offset_packing.
+            };
+            (basic_packing, Some((min, max)))
         }
+    };
+    let ints = bytemuck::must_cast_slice_mut(ints);
+    let min_max = min_max.map(|(min, max)| (min.to_unsigned(), max.to_unsigned()));
+    pack_ints_sized_unsigned::<T::Unsigned>(ints, out, basic_packing, min_max);
+}
+
+/// [`pack_ints_sized`] but after signed integers have been cast to unsigned.
+fn pack_ints_sized_unsigned<T: SizedUInt>(
+    ints: &mut [T],
+    out: &mut Vec<u8>,
+    basic_packing: Packing,
+    min_max: Option<(T, T)>,
+) {
+    let p = if let Some((min, max)) = min_max {
+        // If subtracting min from all ints results in a better packing do it, otherwise don't bother.
+        let offset_packing = Packing::new(max.wrapping_sub(min));
+        if offset_packing > basic_packing && ints.len() > 5 {
+            for b in ints.iter_mut() {
+                *b = b.wrapping_sub(min);
+            }
+            offset_packing.write::<T>(out, true);
+            T::write(min, out);
+            offset_packing
+        } else {
+            basic_packing.write::<T>(out, false);
+            basic_packing
+        }
+    } else {
+        basic_packing
     };
 
     match p {
@@ -360,6 +419,28 @@ pub fn pack_ints<T: Int>(ints: &mut [T], out: &mut Vec<u8>) {
 
 /// Opposite of [`pack_ints`]. Unpacks into `T::Une` aka unaligned native endian.
 pub fn unpack_ints<'a, T: Int>(
+    input: &mut &'a [u8],
+    length: usize,
+    out: &mut CowSlice<'a, T::Une>,
+) -> Result<()> {
+    T::with_output(out, length, |out| {
+        unpack_ints_sized::<T::Int>(input, length, out)
+    })
+}
+
+/// [`unpack_ints`] but after isize has been converted to i64.
+fn unpack_ints_sized<'a, T: SizedInt>(
+    input: &mut &'a [u8],
+    length: usize,
+    out: &mut CowSlice<'a, T::Une>,
+) -> Result<()> {
+    // Safety: T::Une and T::Unsigned::Une are the same type.
+    let out: &mut CowSlice<'a, _> = unsafe { std::mem::transmute(out) };
+    unpack_ints_sized_unsigned::<T::Unsigned>(input, length, out)
+}
+
+/// [`unpack_ints_sized`] but after signed integers have been cast to unsigned.
+fn unpack_ints_sized_unsigned<'a, T: SizedUInt>(
     input: &mut &'a [u8],
     length: usize,
     out: &mut CowSlice<'a, T::Une>,
@@ -384,34 +465,9 @@ pub fn unpack_ints<'a, T: Int>(
             for v in out.iter_mut() {
                 *v = min.wrapping_add(*v);
             }
-            // If a + b < b overflow occurred.
-            let overflow = || out.iter().any(|v| T::from_unaligned(*v) < min);
-
-            // We only care about overflow if it changes results on 32 bit and 64 bit:
-            // 1 + u32::MAX as usize overflows on 32 bit but works on 64 bit.
-            if !T::IS_USIZE || cfg!(target_pointer_width = "64") {
-                return Ok(());
-            }
-
-            // Fast path, overflow is impossible if max(a) + b doesn't overflow.
-            let max_before_offset = match p {
-                Packing::_8 => u8::MAX as u128,
-                Packing::_16 => u16::MAX as u128,
-                _ => unreachable!(), // _32, _64, _128 won't be returned from Packing::read::<usize>() with offset_by_min == true.
-            };
-            let min = min.try_into().unwrap_or_else(|_| unreachable!());
-            if max_before_offset + min <= usize::MAX as u128 {
-                debug_assert!(!overflow());
-                return Ok(());
-            }
-            if overflow() {
-                return Err(usize_too_big());
-            }
-            Ok(())
         })
-    } else {
-        Ok(())
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -448,7 +504,6 @@ mod tests {
     #[test]
     fn test_usize_too_big() {
         for scale in [1, 1 << 8, 1 << 16, 1 << 32] {
-            println!("scale {scale}");
             let a = COUNTING.map(|v| v as u64 * scale + u32::MAX as u64);
             let packed = pack_ints(&a);
             let b = unpack_ints::<usize>(&packed, a.len());
@@ -461,7 +516,38 @@ mod tests {
         }
     }
 
-    fn t<T: Int + Debug>(ints: &[T]) -> Vec<u8> {
+    #[test]
+    fn test_isize_too_big() {
+        for scale in [1, 1 << 8, 1 << 16, 1 << 32] {
+            let a = COUNTING.map(|v| v as i64 * scale + i32::MAX as i64);
+            let packed = pack_ints(&a);
+            let b = unpack_ints::<isize>(&packed, a.len());
+            if cfg!(target_pointer_width = "64") {
+                let b = b.unwrap();
+                assert_eq!(a, std::array::from_fn(|i| b[i] as i64));
+            } else {
+                assert_eq!(b.unwrap_err(), usize_too_big());
+            }
+        }
+    }
+
+    #[test]
+    fn test_i8_special_case() {
+        assert_eq!(
+            pack_ints(&[0i8, -1, 0, -1, 0, -1, 0]),
+            [9, (-1i8) as u8, 0b1010101]
+        );
+    }
+
+    #[test]
+    fn test_isize_sign_extension() {
+        assert_eq!(
+            pack_ints(&[0isize, -1, 0, -1, 0, -1, 0]),
+            [5, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 10, 0b1010101]
+        );
+    }
+
+    fn test_inner<T: Int + Debug>(ints: &[T]) -> Vec<u8> {
         let out = pack_ints(&mut ints.to_owned());
         let unpacked = unpack_ints::<T>(&out, ints.len()).unwrap();
         assert_eq!(unpacked, ints);
@@ -483,13 +569,25 @@ mod tests {
                         continue;
                     };
 
-                    for max in [0, u8::MAX as u128, u16::MAX as u128, u32::MAX as u128, u64::MAX as u128, u128::MAX as u128] {
-                        let Ok(start) = T::try_from(max / 2) else {
+                    for max in [
+                        i128::MIN, i64::MIN as i128, i32::MIN as i128, i16::MIN as i128, i8::MIN as i128, -1,
+                        0, i8::MAX as i128, i16::MAX as i128, i32::MAX as i128, i64::MAX as i128, i128::MAX
+                    ] {
+                        if max == T::MAX as i128 {
+                            continue;
+                        }
+                        let Ok(start) = T::try_from(max) else {
                             continue;
                         };
                         let s = format!("{start} {increment}");
+                        if increment == 1 {
+                           print!("{s:<19} mod 2 => ");
+                           test_inner::<T>(&std::array::from_fn::<_, 100, _>(|i| {
+                               start + (i as T % 2) * increment
+                           }));
+                        }
                         print!("{s:<25} => ");
-                        t::<T>(&std::array::from_fn::<_, 100, _>(|i| {
+                        test_inner::<T>(&std::array::from_fn::<_, 100, _>(|i| {
                             start + i as T * increment
                         }));
                     }
@@ -503,6 +601,12 @@ mod tests {
     test!(test_u064, u64);
     test!(test_u128, u128);
     test!(test_usize, usize);
+    test!(test_i008, i8);
+    test!(test_i016, i16);
+    test!(test_i032, i32);
+    test!(test_i064, i64);
+    test!(test_i128, i128);
+    test!(test_isize, isize);
 
     fn bench_pack_ints<T: Int>(b: &mut Bencher, src: &[T]) {
         let mut ints = src.to_vec();

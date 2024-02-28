@@ -75,7 +75,7 @@ impl Buffer for F32Encoder {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct F32Decoder<'a> {
     // While it is true that this contains 1 bit of the exp we still call it mantissa.
     mantissa: FastSlice<'a, [u8; 3]>,

@@ -2,6 +2,7 @@ use crate::bool::BoolDecoder;
 use crate::coder::{Decoder, Result, View};
 use crate::consume::expect_eof;
 use crate::error::{err, error, Error};
+use crate::f32::F32Decoder;
 use crate::int::IntDecoder;
 use crate::length::LengthDecoder;
 use crate::serde::guard::guard_zst;
@@ -39,6 +40,8 @@ pub use inner::deserialize;
 enum SerdeDecoder<'a> {
     Bool(BoolDecoder<'a>),
     Enum(Box<(VariantDecoder<'a>, Vec<SerdeDecoder<'a>>)>), // (variants, values) TODO only 1 allocation?
+    F32(F32Decoder<'a>),
+    // We don't need signed integer decoders here because unsigned ones work the same.
     Map(Box<(LengthDecoder<'a>, (SerdeDecoder<'a>, SerdeDecoder<'a>))>), // (lengths, (keys, values))
     Seq(Box<(LengthDecoder<'a>, SerdeDecoder<'a>)>),                     // (lengths, values)
     Str(StrDecoder<'a>),
@@ -73,6 +76,7 @@ impl<'a> View<'a> for SerdeDecoder<'a> {
                     Ok(())
                 }
             }
+            Self::F32(d) => d.populate(input, length),
             Self::Map(d) => {
                 d.0.populate(input, length)?;
                 let length = d.0.length();
@@ -151,6 +155,7 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
 
     // Use native decoders.
     impl_de!(deserialize_bool, visit_bool, bool, Bool);
+    impl_de!(deserialize_f32, visit_f32, f32, F32);
     impl_de!(deserialize_u8, visit_u8, u8, U8);
     impl_de!(deserialize_u16, visit_u16, u16, U16);
     impl_de!(deserialize_u32, visit_u32, u32, U32);
@@ -158,13 +163,12 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
     impl_de!(deserialize_u128, visit_u128, u128, U128);
     impl_de!(deserialize_str, visit_borrowed_str, &str, Str);
 
-    // IntDecoder works on signed integers/floats (but not chars).
+    // IntDecoder<unsigned> works on signed integers/f64 (but not chars).
     impl_de!(deserialize_i8, visit_i8, i8, U8);
     impl_de!(deserialize_i16, visit_i16, i16, U16);
     impl_de!(deserialize_i32, visit_i32, i32, U32);
     impl_de!(deserialize_i64, visit_i64, i64, U64);
     impl_de!(deserialize_i128, visit_i128, i128, U128);
-    impl_de!(deserialize_f32, visit_f32, f32, U32);
     impl_de!(deserialize_f64, visit_f64, f64, U64);
 
     #[inline(always)]
@@ -576,6 +580,14 @@ mod tests {
         // Sequences
         test!("abc".to_owned(), String);
         test!(vec![1u8, 2u8, 3u8], Vec<u8>);
+        // Make sure signed integers are being packed properly (output should end in 85).
+        test!(vec![0, -1, 0, -1, 0, -1, 0], Vec<i8>);
+        test!(vec![0, -1, 0, -1, 0, -1, 0], Vec<i16>);
+        test!(vec![0, -1, 0, -1, 0, -1, 0], Vec<i32>);
+        test!(vec![0, -1, 0, -1, 0, -1, 0], Vec<i64>);
+        test!(vec![0, -1, 0, -1, 0, -1, 0], Vec<i128>);
+        // Make sure f32 sign_exp is grouped (output should end in 4x 63).
+        test!(vec![1.0; 4], Vec<f32>);
         test!(
             vec!["abc".to_owned(), "def".to_owned(), "ghi".to_owned()],
             Vec<String>

@@ -1,6 +1,7 @@
 use crate::bool::BoolEncoder;
 use crate::coder::{Buffer, Encoder, Result};
 use crate::error::{err, error, Error};
+use crate::f32::F32Encoder;
 use crate::int::IntEncoder;
 use crate::length::LengthEncoder;
 use crate::serde::variant::VariantEncoder;
@@ -57,8 +58,15 @@ pub use inner::serialize;
 enum SpecifiedEncoder {
     Bool(BoolEncoder),
     Enum(Box<(VariantEncoder, Vec<LazyEncoder>)>), // (variants, values) TODO only 1 allocation?
+    F32(F32Encoder),
+    // Serialize needs separate signed integer encoders to be able to pack [0, -1, 0, -1, 0, -1].
+    I8(IntEncoder<i8>),
+    I16(IntEncoder<i16>),
+    I32(IntEncoder<i32>),
+    I64(IntEncoder<i64>),
+    I128(IntEncoder<i128>),
     Map(Box<(LengthEncoder, (LazyEncoder, LazyEncoder))>), // (lengths, (keys, values))
-    Seq(Box<(LengthEncoder, LazyEncoder)>),        // (lengths, values)
+    Seq(Box<(LengthEncoder, LazyEncoder)>),                // (lengths, values)
     Str(StrEncoder),
     Tuple(Box<[LazyEncoder]>), // [field0, field1, ..]
     U8(IntEncoder<u8>),
@@ -76,6 +84,12 @@ impl SpecifiedEncoder {
                 v.0.reserve(additional);
                 // We don't know the variants of the enums, so we can't reserve more.
             }
+            Self::F32(v) => v.reserve(additional),
+            Self::I8(v) => v.reserve(additional),
+            Self::I16(v) => v.reserve(additional),
+            Self::I32(v) => v.reserve(additional),
+            Self::I64(v) => v.reserve(additional),
+            Self::I128(v) => v.reserve(additional),
             Self::Map(v) => {
                 v.0.reserve(additional);
                 // We don't know the lengths of the maps, so we can't reserve more.
@@ -124,6 +138,12 @@ impl LazyEncoder {
                         v.1.iter_mut().for_each(|v| v.reorder(buffers));
                         &mut v.0
                     }
+                    SpecifiedEncoder::F32(v) => v,
+                    SpecifiedEncoder::I8(v) => v,
+                    SpecifiedEncoder::I16(v) => v,
+                    SpecifiedEncoder::I32(v) => v,
+                    SpecifiedEncoder::I64(v) => v,
+                    SpecifiedEncoder::I128(v) => v,
                     SpecifiedEncoder::Map(v) => {
                         v.1 .0.reorder(buffers);
                         v.1 .1.reorder(buffers);
@@ -251,20 +271,20 @@ impl<'a> Serializer for EncoderWrapper<'a> {
 
     // Use native encoders.
     impl_ser!(serialize_bool, bool, Bool);
+    impl_ser!(serialize_f32, f32, F32);
+    impl_ser!(serialize_i8, i8, I8);
+    impl_ser!(serialize_i16, i16, I16);
+    impl_ser!(serialize_i32, i32, I32);
+    impl_ser!(serialize_i64, i64, I64);
+    impl_ser!(serialize_i128, i128, I128);
+    impl_ser!(serialize_str, &str, Str);
     impl_ser!(serialize_u8, u8, U8);
     impl_ser!(serialize_u16, u16, U16);
     impl_ser!(serialize_u32, u32, U32);
     impl_ser!(serialize_u64, u64, U64);
     impl_ser!(serialize_u128, u128, U128);
-    impl_ser!(serialize_str, &str, Str);
 
-    // IntEncoder works on signed integers/floats/char.
-    impl_ser!(serialize_i8, i8, U8);
-    impl_ser!(serialize_i16, i16, U16);
-    impl_ser!(serialize_i32, i32, U32);
-    impl_ser!(serialize_i64, i64, U64);
-    impl_ser!(serialize_i128, i128, U128);
-    impl_ser!(serialize_f32, f32, U32);
+    // IntEncoder works on f64/char.
     impl_ser!(serialize_f64, f64, U64);
     impl_ser!(serialize_char, char, U32);
 

@@ -32,21 +32,26 @@ impl_both!(f32, F32Encoder, F32Decoder);
 impl_both!(String, StrEncoder, StrDecoder);
 
 macro_rules! impl_int {
-    ($($a:ty => $b:ty),+) => {
+    ($($t:ty),+) => {
         $(
-            impl Encode for $a {
-                type Encoder = IntEncoder<$b>;
+            impl Encode for $t {
+                type Encoder = IntEncoder<$t>;
             }
-
-            impl<'a> Decode<'a> for $a {
-                type Decoder = IntDecoder<'a, $b>;
+            impl<'a> Decode<'a> for $t {
+                type Decoder = IntDecoder<'a, $t>;
             }
         )+
     }
 }
-impl_int!(u8 => u8, u16 => u16, u32 => u32, u64 => u64, u128 => u128, usize => usize);
-impl_int!(i8 => u8, i16 => u16, i32 => u32, i64 => u64, i128 => u128, isize => usize);
-impl_int!(f64 => u64); // Totally an int...
+impl_int!(u8, u16, u32, u64, u128, usize);
+impl_int!(i8, i16, i32, i64, i128, isize);
+// TODO F64Encoder (once F32Encoder is sufficiently optimized).
+impl Encode for f64 {
+    type Encoder = IntEncoder<u64>;
+}
+impl<'a> Decode<'a> for f64 {
+    type Decoder = IntDecoder<'a, u64>;
+}
 
 macro_rules! impl_checked_int {
     ($($a:ty => $b:ty),+) => {
@@ -61,7 +66,7 @@ macro_rules! impl_checked_int {
     }
 }
 impl_checked_int!(NonZeroU8 => u8, NonZeroU16 => u16, NonZeroU32 => u32, NonZeroU64 => u64, NonZeroU128 => u128, NonZeroUsize => usize);
-impl_checked_int!(NonZeroI8 => u8, NonZeroI16 => u16, NonZeroI32 => u32, NonZeroI64 => u64, NonZeroI128 => u128, NonZeroIsize => usize);
+impl_checked_int!(NonZeroI8 => i8, NonZeroI16 => i16, NonZeroI32 => i32, NonZeroI64 => i64, NonZeroI128 => i128, NonZeroIsize => isize);
 impl_checked_int!(char => u32);
 
 macro_rules! impl_t {

@@ -2,6 +2,7 @@ use crate::coder::Result;
 use crate::consume::{consume_byte, consume_byte_arrays, consume_bytes};
 use crate::error::err;
 use crate::fast::CowSlice;
+use crate::pack_ints::SizedInt;
 
 /// Possible states per byte in descending order. Each packed byte will use `log2(states)` bits.
 #[repr(u8)]
@@ -75,6 +76,10 @@ fn skip_packing(length: usize) -> bool {
     length <= 2 // Packing takes at least 2 bytes, so it can only expand <= 2 bytes.
 }
 
+pub trait Byte: SizedInt {}
+impl Byte for u8 {}
+impl Byte for i8 {}
+
 /// Packs multiple bytes into single bytes and writes them to `out`. This only works if
 /// `max - min < 16`, otherwise this just copies `bytes` to `out`.
 ///
@@ -82,32 +87,47 @@ fn skip_packing(length: usize) -> bool {
 /// avoid confusing bytewise compression algorithms (e.g. Deflate).
 ///
 /// Mutates `bytes` to avoid copying them. The remaining `bytes` should be considered garbage.
-pub fn pack_bytes(bytes: &mut [u8], out: &mut Vec<u8>) {
+pub fn pack_bytes<T: Byte>(bytes: &mut [T], out: &mut Vec<u8>) {
     if skip_packing(bytes.len()) {
-        out.extend_from_slice(bytes);
+        out.extend_from_slice(bytemuck::must_cast_slice(bytes));
         return;
     }
+    let (min, max) = crate::pack_ints::minmax(bytes);
 
-    let mut min = 255;
-    let mut max = 0;
-    for &v in bytes.iter() {
-        min = min.min(v);
-        max = max.max(v);
-    }
-
-    // If subtracting min from all bytes results in a better packing do it, otherwise don't bother.
-    let p = Packing::new(max);
-    let p2 = Packing::new(max - min);
-    let p = if p2 > p && bytes.len() > 5 {
-        for b in bytes.iter_mut() {
-            *b -= min;
-        }
-        p2.write(out, true);
-        out.push(min);
-        p2
+    // i8 packs as u8 if positive.
+    let basic_packing = if min >= T::default() {
+        Packing::new(bytemuck::must_cast(max))
     } else {
-        p.write(out, false);
-        p
+        Packing::_256 // Any negative i8 as u8 is > 15 and can't be packed without offset_packing.
+    };
+
+    // u8::wrapping_sub == i8::wrapping_sub, so we can use u8s from here onward.
+    let min: u8 = bytemuck::must_cast(min);
+    let max: u8 = bytemuck::must_cast(max);
+    let bytes: &mut [u8] = bytemuck::must_cast_slice_mut(bytes);
+    pack_bytes_unsigned(bytes, out, basic_packing, min, max);
+}
+
+/// [`pack_bytes`] but after i8s have been cast to u8s.
+fn pack_bytes_unsigned(
+    bytes: &mut [u8],
+    out: &mut Vec<u8>,
+    basic_packing: Packing,
+    min: u8,
+    max: u8,
+) {
+    // If subtracting min from all bytes results in a better packing do it, otherwise don't bother.
+    let offset_packing = Packing::new(max.wrapping_sub(min));
+    let p = if offset_packing > basic_packing && bytes.len() > 5 {
+        for b in bytes.iter_mut() {
+            *b = b.wrapping_sub(min);
+        }
+        offset_packing.write(out, true);
+        out.push(min);
+        offset_packing
+    } else {
+        basic_packing.write(out, false);
+        basic_packing
     };
 
     match p {
@@ -121,7 +141,18 @@ pub fn pack_bytes(bytes: &mut [u8], out: &mut Vec<u8>) {
 }
 
 /// Opposite of `pack_bytes`. Needs to know the `length` in bytes. `out` is overwritten with the bytes.
-pub fn unpack_bytes<'a>(
+pub fn unpack_bytes<'a, T: Byte>(
+    input: &mut &'a [u8],
+    length: usize,
+    out: &mut CowSlice<'a, T>,
+) -> Result<()> {
+    // Safety: T is u8 or i8 which have same size/align and are Copy.
+    let out: &mut CowSlice<'a, u8> = unsafe { std::mem::transmute(out) };
+    unpack_bytes_unsigned(input, length, out)
+}
+
+/// [`unpack_bytes`] but after i8s have been cast to u8s.
+fn unpack_bytes_unsigned<'a>(
     input: &mut &'a [u8],
     length: usize,
     out: &mut CowSlice<'a, u8>,
@@ -152,7 +183,6 @@ pub fn unpack_bytes<'a>(
     }
     if let Some(min) = min {
         for v in out {
-            // TODO validate min such that overflow is impossible and numbers like 0 aren't valid.
             *v = v.wrapping_add(min);
         }
     }
@@ -458,28 +488,52 @@ mod tests {
     use paste::paste;
     use test::{black_box, Bencher};
 
-    #[test]
-    fn test_pack_bytes() {
-        fn pack_bytes(bytes: &[u8]) -> Vec<u8> {
-            let mut out = vec![];
-            super::pack_bytes(&mut bytes.to_owned(), &mut out);
-            out
-        }
+    fn pack_bytes<T: super::Byte>(bytes: &[T]) -> Vec<u8> {
+        let mut out = vec![];
+        super::pack_bytes(&mut bytes.to_owned(), &mut out);
+        out
+    }
 
-        assert!(pack_bytes(&[1, 2, 3, 4, 5, 6, 7]).len() < 7);
-        assert!(pack_bytes(&[201, 202, 203, 204, 205, 206, 207]).len() < 7);
+    fn unpack_bytes<T: super::Byte>(mut packed: &[u8], length: usize) -> Vec<T> {
+        let mut out = crate::fast::CowSlice::default();
+        super::unpack_bytes(&mut packed, length, &mut out).unwrap();
+        assert!(packed.is_empty());
+        unsafe { out.as_slice(length).to_vec() }
+    }
+
+    #[test]
+    fn test_pack_bytes_u8() {
+        assert_eq!(pack_bytes(&[1u8, 2, 3, 4, 5, 6, 7]).len(), 5);
+        assert_eq!(pack_bytes(&[201u8, 202, 203, 204, 205, 206, 207]).len(), 6);
 
         for max in 0..255u8 {
             for sub in [1, 2, 3, 4, 5, 15, 255] {
                 let min = max.saturating_sub(sub);
                 let original = [min, min, min, min, min, min, min, max];
                 let packed = pack_bytes(&original);
+                let unpacked = unpack_bytes(&packed, original.len());
+                assert_eq!(original.as_slice(), unpacked.as_slice());
+            }
+        }
+    }
 
-                let mut slice = packed.as_slice();
-                let mut out = crate::fast::CowSlice::default();
-                super::unpack_bytes(&mut slice, original.len(), &mut out).unwrap();
-                assert!(slice.is_empty());
-                assert_eq!(original, unsafe { out.as_slice(original.len()) });
+    #[test]
+    fn test_pack_bytes_i8() {
+        assert_eq!(pack_bytes(&[1i8, 2, 3, 4, 5, 6, 7]).len(), 5);
+        assert_eq!(pack_bytes(&[-1i8, -2, -3, -4, -5, -6, -7]).len(), 6);
+        assert_eq!(pack_bytes(&[-3i8, -2, -1, 0, 1, 2, 3]).len(), 6);
+        assert_eq!(
+            pack_bytes(&[0i8, -1, 0, -1, 0, -1, 0]),
+            [9, (-1i8) as u8, 0b1010101]
+        );
+
+        for max in i8::MIN..i8::MAX {
+            for sub in [1, 2, 3, 4, 5, 15, 127] {
+                let min = max.saturating_sub(sub);
+                let original = [min, min, min, min, min, min, min, max];
+                let packed = pack_bytes(&original);
+                let unpacked = unpack_bytes(&packed, original.len());
+                assert_eq!(original.as_slice(), unpacked.as_slice());
             }
         }
     }

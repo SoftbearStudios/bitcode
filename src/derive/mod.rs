@@ -159,10 +159,11 @@ mod tests {
         test!(("abc", "123"), (&str, &str));
         test!(Vec::<Option<i16>>::new(), Vec<Option<i16>>);
         test!(vec![None, Some(1), None], Vec<Option<i16>>);
-        test!((0usize, 1isize), (usize, isize));
+        test!((0, 1), (usize, isize));
         test!(vec![true; 255], Vec<bool>);
-        test!([0u8, 1u8], [u8; 2]);
-        test!([0u8, 1u8, 2u8], [u8; 3]);
+        test!([0, 1], [u8; 2]);
+        test!([0, 1, 2], [u8; 3]);
+        test!([0, -1, 0, -1, 0, -1, 0], [i8; 7]);
     }
 
     #[derive(Encode, Decode)]
