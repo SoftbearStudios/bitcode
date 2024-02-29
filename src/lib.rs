@@ -1,5 +1,5 @@
 #![allow(clippy::items_after_test_module, clippy::blocks_in_if_conditions)]
-#![cfg_attr(doc, feature(doc_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 #![cfg_attr(test, feature(test))]
 #![doc = include_str!("../README.md")]
 
@@ -30,7 +30,6 @@ pub use crate::derive::*;
 pub use crate::error::Error;
 
 #[cfg(feature = "derive")]
-#[cfg_attr(doc, doc(cfg(feature = "derive")))]
 pub use bitcode_derive::{Decode, Encode};
 
 #[cfg(feature = "serde")]

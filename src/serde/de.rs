@@ -23,7 +23,6 @@ mod inner {
     ///
     /// **Warning:** The format is incompatible with [`encode`][`crate::encode`] and subject to
     /// change between major versions.
-    #[cfg_attr(doc, doc(cfg(feature = "serde")))]
     pub fn deserialize<'de, T: Deserialize<'de>>(mut bytes: &'de [u8]) -> Result<T, Error> {
         let mut decoder = SerdeDecoder::Unspecified2 { length: 1 };
         let t = T::deserialize(DecoderWrapper {

@@ -23,7 +23,6 @@ mod inner {
     ///
     /// **Warning:** The format is incompatible with [`decode`][`crate::decode`] and subject to
     /// change between major versions.
-    #[cfg_attr(doc, doc(cfg(feature = "serde")))]
     pub fn serialize<T: Serialize + ?Sized>(t: &T) -> Result<Vec<u8>, Error> {
         let mut lazy = LazyEncoder::Unspecified {
             reserved: NonZeroUsize::new(1),
