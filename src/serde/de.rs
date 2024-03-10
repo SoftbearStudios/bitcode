@@ -38,7 +38,7 @@ pub use inner::deserialize;
 #[derive(Debug)]
 enum SerdeDecoder<'a> {
     Bool(BoolDecoder<'a>),
-    Enum(Box<(VariantDecoder<'a>, Vec<SerdeDecoder<'a>>)>), // (variants, values) TODO only 1 allocation?
+    Enum((VariantDecoder<'a>, Vec<SerdeDecoder<'a>>)), // (variants, values)
     F32(F32Decoder<'a>),
     // We don't need signed integer decoders here because unsigned ones work the same.
     Map(Box<(LengthDecoder<'a>, (SerdeDecoder<'a>, SerdeDecoder<'a>))>), // (lengths, (keys, values))
@@ -214,7 +214,7 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
     where
         V: Visitor<'de>,
     {
-        let (variant_decoder, decoders) = &mut **specify!(self, Enum);
+        let (variant_decoder, decoders) = specify!(self, Enum);
         let variant_index = variant_decoder.decode();
         // Safety: populate guarantees `variant_decoder.max_variant_index() < decoders.len()`.
         let decoder = unsafe { decoders.get_unchecked_mut(variant_index as usize) };
@@ -499,7 +499,7 @@ impl<'a, 'de> EnumAccess<'de> for DecoderWrapper<'a, 'de> {
     where
         V: DeserializeSeed<'de>,
     {
-        let (variant_decoder, decoders) = &mut **specify!(self, Enum);
+        let (variant_decoder, decoders) = specify!(self, Enum);
         let variant_index = variant_decoder.decode();
         // Safety: populate guarantees `variant_decoder.max_variant_index() < decoders.len()`.
         let decoder = unsafe { decoders.get_unchecked_mut(variant_index as usize) };

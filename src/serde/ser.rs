@@ -56,7 +56,7 @@ pub use inner::serialize;
 #[derive(Debug)]
 enum SpecifiedEncoder {
     Bool(BoolEncoder),
-    Enum(Box<(VariantEncoder, Vec<LazyEncoder>)>), // (variants, values) TODO only 1 allocation?
+    Enum((VariantEncoder, Vec<LazyEncoder>)), // (variants, values)
     F32(F32Encoder),
     // Serialize needs separate signed integer encoders to be able to pack [0, -1, 0, -1, 0, -1].
     I8(IntEncoder<i8>),
