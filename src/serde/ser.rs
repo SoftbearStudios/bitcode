@@ -5,7 +5,7 @@ use crate::f32::F32Encoder;
 use crate::int::IntEncoder;
 use crate::length::LengthEncoder;
 use crate::serde::variant::VariantEncoder;
-use crate::serde::{default_box_slice, get_mut_or_resize, type_changed};
+use crate::serde::{default_box_slice, get_mut_or_resize};
 use crate::str::StrEncoder;
 use serde::ser::{
     SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
@@ -174,6 +174,7 @@ impl LazyEncoder {
     /// [`NonZeroUsize`] to avoid branching on len.
     ///
     /// Can't be reserve_fast anymore with push_within_capacity.
+    #[inline(always)]
     fn reserve_fast(&mut self, len: usize) {
         match self {
             Self::Specified { specified, .. } => {
@@ -190,33 +191,39 @@ macro_rules! specify {
     ($wrapper:ident, $variant:ident) => {{
         let lazy = &mut *$wrapper.lazy;
         match lazy {
-            LazyEncoder::Unspecified { reserved } => {
-                let reserved = *reserved;
+            // Check if we're already the correct encoder. This results in 1 branch in the hot path.
+            LazyEncoder::Specified { specified: SpecifiedEncoder::$variant(_), .. } => (),
+            _ => {
+                // Either create the correct encoder if unspecified or panic if we already have an
+                // encoder since it must be a different type.
                 #[cold]
                 fn cold<'a>(
                     me: &'a mut LazyEncoder,
                     index_alloc: &mut usize,
-                    reserved: Option<NonZeroUsize>,
-                ) -> &'a mut SpecifiedEncoder {
-                    let mut specified = SpecifiedEncoder::$variant(Default::default());
+                ) {
+                    let &mut LazyEncoder::Unspecified { reserved } = me else {
+                        panic!("type changed");
+                    };
+                    *me = LazyEncoder::Specified {
+                        specified: SpecifiedEncoder::$variant(Default::default()),
+                        index: std::mem::replace(index_alloc, *index_alloc + 1),
+                    };
+                    let LazyEncoder::Specified { specified, .. } = me else {
+                        unreachable!();
+                    };
                     if let Some(reserved) = reserved {
                         specified.reserve(reserved);
                     }
-                    *me = LazyEncoder::Specified {
-                        specified,
-                        index: std::mem::replace(index_alloc, *index_alloc + 1),
-                    };
-                    // TODO might be slower to put in cold fn.
-                    if let LazyEncoder::Specified { specified, .. } = me {
-                        specified
-                    } else {
-                        unreachable!();
-                    }
                 }
-                cold(lazy, &mut *$wrapper.index_alloc, reserved)
+                cold(lazy, &mut *$wrapper.index_alloc);
             }
-            LazyEncoder::Specified { specified, .. } => specified,
         }
+        let LazyEncoder::Specified { specified: SpecifiedEncoder::$variant(b), .. } = lazy else {
+            // Safety: `cold` gets called when lazy isn't the correct encoder. `cold` either diverges
+            // or sets lazy to the correct encoder.
+            unsafe { std::hint::unreachable_unchecked() };
+        };
+        b
     }};
 }
 
@@ -226,32 +233,27 @@ struct EncoderWrapper<'a> {
 }
 
 impl<'a> EncoderWrapper<'a> {
+    #[inline(always)]
     fn serialize_enum(self, variant_index: u32) -> Result<EncoderWrapper<'a>> {
         let variant_index = variant_index
             .try_into()
             .map_err(|_| error("enums with more than 256 variants are unsupported"))?;
-        match specify!(self, Enum) {
-            SpecifiedEncoder::Enum(b) => {
-                b.0.encode(&variant_index);
-                let lazy = get_mut_or_resize(&mut b.1, variant_index as usize);
-                lazy.reserve_fast(1); // TODO use push instead.
-                Ok(Self {
-                    lazy,
-                    index_alloc: self.index_alloc,
-                })
-            }
-            _ => type_changed(),
-        }
+        let b = specify!(self, Enum);
+        b.0.encode(&variant_index);
+        let lazy = get_mut_or_resize(&mut b.1, variant_index as usize);
+        lazy.reserve_fast(1); // TODO use push instead.
+        Ok(Self {
+            lazy,
+            index_alloc: self.index_alloc,
+        })
     }
 }
 
 macro_rules! impl_ser {
     ($name:ident, $t:ty, $variant:ident) => {
+        // TODO #[inline(always)] makes benchmark slower because collect_seq isn't inlined.
         fn $name(self, v: $t) -> Result<()> {
-            match specify!(self, $variant) {
-                SpecifiedEncoder::$variant(b) => b.encode(&v),
-                _ => return type_changed(),
-            }
+            specify!(self, $variant).encode(&v);
             Ok(())
         }
     };
@@ -287,6 +289,7 @@ impl<'a> Serializer for EncoderWrapper<'a> {
     impl_ser!(serialize_f64, f64, U64);
     impl_ser!(serialize_char, char, U32);
 
+    #[inline(always)]
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok> {
         v.serialize(self)
     }
@@ -305,14 +308,17 @@ impl<'a> Serializer for EncoderWrapper<'a> {
         v.serialize(self.serialize_enum(1)?)
     }
 
+    #[inline(always)]
     fn serialize_unit(self) -> Result<Self::Ok> {
         Ok(())
     }
 
+    #[inline(always)]
     fn serialize_unit_struct(self, _name: &'static str) -> Result<Self::Ok> {
         Ok(())
     }
 
+    #[inline(always)]
     fn serialize_unit_variant(
         self,
         _name: &'static str,
@@ -323,6 +329,7 @@ impl<'a> Serializer for EncoderWrapper<'a> {
         Ok(())
     }
 
+    #[inline(always)]
     fn serialize_newtype_struct<T: ?Sized>(self, _name: &'static str, value: &T) -> Result<Self::Ok>
     where
         T: Serialize,
@@ -330,6 +337,7 @@ impl<'a> Serializer for EncoderWrapper<'a> {
         value.serialize(self)
     }
 
+    #[inline(always)]
     fn serialize_newtype_variant<T: ?Sized>(
         self,
         _name: &'static str,
@@ -346,58 +354,56 @@ impl<'a> Serializer for EncoderWrapper<'a> {
     #[inline(always)]
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq> {
         let len = len.expect("sequence must have len");
-        match specify!(self, Seq) {
-            SpecifiedEncoder::Seq(b) => {
-                b.0.encode(&len);
-                b.1.reserve_fast(len);
-                Ok(Self {
-                    lazy: &mut b.1,
-                    index_alloc: self.index_alloc,
-                })
-            }
-            _ => type_changed(),
-        }
+        let b = specify!(self, Seq);
+        b.0.encode(&len);
+        b.1.reserve_fast(len);
+        Ok(Self {
+            lazy: &mut b.1,
+            index_alloc: self.index_alloc,
+        })
     }
 
     #[inline(always)]
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple> {
+        // Copy of specify! macro that takes an additional len parameter to cold.
         let lazy = &mut *self.lazy;
-        let specified = match lazy {
-            &mut LazyEncoder::Unspecified { reserved } => {
+        match lazy {
+            LazyEncoder::Specified {
+                specified: SpecifiedEncoder::Tuple(_),
+                ..
+            } => (),
+            _ => {
                 #[cold]
-                fn cold(
-                    me: &mut LazyEncoder,
-                    reserved: Option<NonZeroUsize>,
-                    len: usize,
-                ) -> &mut SpecifiedEncoder {
-                    let mut specified = SpecifiedEncoder::Tuple(default_box_slice(len));
+                fn cold(me: &mut LazyEncoder, len: usize) {
+                    let &mut LazyEncoder::Unspecified { reserved } = me else {
+                        panic!("type changed");
+                    };
+                    *me = LazyEncoder::Specified {
+                        specified: SpecifiedEncoder::Tuple(default_box_slice(len)),
+                        index: usize::MAX, // We never use index for SpecifiedEncoder::Tuple.
+                    };
+                    let LazyEncoder::Specified { specified, .. } = me else {
+                        unreachable!();
+                    };
                     if let Some(reserved) = reserved {
                         specified.reserve(reserved);
                     }
-                    *me = LazyEncoder::Specified {
-                        specified,
-                        index: usize::MAX, // We never use this.
-                    };
-                    // TODO might be slower to put in cold fn.
-                    let LazyEncoder::Specified { specified: encoder, .. } = me else {
-                        unreachable!();
-                    };
-                    encoder
                 }
-                cold(lazy, reserved, len)
+                cold(lazy, len);
             }
-            LazyEncoder::Specified { specified, .. } => specified,
         };
-        match specified {
-            SpecifiedEncoder::Tuple(encoders) => {
-                assert_eq!(encoders.len(), len); // Removes multiple bounds checks.
-                Ok(TupleSerializer {
-                    encoders,
-                    index_alloc: self.index_alloc,
-                })
-            }
-            _ => type_changed(),
-        }
+        let LazyEncoder::Specified {
+            specified: SpecifiedEncoder::Tuple(encoders),
+            ..
+        } = lazy else {
+            // Safety: see specify! macro which this is based on.
+            unsafe { std::hint::unreachable_unchecked() };
+        };
+        assert!(encoders.len() == len, "type changed"); // Removes multiple bounds checks.
+        Ok(TupleSerializer {
+            encoders,
+            index_alloc: self.index_alloc,
+        })
     }
 
     #[inline(always)]
@@ -423,18 +429,14 @@ impl<'a> Serializer for EncoderWrapper<'a> {
     #[inline(always)]
     fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap> {
         let len = len.expect("sequence must have len");
-        match specify!(self, Map) {
-            SpecifiedEncoder::Map(b) => {
-                b.0.encode(&len);
-                b.1 .0.reserve_fast(len);
-                b.1 .1.reserve_fast(len);
-                Ok(MapSerializer {
-                    encoders: &mut b.1,
-                    index_alloc: self.index_alloc,
-                })
-            }
-            _ => type_changed(),
-        }
+        let b = specify!(self, Map);
+        b.0.encode(&len);
+        b.1 .0.reserve_fast(len);
+        b.1 .1.reserve_fast(len);
+        Ok(MapSerializer {
+            encoders: &mut b.1,
+            index_alloc: self.index_alloc,
+        })
     }
 
     #[inline(always)]
@@ -471,6 +473,8 @@ macro_rules! ok_error_end {
 
 impl SerializeSeq for EncoderWrapper<'_> {
     ok_error_end!();
+    // TODO(unsound): could be called more than len times by buggy safe code but we only reserved len.
+    #[inline(always)]
     fn serialize_element<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<()> {
         value.serialize(EncoderWrapper {
             lazy: &mut *self.lazy,
@@ -485,10 +489,11 @@ struct TupleSerializer<'a> {
 }
 
 macro_rules! impl_tuple {
-    ($tr:ty, $fun:ident) => {
+    ($tr:ty, $fun:ident $(, $key:ident)?) => {
         impl $tr for TupleSerializer<'_> {
             ok_error_end!();
-            fn $fun<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<()> {
+            #[inline(always)]
+            fn $fun<T: Serialize + ?Sized>(&mut self, $($key: &'static str,)? value: &T) -> Result<()> {
                 let (lazy, remaining) = std::mem::take(&mut self.encoders)
                     .split_first_mut()
                     .expect("length mismatch");
@@ -498,39 +503,20 @@ macro_rules! impl_tuple {
                     index_alloc: &mut *self.index_alloc,
                 })
             }
+
+            $(
+                fn skip_field(&mut self, $key: &'static str) -> Result<()> {
+                    err("skip field is not supported")
+                }
+            )?
         }
     };
 }
 impl_tuple!(SerializeTuple, serialize_element);
 impl_tuple!(SerializeTupleStruct, serialize_field);
 impl_tuple!(SerializeTupleVariant, serialize_field);
-
-macro_rules! impl_struct {
-    ($tr:ty) => {
-        impl $tr for TupleSerializer<'_> {
-            ok_error_end!();
-            fn serialize_field<T: ?Sized>(&mut self, _key: &'static str, value: &T) -> Result<()>
-            where
-                T: Serialize,
-            {
-                let (lazy, remaining) = std::mem::take(&mut self.encoders)
-                    .split_first_mut()
-                    .expect("length mismatch");
-                self.encoders = remaining;
-                value.serialize(EncoderWrapper {
-                    lazy,
-                    index_alloc: &mut *self.index_alloc,
-                })
-            }
-
-            fn skip_field(&mut self, _key: &'static str) -> Result<()> {
-                err("skip field is not supported")
-            }
-        }
-    };
-}
-impl_struct!(SerializeStruct);
-impl_struct!(SerializeStructVariant);
+impl_tuple!(SerializeStruct, serialize_field, _key);
+impl_tuple!(SerializeStructVariant, serialize_field, _key);
 
 struct MapSerializer<'a> {
     encoders: &'a mut (LazyEncoder, LazyEncoder), // (keys, values)
@@ -539,6 +525,8 @@ struct MapSerializer<'a> {
 
 impl SerializeMap for MapSerializer<'_> {
     ok_error_end!();
+    // TODO(unsound): could be called more than len times by buggy safe code but we only reserved len.
+    #[inline(always)]
     fn serialize_key<T: ?Sized>(&mut self, key: &T) -> Result<()>
     where
         T: Serialize,
@@ -549,6 +537,8 @@ impl SerializeMap for MapSerializer<'_> {
         })
     }
 
+    // TODO(unsound): could be called more than len times by buggy safe code but we only reserved len.
+    #[inline(always)]
     fn serialize_value<T: ?Sized>(&mut self, value: &T) -> Result<()>
     where
         T: Serialize,
@@ -562,17 +552,17 @@ impl SerializeMap for MapSerializer<'_> {
 
 #[cfg(test)]
 mod tests {
+    use serde::ser::SerializeTuple;
+    use serde::{Serialize, Serializer};
+
     #[test]
     fn enum_256_variants() {
         enum Enum {
             A,
             B,
         }
-        impl serde::Serialize for Enum {
-            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-            where
-                S: serde::Serializer,
-            {
+        impl Serialize for Enum {
+            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
                 let variant_index = match self {
                     Self::A => 255,
                     Self::B => 256,
@@ -582,5 +572,35 @@ mod tests {
         }
         assert!(crate::serialize(&Enum::A).is_ok());
         assert!(crate::serialize(&Enum::B).is_err());
+    }
+
+    #[test]
+    #[should_panic(expected = "type changed")]
+    fn test_type_changed() {
+        struct BoolOrU8(bool);
+        impl Serialize for BoolOrU8 {
+            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                if self.0 {
+                    serializer.serialize_bool(false)
+                } else {
+                    serializer.serialize_u8(1)
+                }
+            }
+        }
+        let _ = crate::serialize(&vec![BoolOrU8(false), BoolOrU8(true)]);
+    }
+
+    #[test]
+    #[should_panic(expected = "type changed")]
+    fn test_tuple_len_changed() {
+        struct TupleN(usize);
+        impl Serialize for TupleN {
+            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                let mut tuple = serializer.serialize_tuple(self.0)?;
+                (0..self.0).try_for_each(|_| tuple.serialize_element(&false))?;
+                tuple.end()
+            }
+        }
+        let _ = crate::serialize(&vec![TupleN(1), TupleN(2)]);
     }
 }
