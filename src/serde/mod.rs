@@ -1,4 +1,4 @@
-use crate::error::{err, error_from_display, Error};
+use crate::error::{error_from_display, Error};
 use std::fmt::Display;
 
 mod de;
@@ -9,9 +9,13 @@ mod variant;
 pub use de::*;
 pub use ser::*;
 
-fn type_changed<T>() -> Result<T, Error> {
-    err("type changed")
+// Use macro instead of function because ! type isn't stable.
+macro_rules! type_changed {
+    () => {
+        panic!("type changed")
+    };
 }
+use type_changed;
 
 fn default_box_slice<T: Default>(len: usize) -> Box<[T]> {
     let mut vec = vec![];

@@ -5,7 +5,7 @@ use crate::f32::F32Encoder;
 use crate::int::IntEncoder;
 use crate::length::LengthEncoder;
 use crate::serde::variant::VariantEncoder;
-use crate::serde::{default_box_slice, get_mut_or_resize};
+use crate::serde::{default_box_slice, get_mut_or_resize, type_changed};
 use crate::str::StrEncoder;
 use serde::ser::{
     SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
@@ -191,7 +191,7 @@ macro_rules! specify {
     ($wrapper:ident, $variant:ident) => {{
         let lazy = &mut *$wrapper.lazy;
         match lazy {
-            // Check if we're already the correct encoder. This results in 1 branch in the hot path.
+            // Check if it's already the correct encoder. This results in 1 branch in the hot path.
             LazyEncoder::Specified { specified: SpecifiedEncoder::$variant(_), .. } => (),
             _ => {
                 // Either create the correct encoder if unspecified or panic if we already have an
@@ -202,7 +202,7 @@ macro_rules! specify {
                     index_alloc: &mut usize,
                 ) {
                     let &mut LazyEncoder::Unspecified { reserved } = me else {
-                        panic!("type changed");
+                        type_changed!();
                     };
                     *me = LazyEncoder::Specified {
                         specified: SpecifiedEncoder::$variant(Default::default()),
@@ -376,7 +376,7 @@ impl<'a> Serializer for EncoderWrapper<'a> {
                 #[cold]
                 fn cold(me: &mut LazyEncoder, len: usize) {
                     let &mut LazyEncoder::Unspecified { reserved } = me else {
-                        panic!("type changed");
+                        type_changed!();
                     };
                     *me = LazyEncoder::Specified {
                         specified: SpecifiedEncoder::Tuple(default_box_slice(len)),
@@ -399,7 +399,9 @@ impl<'a> Serializer for EncoderWrapper<'a> {
             // Safety: see specify! macro which this is based on.
             unsafe { std::hint::unreachable_unchecked() };
         };
-        assert!(encoders.len() == len, "type changed"); // Removes multiple bounds checks.
+        if encoders.len() != len {
+            type_changed!(); // Removes multiple bounds checks.
+        }
         Ok(TupleSerializer {
             encoders,
             index_alloc: self.index_alloc,

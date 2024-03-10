@@ -24,7 +24,7 @@ mod inner {
     /// **Warning:** The format is incompatible with [`encode`][`crate::encode`] and subject to
     /// change between major versions.
     pub fn deserialize<'de, T: Deserialize<'de>>(mut bytes: &'de [u8]) -> Result<T, Error> {
-        let mut decoder = SerdeDecoder::Unspecified2 { length: 1 };
+        let mut decoder = SerdeDecoder::Unspecified { length: 1 };
         let t = T::deserialize(DecoderWrapper {
             decoder: &mut decoder,
             input: &mut bytes,
@@ -50,13 +50,13 @@ enum SerdeDecoder<'a> {
     U32(IntDecoder<'a, u32>),
     U64(IntDecoder<'a, u64>),
     U128(IntDecoder<'a, u128>),
-    Unspecified,
-    Unspecified2 { length: usize },
+    Unpopulated,
+    Unspecified { length: usize },
 }
 
 impl Default for SerdeDecoder<'_> {
     fn default() -> Self {
-        Self::Unspecified
+        Self::Unpopulated
     }
 }
 
@@ -94,11 +94,11 @@ impl<'a> View<'a> for SerdeDecoder<'a> {
             Self::U32(d) => d.populate(input, length),
             Self::U64(d) => d.populate(input, length),
             Self::U128(d) => d.populate(input, length),
-            Self::Unspecified => {
-                *self = Self::Unspecified2 { length };
+            Self::Unpopulated => {
+                *self = Self::Unspecified { length };
                 Ok(())
             }
-            Self::Unspecified2 { .. } => unreachable!(), // TODO
+            Self::Unspecified { .. } => unreachable!(),
         }
     }
 }
@@ -110,16 +110,29 @@ struct DecoderWrapper<'a, 'de> {
 
 macro_rules! specify {
     ($self:ident, $variant:ident) => {
-        match &mut *$self.decoder {
-            &mut SerdeDecoder::Unspecified2 { length } => {
-                #[cold]
-                fn cold(me: &mut DecoderWrapper, length: usize) -> Result<()> {
-                    *me.decoder = SerdeDecoder::$variant(Default::default());
-                    me.decoder.populate(me.input, length)
+        {
+            match &mut $self.decoder {
+                // Check if it's already the correct decoder. This results in 1 branch in the hot path.
+                SerdeDecoder::$variant(_) => (),
+                _ => {
+                    // Either create the correct decoder if unspecified or diverge via panic/error.
+                    #[cold]
+                    fn cold<'de>(decoder: &mut SerdeDecoder<'de>, input: &mut &'de[u8]) -> Result<()> {
+                        let &mut SerdeDecoder::Unspecified { length } = decoder else {
+                            type_changed!();
+                        };
+                        *decoder = SerdeDecoder::$variant(Default::default());
+                        decoder.populate(input, length)
+                    }
+                    cold(&mut *$self.decoder, &mut *$self.input)?;
                 }
-                cold(&mut $self, length)?;
             }
-            _ => (),
+            let SerdeDecoder::$variant(d) = &mut *$self.decoder else {
+                // Safety: `cold` gets called when decoder isn't the correct decoder. `cold` either
+                // errors or sets lazy to the correct decoder.
+                unsafe { std::hint::unreachable_unchecked() };
+            };
+            d
         }
     };
 }
@@ -131,13 +144,7 @@ macro_rules! impl_de {
         where
             V: Visitor<'de>,
         {
-            v.$visit({
-                specify!(self, $variant);
-                match &mut *self.decoder {
-                    SerdeDecoder::$variant(d) => d.decode(),
-                    _ => return type_changed(),
-                }
-            })
+            v.$visit(specify!(self, $variant).decode())
         }
     };
 }
@@ -178,6 +185,7 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
         v.visit_char(char::from_u32(u32::deserialize(self)?).ok_or_else(|| error("invalid char"))?)
     }
 
+    #[inline(always)]
     fn deserialize_string<V>(self, v: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -193,6 +201,7 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
         self.deserialize_byte_buf(v) // TODO avoid allocation.
     }
 
+    #[inline(always)]
     fn deserialize_byte_buf<V>(self, v: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -205,14 +214,11 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
     where
         V: Visitor<'de>,
     {
-        specify!(self, Enum);
-        let (decoder, variant_index) = match &mut *self.decoder {
-            SerdeDecoder::Enum(b) => {
-                let variant_index = b.0.decode();
-                (&mut b.1[variant_index as usize], variant_index)
-            }
-            _ => return type_changed(),
-        };
+        let (variant_decoder, decoders) = &mut **specify!(self, Enum);
+        let variant_index = variant_decoder.decode();
+        // Safety: populate guarantees `variant_decoder.max_variant_index() < decoders.len()`.
+        let decoder = unsafe { decoders.get_unchecked_mut(variant_index as usize) };
+
         match variant_index {
             0 => v.visit_none(),
             1 => v.visit_some(DecoderWrapper {
@@ -251,14 +257,8 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
     where
         V: Visitor<'de>,
     {
-        specify!(self, Seq);
-        let (decoder, len) = match &mut *self.decoder {
-            SerdeDecoder::Seq(b) => {
-                let len = b.0.decode();
-                (&mut b.1, len)
-            }
-            _ => return type_changed(),
-        };
+        let (length_decoder, decoder) = &mut **specify!(self, Seq);
+        let len = length_decoder.decode();
 
         struct Access<'a, 'de> {
             wrapper: DecoderWrapper<'a, 'de>,
@@ -273,21 +273,21 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
                 T: DeserializeSeed<'de>,
             {
                 guard_zst::<T::Value>(self.len)?;
-                self.len
-                    .checked_sub(1)
-                    .map(|len| {
-                        self.len = len;
-                        DeserializeSeed::deserialize(
-                            seed,
-                            DecoderWrapper {
-                                decoder: &mut *self.wrapper.decoder,
-                                input: &mut *self.wrapper.input,
-                            },
-                        )
-                    })
-                    .transpose()
+                if self.len != 0 {
+                    self.len -= 1;
+                    Ok(Some(DeserializeSeed::deserialize(
+                        seed,
+                        DecoderWrapper {
+                            decoder: &mut *self.wrapper.decoder,
+                            input: &mut *self.wrapper.input,
+                        },
+                    )?))
+                } else {
+                    Ok(None)
+                }
             }
 
+            #[inline(always)]
             fn size_hint(&self) -> Option<usize> {
                 Some(self.len)
             }
@@ -302,23 +302,36 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
     }
 
     #[inline(always)]
-    fn deserialize_tuple<V>(mut self, tuple_len: usize, v: V) -> Result<V::Value>
+    fn deserialize_tuple<V>(mut self, len: usize, v: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        if let &mut SerdeDecoder::Unspecified2 { length } = &mut *self.decoder {
-            #[cold]
-            fn cold(me: &mut DecoderWrapper, length: usize, tuple_len: usize) -> Result<()> {
-                *me.decoder = SerdeDecoder::Tuple(default_box_slice(tuple_len));
-                me.decoder.populate(me.input, length)
+        // Copy of specify! macro that takes an additional len parameter to cold.
+        match &mut self.decoder {
+            SerdeDecoder::Tuple(_) => (),
+            _ => {
+                #[cold]
+                fn cold<'de>(
+                    decoder: &mut SerdeDecoder<'de>,
+                    input: &mut &'de [u8],
+                    len: usize,
+                ) -> Result<()> {
+                    let &mut SerdeDecoder::Unspecified { length } = decoder else {
+                        type_changed!();
+                    };
+                    *decoder = SerdeDecoder::Tuple(default_box_slice(len));
+                    decoder.populate(input, length)
+                }
+                cold(&mut *self.decoder, &mut *self.input, len)?;
             }
-            cold(&mut self, length, tuple_len)?;
         }
-        let decoders = match &mut *self.decoder {
-            SerdeDecoder::Tuple(d) => &mut **d,
-            _ => return type_changed(),
+        let SerdeDecoder::Tuple(decoders) = &mut *self.decoder else {
+            // Safety: see specify! macro which this is based on.
+            unsafe { std::hint::unreachable_unchecked() };
         };
-        assert_eq!(decoders.len(), tuple_len); // Removes multiple bounds checks.
+        if decoders.len() != len {
+            type_changed!(); // Removes multiple bounds checks.
+        }
 
         struct Access<'a, 'de> {
             decoders: &'a mut [SerdeDecoder<'de>],
@@ -333,22 +346,21 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
             where
                 T: DeserializeSeed<'de>,
             {
-                guard_zst::<T::Value>(self.decoders.len())?;
-                self.decoders
-                    .get_mut(self.index)
-                    .map(|decoder| {
-                        self.index += 1;
-                        DeserializeSeed::deserialize(
-                            seed,
-                            DecoderWrapper {
-                                decoder,
-                                input: &mut *self.input,
-                            },
-                        )
-                    })
-                    .transpose()
+                if let Some(decoder) = self.decoders.get_mut(self.index) {
+                    self.index += 1;
+                    Ok(Some(DeserializeSeed::deserialize(
+                        seed,
+                        DecoderWrapper {
+                            decoder,
+                            input: &mut *self.input,
+                        },
+                    )?))
+                } else {
+                    Ok(None)
+                }
             }
 
+            #[inline(always)]
             fn size_hint(&self) -> Option<usize> {
                 Some(self.decoders.len())
             }
@@ -372,14 +384,9 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
     where
         V: Visitor<'de>,
     {
-        specify!(self, Map);
-        let (decoders, len) = match &mut *self.decoder {
-            SerdeDecoder::Map(b) => {
-                let len = b.0.decode();
-                (&mut b.1, len)
-            }
-            _ => return type_changed(),
-        };
+        let (length_decoder, decoders) = &mut **specify!(self, Map);
+        let len = length_decoder.decode();
+
         struct Access<'a, 'de> {
             decoders: &'a mut (SerdeDecoder<'de>, SerdeDecoder<'de>),
             input: &'a mut &'de [u8],
@@ -395,21 +402,21 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
                 K: DeserializeSeed<'de>,
             {
                 guard_zst::<K::Value>(self.len)?;
-                self.len
-                    .checked_sub(1)
-                    .map(|len| {
-                        self.len = len;
-                        DeserializeSeed::deserialize(
-                            seed,
-                            DecoderWrapper {
-                                decoder: &mut self.decoders.0,
-                                input: &mut *self.input,
-                            },
-                        )
-                    })
-                    .transpose()
+                if self.len != 0 {
+                    self.len -= 1;
+                    Ok(Some(DeserializeSeed::deserialize(
+                        seed,
+                        DecoderWrapper {
+                            decoder: &mut self.decoders.0,
+                            input: &mut *self.input,
+                        },
+                    )?))
+                } else {
+                    Ok(None)
+                }
             }
 
+            // TODO(unsound): could be called more than len times by buggy safe code and go out of bounds.
             #[inline(always)]
             fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
             where
@@ -424,6 +431,7 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
                 )
             }
 
+            #[inline(always)]
             fn size_hint(&self) -> Option<usize> {
                 Some(self.len)
             }
@@ -476,6 +484,7 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
         err("deserialize_ignored_any is not supported")
     }
 
+    #[inline(always)]
     fn is_human_readable(&self) -> bool {
         false
     }
@@ -485,18 +494,17 @@ impl<'a, 'de> EnumAccess<'de> for DecoderWrapper<'a, 'de> {
     type Error = Error;
     type Variant = DecoderWrapper<'a, 'de>;
 
+    #[inline(always)]
     fn variant_seed<V>(mut self, seed: V) -> Result<(V::Value, Self::Variant)>
     where
         V: DeserializeSeed<'de>,
     {
-        specify!(self, Enum);
-        let (decoder, variant_index) = match &mut *self.decoder {
-            SerdeDecoder::Enum(b) => {
-                let variant_index = b.0.decode();
-                (&mut b.1[variant_index as usize], variant_index as u32)
-            }
-            _ => return type_changed(),
-        };
+        let (variant_decoder, decoders) = &mut **specify!(self, Enum);
+        let variant_index = variant_decoder.decode();
+        // Safety: populate guarantees `variant_decoder.max_variant_index() < decoders.len()`.
+        let decoder = unsafe { decoders.get_unchecked_mut(variant_index as usize) };
+        let variant_index = variant_index as u32;
+
         let val: Result<_> = seed.deserialize(variant_index.into_deserializer());
         Ok((
             val?,
@@ -511,10 +519,12 @@ impl<'a, 'de> EnumAccess<'de> for DecoderWrapper<'a, 'de> {
 impl<'de> VariantAccess<'de> for DecoderWrapper<'_, 'de> {
     type Error = Error;
 
+    #[inline(always)]
     fn unit_variant(self) -> Result<()> {
         Ok(())
     }
 
+    #[inline(always)]
     fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value>
     where
         T: DeserializeSeed<'de>,
@@ -522,6 +532,7 @@ impl<'de> VariantAccess<'de> for DecoderWrapper<'_, 'de> {
         seed.deserialize(self)
     }
 
+    #[inline(always)]
     fn tuple_variant<V>(self, len: usize, v: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -529,6 +540,7 @@ impl<'de> VariantAccess<'de> for DecoderWrapper<'_, 'de> {
         self.deserialize_tuple(len, v)
     }
 
+    #[inline(always)]
     fn struct_variant<V>(self, fields: &'static [&'static str], v: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
