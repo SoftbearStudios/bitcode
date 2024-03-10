@@ -302,11 +302,11 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
     }
 
     #[inline(always)]
-    fn deserialize_tuple<V>(mut self, len: usize, v: V) -> Result<V::Value>
+    fn deserialize_tuple<V>(mut self, tuple_len: usize, v: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        // Copy of specify! macro that takes an additional len parameter to cold.
+        // Copy of specify! macro that takes an additional tuple_len parameter to cold.
         match &mut self.decoder {
             SerdeDecoder::Tuple(_) => (),
             _ => {
@@ -314,22 +314,22 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
                 fn cold<'de>(
                     decoder: &mut SerdeDecoder<'de>,
                     input: &mut &'de [u8],
-                    len: usize,
+                    tuple_len: usize,
                 ) -> Result<()> {
                     let &mut SerdeDecoder::Unspecified { length } = decoder else {
                         type_changed!();
                     };
-                    *decoder = SerdeDecoder::Tuple(default_box_slice(len));
+                    *decoder = SerdeDecoder::Tuple(default_box_slice(tuple_len));
                     decoder.populate(input, length)
                 }
-                cold(&mut *self.decoder, &mut *self.input, len)?;
+                cold(&mut *self.decoder, &mut *self.input, tuple_len)?;
             }
         }
         let SerdeDecoder::Tuple(decoders) = &mut *self.decoder else {
             // Safety: see specify! macro which this is based on.
             unsafe { std::hint::unreachable_unchecked() };
         };
-        if decoders.len() != len {
+        if decoders.len() != tuple_len {
             type_changed!(); // Removes multiple bounds checks.
         }
 
