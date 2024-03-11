@@ -1,5 +1,6 @@
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use test::black_box;
 
@@ -102,11 +103,18 @@ fn random_data(n: usize) -> Vec<Data> {
     (0..n).map(|_| rng.gen()).collect()
 }
 
+// Use bincode fixint for benchmarks because it's faster than varint.
+fn bincode_serialize(v: &(impl Serialize + ?Sized)) -> Vec<u8> {
+    bincode::serialize(v).unwrap()
+}
+fn bincode_deserialize<T: DeserializeOwned>(v: &[u8]) -> T {
+    bincode::deserialize(v).unwrap()
+}
+
 #[cfg(feature = "derive")]
 fn bitcode_encode(v: &(impl crate::Encode + ?Sized)) -> Vec<u8> {
     crate::encode(v)
 }
-
 #[cfg(feature = "derive")]
 fn bitcode_decode<T: crate::DecodeOwned>(v: &[u8]) -> T {
     crate::decode(v).unwrap()
@@ -116,9 +124,8 @@ fn bitcode_decode<T: crate::DecodeOwned>(v: &[u8]) -> T {
 fn bitcode_serialize(v: &(impl Serialize + ?Sized)) -> Vec<u8> {
     crate::serialize(v).unwrap()
 }
-
 #[cfg(feature = "serde")]
-fn bitcode_deserialize<T: serde::de::DeserializeOwned>(v: &[u8]) -> T {
+fn bitcode_deserialize<T: DeserializeOwned>(v: &[u8]) -> T {
     crate::deserialize(v).unwrap()
 }
 
@@ -153,6 +160,7 @@ macro_rules! bench {
     }
 }
 
+bench!(serialize, deserialize, bincode);
 #[cfg(feature = "serde")]
 bench!(serialize, deserialize, bitcode);
 #[cfg(feature = "derive")]
@@ -225,11 +233,7 @@ mod tests {
 
         println!("| Format           | Compression  | Size (bytes) | Serialize (ns) | Deserialize (ns) |");
         println!("|------------------|--------------|--------------|----------------|------------------|");
-        print_results(
-            "bincode",
-            |v| bincode::serialize(v).unwrap(),
-            |v| bincode::deserialize(v).unwrap(),
-        );
+        print_results("bincode", bincode_serialize, bincode_deserialize);
         print_results(
             "bincode-varint",
             |v| bincode::DefaultOptions::new().serialize(v).unwrap(),
