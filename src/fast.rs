@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
-use std::mem::MaybeUninit;
+use std::mem::{ManuallyDrop, MaybeUninit};
 
 pub type VecImpl<T> = FastVec<T>;
 pub type SliceImpl<'a, T> = FastSlice<'a, T>;
@@ -80,7 +80,14 @@ impl<T> FastVec<T> {
     }
 
     pub fn clear(&mut self) {
-        self.mut_vec(Vec::clear);
+        // Safety: same as `Vec::clear` except `self.end = self.start` instead of `self.len = 0` but
+        // these are equivalent operations. Can't use `self.mut_vec(Vec::clear)` because T::drop
+        // panicking would double free elements.
+        unsafe {
+            let elems: *mut [T] = self.as_mut_slice();
+            self.end = self.start;
+            std::ptr::drop_in_place(elems);
+        }
     }
 
     pub fn reserve(&mut self, additional: usize) {
@@ -88,28 +95,31 @@ impl<T> FastVec<T> {
             #[cold]
             #[inline(never)]
             fn reserve_slow<T>(me: &mut FastVec<T>, additional: usize) {
-                me.mut_vec(|v| v.reserve(additional));
+                // Safety: `Vec::reserve` panics on OOM without freeing Vec, so Vec is unmodified.
+                unsafe {
+                    me.mut_vec(|v| {
+                        // Optimizes out a redundant check in `Vec::reserve`.
+                        // Safety: we've already ensured this condition before calling reserve_slow.
+                        if additional <= v.capacity().wrapping_sub(v.len()) {
+                            std::hint::unreachable_unchecked();
+                        }
+                        v.reserve(additional);
+                    });
+                }
             }
             reserve_slow(self, additional);
         }
     }
 
-    pub fn resize(&mut self, new_len: usize, value: T)
-    where
-        T: Clone,
-    {
-        self.mut_vec(|v| v.resize(new_len, value));
-    }
-
-    /// Accesses the [`FastVec`] mutably as a [`Vec`]. TODO(unsound) panic in `f` causes double free.
-    fn mut_vec(&mut self, f: impl FnOnce(&mut Vec<T>)) {
-        unsafe {
-            let copied = std::ptr::read(self as *mut FastVec<T>);
-            let mut vec = Vec::from(copied);
-            f(&mut vec);
-            let copied = FastVec::from(vec);
-            std::ptr::write(self as *mut FastVec<T>, copied);
-        }
+    /// Accesses the [`FastVec`] mutably as a [`Vec`].
+    /// # Safety
+    /// If `f` panics the [`Vec`] must be unmodified.
+    unsafe fn mut_vec(&mut self, f: impl FnOnce(&mut Vec<T>)) {
+        let copied = std::ptr::read(self as *mut FastVec<T>);
+        let mut vec = ManuallyDrop::new(Vec::from(copied));
+        f(&mut vec);
+        let copied = FastVec::from(ManuallyDrop::into_inner(vec));
+        std::ptr::write(self as *mut FastVec<T>, copied);
     }
 
     /// Get a pointer to write to without incrementing length.
