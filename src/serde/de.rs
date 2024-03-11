@@ -41,8 +41,8 @@ enum SerdeDecoder<'a> {
     Enum((VariantDecoder<'a>, Vec<SerdeDecoder<'a>>)), // (variants, values)
     F32(F32Decoder<'a>),
     // We don't need signed integer decoders here because unsigned ones work the same.
-    Map(Box<(LengthDecoder<'a>, (SerdeDecoder<'a>, SerdeDecoder<'a>))>), // (lengths, (keys, values))
-    Seq(Box<(LengthDecoder<'a>, SerdeDecoder<'a>)>),                     // (lengths, values)
+    Map((LengthDecoder<'a>, Box<(SerdeDecoder<'a>, SerdeDecoder<'a>)>)), // (lengths, (keys, values))
+    Seq((LengthDecoder<'a>, Box<SerdeDecoder<'a>>)),                     // (lengths, values)
     Str(StrDecoder<'a>),
     Tuple(Box<[SerdeDecoder<'a>]>), // [field0, field1, ..]
     U8(IntDecoder<'a, u8>),
@@ -257,7 +257,7 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
     where
         V: Visitor<'de>,
     {
-        let (length_decoder, decoder) = &mut **specify!(self, Seq);
+        let (length_decoder, decoder) = specify!(self, Seq);
         let len = length_decoder.decode();
 
         struct Access<'a, 'de> {
@@ -384,7 +384,7 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
     where
         V: Visitor<'de>,
     {
-        let (length_decoder, decoders) = &mut **specify!(self, Map);
+        let (length_decoder, decoders) = specify!(self, Map);
         let len = length_decoder.decode();
 
         struct Access<'a, 'de> {

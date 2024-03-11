@@ -64,8 +64,8 @@ enum SpecifiedEncoder {
     I32(IntEncoder<i32>),
     I64(IntEncoder<i64>),
     I128(IntEncoder<i128>),
-    Map(Box<(LengthEncoder, (LazyEncoder, LazyEncoder))>), // (lengths, (keys, values))
-    Seq(Box<(LengthEncoder, LazyEncoder)>),                // (lengths, values)
+    Map((LengthEncoder, Box<(LazyEncoder, LazyEncoder)>)), // (lengths, (keys, values))
+    Seq((LengthEncoder, Box<LazyEncoder>)),                // (lengths, values)
     Str(StrEncoder),
     Tuple(Box<[LazyEncoder]>), // [field0, field1, ..]
     U8(IntEncoder<u8>),
