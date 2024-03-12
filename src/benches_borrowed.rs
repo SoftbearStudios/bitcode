@@ -83,7 +83,7 @@ fn bench_bincode_deserialize(b: &mut Bencher) {
 fn bench_bitcode_encode(b: &mut Bencher) {
     let data = bench_data();
     let data = bench_data2(&data);
-    let mut buffer = crate::EncodeBuffer::default();
+    let mut buffer = crate::Buffer::default();
 
     b.iter(|| {
         black_box(buffer.encode(black_box(&data)));
@@ -95,13 +95,17 @@ fn bench_bitcode_encode(b: &mut Bencher) {
 fn bench_bitcode_decode(b: &mut Bencher) {
     let data = bench_data();
     let data = bench_data2(&data);
-    let mut encode_buffer = crate::EncodeBuffer::default();
+    let mut encode_buffer = crate::Buffer::default();
     let bytes = encode_buffer.encode(&data);
 
-    let mut decode_buffer = crate::DecodeBuffer::<Vec<Data2>>::default();
-    assert_eq!(decode_buffer.decode(bytes).unwrap(), data);
+    let mut decode_buffer = crate::Buffer::default();
+    assert_eq!(decode_buffer.decode::<Vec<Data2>>(bytes).unwrap(), data);
     b.iter(|| {
-        black_box(decode_buffer.decode(black_box(bytes)).unwrap());
+        black_box(
+            decode_buffer
+                .decode::<Vec<Data2>>(black_box(bytes))
+                .unwrap(),
+        );
     })
 }
 

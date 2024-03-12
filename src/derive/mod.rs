@@ -47,18 +47,24 @@ pub trait Decode<'a>: Sized {
 pub trait DecodeOwned: for<'de> Decode<'de> {}
 impl<T> DecodeOwned for T where T: for<'de> Decode<'de> {}
 
+// Stop #[inline(always)] of Encoder::encode/Decoder::decode since 90% of the time is spent in these
+// functions, and we don't want extra code interfering with optimizations.
+#[inline(never)]
+fn encode_inline_never<T: Encode + ?Sized>(encoder: &mut T::Encoder, t: &T) {
+    encoder.encode(t);
+}
+#[inline(never)]
+fn decode_inline_never<'a, T: Decode<'a>>(decoder: &mut T::Decoder) -> T {
+    decoder.decode()
+}
+
 /// Encodes a `T:` [`Encode`] into a [`Vec<u8>`].
 ///
 /// **Warning:** The format is subject to change between major versions.
 pub fn encode<T: Encode + ?Sized>(t: &T) -> Vec<u8> {
     let mut encoder = T::Encoder::default();
     encoder.reserve(NonZeroUsize::new(1).unwrap());
-
-    #[inline(never)]
-    fn encode_inner<T: Encode + ?Sized>(encoder: &mut T::Encoder, t: &T) {
-        encoder.encode(t);
-    }
-    encode_inner(&mut encoder, t);
+    encode_inline_never(&mut encoder, t);
     encoder.collect()
 }
 
@@ -69,76 +75,32 @@ pub fn decode<'a, T: Decode<'a>>(mut bytes: &'a [u8]) -> Result<T, Error> {
     let mut decoder = T::Decoder::default();
     decoder.populate(&mut bytes, 1)?;
     expect_eof(bytes)?;
-    #[inline(never)]
-    fn decode_inner<'a, T: Decode<'a>>(decoder: &mut T::Decoder) -> T {
-        decoder.decode()
-    }
-    Ok(decode_inner(&mut decoder))
+    Ok(decode_inline_never(&mut decoder))
 }
 
-/// A buffer for reusing allocations between multiple calls to [`EncodeBuffer::encode`].
-pub struct EncodeBuffer<T: Encode + ?Sized> {
-    encoder: T::Encoder,
-    out: Vec<u8>,
-}
-
-// #[derive(Default)] bounds T: Default.
-impl<T: Encode + ?Sized> Default for EncodeBuffer<T> {
-    fn default() -> Self {
-        Self {
-            encoder: Default::default(),
-            out: Default::default(),
-        }
-    }
-}
-
-impl<T: Encode + ?Sized> EncodeBuffer<T> {
-    /// Encodes a `T:` [`Encode`] into a [`&[u8]`][`prim@slice`].
-    ///
-    /// Can reuse allocations when called multiple times on the same [`EncodeBuffer`].
-    ///
-    /// **Warning:** The format is subject to change between major versions.
-    pub fn encode<'a>(&'a mut self, t: &T) -> &'a [u8] {
-        // TODO dedup with encode.
-        self.encoder.reserve(NonZeroUsize::new(1).unwrap());
-        #[inline(never)]
-        fn encode_inner<T: Encode + ?Sized>(encoder: &mut T::Encoder, t: &T) {
-            encoder.encode(t);
-        }
-        encode_inner(&mut self.encoder, t);
+impl crate::buffer::Buffer {
+    /// Like [`encode`], but saves allocations between calls.
+    pub fn encode<'a, T: Encode + ?Sized>(&'a mut self, t: &T) -> &'a [u8] {
+        // Safety: Encoders don't have any lifetimes (they don't contain T either).
+        let encoder = unsafe { self.registry.get_non_static::<T::Encoder>() };
+        encoder.reserve(NonZeroUsize::new(1).unwrap());
+        encode_inline_never(encoder, t);
         self.out.clear();
-        self.encoder.collect_into(&mut self.out);
+        encoder.collect_into(&mut self.out);
         self.out.as_slice()
     }
-}
 
-/// A buffer for reusing allocations between multiple calls to [`DecodeBuffer::decode`].
-///
-/// TODO don't bound [`DecodeBuffer`] to decode's `&'a [u8]`.
-pub struct DecodeBuffer<'a, T: Decode<'a>>(<T as Decode<'a>>::Decoder);
-
-impl<'a, T: Decode<'a>> Default for DecodeBuffer<'a, T> {
-    fn default() -> Self {
-        Self(Default::default())
-    }
-}
-
-impl<'a, T: Decode<'a>> DecodeBuffer<'a, T> {
-    /// Decodes a [`&[u8]`][`prim@slice`] into an instance of `T:` [`Decode`].
-    ///
-    /// Can reuse allocations when called multiple times on the same [`DecodeBuffer`].
-    ///
-    /// **Warning:** The format is subject to change between major versions.
-    pub fn decode(&mut self, mut bytes: &'a [u8]) -> Result<T, Error> {
-        // TODO dedup with decode.
-        self.0.populate(&mut bytes, 1)?;
+    /// Like [`decode`], but saves allocations between calls.
+    pub fn decode<'a, T: Decode<'a>>(&mut self, mut bytes: &'a [u8]) -> Result<T, Error> {
+        // Safety: Decoders have dangling pointers to `bytes` from previous calls which haven't been
+        // cleared. This isn't an issue in practice because they remain as pointers in FastSlice and
+        // aren't dereferenced. If we wanted to be safer we could clear all the decoders but this
+        // would result in lots of extra code to maintain and a performance/binary size hit.
+        // To detect misuse we run miri tests/cargo fuzz where bytes goes out of scope between calls.
+        let decoder = unsafe { self.registry.get_non_static::<T::Decoder>() };
+        decoder.populate(&mut bytes, 1)?;
         expect_eof(bytes)?;
-        #[inline(never)]
-        fn decode_inner<'a, T: Decode<'a>>(decoder: &mut T::Decoder) -> T {
-            decoder.decode()
-        }
-        let ret = decode_inner(&mut self.0);
-        Ok(ret)
+        Ok(decode_inline_never(decoder))
     }
 }
 

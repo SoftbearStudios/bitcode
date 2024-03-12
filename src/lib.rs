@@ -10,6 +10,7 @@ extern crate self as bitcode;
 extern crate test;
 
 mod bool;
+mod buffer;
 mod coder;
 mod consume;
 mod derive;
@@ -26,6 +27,7 @@ mod pack_ints;
 mod str;
 mod u8_char;
 
+pub use crate::buffer::Buffer;
 pub use crate::derive::*;
 pub use crate::error::Error;
 
@@ -68,7 +70,7 @@ macro_rules! bench_encode_decode {
                 #[bench]
                 fn [<bench_ $name _encode>](b: &mut test::Bencher) {
                     let data: $t = bench_data();
-                    let mut buffer = crate::EncodeBuffer::<_>::default();
+                    let mut buffer = crate::Buffer::default();
                     b.iter(|| {
                         test::black_box(buffer.encode(test::black_box(&data)));
                     })
@@ -78,12 +80,24 @@ macro_rules! bench_encode_decode {
                 fn [<bench_ $name _decode>](b: &mut test::Bencher) {
                     let data: $t = bench_data();
                     let encoded = crate::encode(&data);
-                    let mut buffer = crate::DecodeBuffer::<_>::default();
-                    b.iter(|| {
+                    let mut buffer = crate::Buffer::default();
+
+                    let mut f = || {
+                        #[cfg(miri)] // Make sure dangling pointers aren't read due to Buffer.
+                        let encoded = encoded.clone();
+
                         let decoded: $t = buffer.decode(test::black_box(&encoded)).unwrap();
                         debug_assert_eq!(data, decoded);
-                        decoded
-                    })
+                        test::black_box(decoded);
+                    };
+
+                    // Make sure f gets called at least twice (b.iter() calls once with miri).
+                    if cfg!(miri) {
+                        f();
+                        f();
+                    } else {
+                        b.iter(f);
+                    }
                 }
             )+
         }

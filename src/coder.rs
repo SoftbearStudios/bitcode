@@ -4,6 +4,7 @@ use std::num::NonZeroUsize;
 
 pub type Result<T> = std::result::Result<T, crate::Error>;
 
+/// TODO pick different name because it aliases with [`crate::buffer::Buffer`].
 pub trait Buffer {
     /// Convenience function for `collect_into`.
     fn collect(&mut self) -> Vec<u8> {

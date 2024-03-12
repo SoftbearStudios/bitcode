@@ -12,6 +12,7 @@ fuzz_target!(|data: &[u8]| {
         return;
     }
     let (start, data) = data.split_at(3);
+    let mut buffer = bitcode::Buffer::default();
 
     macro_rules! test {
         ($typ1: expr, $typ2: expr, $data: expr, $($typ: ty),*) => {
@@ -20,13 +21,11 @@ fuzz_target!(|data: &[u8]| {
                 $(
                     if j == $typ1 {
                         if $typ2 == 0 {
-                            let mut encode_buffer = bitcode::EncodeBuffer::<$typ>::default();
-                            let mut decode_buffer = bitcode::DecodeBuffer::<$typ>::default();
-
                             let mut previous = None;
                             for _ in 0..2 {
-                                let current = if let Ok(de) = decode_buffer.decode(data) {
-                                    let data2 = encode_buffer.encode(&de);
+                                let data = data.to_vec(); // Detect dangling pointers to data in buffer.
+                                let current = if let Ok(de) = buffer.decode::<$typ>(&data) {
+                                    let data2 = buffer.encode::<$typ>(&de);
                                     let de2 = bitcode::decode::<$typ>(&data2).unwrap();
                                     assert_eq!(de, de2);
                                     true
