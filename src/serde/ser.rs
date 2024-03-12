@@ -365,6 +365,14 @@ impl<'a> Serializer for EncoderWrapper<'a> {
 
     #[inline(always)]
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple> {
+        // Fast path: avoid overhead of tuple for 1 element.
+        if len == 1 {
+            return Ok(TupleSerializer {
+                encoders: std::slice::from_mut(self.lazy),
+                index_alloc: self.index_alloc,
+            });
+        }
+
         // Copy of specify! macro that takes an additional len parameter to cold.
         let lazy = &mut *self.lazy;
         match lazy {

@@ -306,6 +306,15 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
     where
         V: Visitor<'de>,
     {
+        // Fast path: avoid overhead of tuple for 1 element.
+        if tuple_len == 1 {
+            return v.visit_seq(Access {
+                decoders: std::slice::from_mut(self.decoder),
+                input: self.input,
+                index: 0,
+            });
+        }
+
         // Copy of specify! macro that takes an additional tuple_len parameter to cold.
         match &mut self.decoder {
             SerdeDecoder::Tuple(_) => (),
@@ -365,6 +374,7 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
                 Some(self.decoders.len())
             }
         }
+
         v.visit_seq(Access {
             decoders,
             input: &mut *self.input,
