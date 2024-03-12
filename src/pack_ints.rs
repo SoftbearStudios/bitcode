@@ -62,9 +62,11 @@ pub trait Int: Copy + std::fmt::Debug + Default + Ord + Pod + Sized {
     // Unaligned native endian. TODO could be aligned on big endian since we always have to copy.
     type Une: Pod + Default;
     type Int: SizedInt;
+    #[inline]
     fn from_unaligned(unaligned: Self::Une) -> Self {
         bytemuck::must_cast(unaligned)
     }
+    #[inline]
     fn to_unaligned(self) -> Self::Une {
         bytemuck::must_cast(self)
     }
@@ -174,9 +176,11 @@ macro_rules! impl_simple {
         fn write(v: Self, out: &mut Vec<u8>) {
             out.extend_from_slice(&v.to_le_bytes());
         }
+        #[inline]
         fn wrapping_add(self, rhs: Self::Une) -> Self::Une {
             self.wrapping_add(Self::from_ne_bytes(rhs)).to_ne_bytes()
         }
+        #[inline]
         fn wrapping_sub(self, rhs: Self) -> Self {
             self.wrapping_sub(rhs)
         }
