@@ -146,9 +146,7 @@ pub fn unpack_bytes<'a, T: Byte>(
     length: usize,
     out: &mut CowSlice<'a, T>,
 ) -> Result<()> {
-    // Safety: T is u8 or i8 which have same size/align and are Copy.
-    let out: &mut CowSlice<'a, u8> = unsafe { std::mem::transmute(out) };
-    unpack_bytes_unsigned(input, length, out)
+    unpack_bytes_unsigned(input, length, out.cast_mut())
 }
 
 /// [`unpack_bytes`] but after i8s have been cast to u8s.

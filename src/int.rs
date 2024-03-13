@@ -13,10 +13,11 @@ pub struct IntEncoder<T>(VecImpl<T>);
 impl<T: Int, P: NoUninit> Encoder<P> for IntEncoder<T> {
     #[inline(always)]
     fn as_primitive(&mut self) -> Option<&mut VecImpl<P>> {
-        assert_eq!(std::mem::size_of::<T>(), std::mem::size_of::<P>());
-        // Safety: T and P are the same size, T is Pod, and we aren't reading P.
-        let vec: &mut VecImpl<P> = unsafe { std::mem::transmute(&mut self.0) };
-        Some(vec)
+        use std::mem::*;
+        assert_eq!(align_of::<T>(), align_of::<P>());
+        assert_eq!(size_of::<T>(), size_of::<P>());
+        // Safety: size/align are equal, T: Int implies Pod, and caller isn't reading P which may be NonZero.
+        unsafe { Some(transmute(&mut self.0)) }
     }
 
     #[inline(always)]

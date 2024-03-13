@@ -94,8 +94,7 @@ macro_rules! impl_usize_and_isize {
                 }
                 fn with_output<'a>(out: &mut CowSlice<'a, Self::Une>, length: usize, f: impl FnOnce(&mut CowSlice<'a, <Self::Int as Int>::Une>) -> Result<()>) -> Result<()> {
                     if cfg!(target_pointer_width = "64") {
-                        // Safety: isize::Une == i64::Une on 64 bit.
-                        f(unsafe { std::mem::transmute(out) })
+                        f(out.cast_mut())
                     } else {
                         // i64 to 32 bit isize on requires checked conversion. TODO reuse allocations.
                         let mut out_i64 = CowSlice::default();
@@ -311,10 +310,12 @@ impl SizedUInt for u8 {
     fn pack8(v: &mut [Self], out: &mut Vec<u8>) {
         pack_bytes(v, out);
     }
-    fn unpack8(input: &mut &[u8], length: usize, out: &mut CowSlice<[u8; 1]>) -> Result<()> {
-        // Safety: [u8; 1] and u8 are the same from the perspective of CowSlice.
-        let out: &mut CowSlice<u8> = unsafe { std::mem::transmute(out) };
-        unpack_bytes(input, length, out)
+    fn unpack8<'a>(
+        input: &mut &'a [u8],
+        length: usize,
+        out: &mut CowSlice<'a, [u8; 1]>,
+    ) -> Result<()> {
+        unpack_bytes(input, length, out.cast_mut::<u8>())
     }
 }
 
@@ -438,9 +439,7 @@ fn unpack_ints_sized<'a, T: SizedInt>(
     length: usize,
     out: &mut CowSlice<'a, T::Une>,
 ) -> Result<()> {
-    // Safety: T::Une and T::Unsigned::Une are the same type.
-    let out: &mut CowSlice<'a, _> = unsafe { std::mem::transmute(out) };
-    unpack_ints_sized_unsigned::<T::Unsigned>(input, length, out)
+    unpack_ints_sized_unsigned::<T::Unsigned>(input, length, out.cast_mut())
 }
 
 /// [`unpack_ints_sized`] but after signed integers have been cast to unsigned.

@@ -422,6 +422,20 @@ impl<'borrowed, T> CowSlice<'borrowed, T> {
         self.slice = slice.into();
         ret
     }
+
+    /// Casts `&mut CowSlice<T>` to `&mut CowSlice<B>`.
+    #[inline]
+    pub fn cast_mut<B>(&mut self) -> &mut CowSlice<'borrowed, B>
+    where
+        T: bytemuck::Pod,
+        B: bytemuck::Pod,
+    {
+        use std::mem::*;
+        assert_eq!(size_of::<T>(), size_of::<B>());
+        assert_eq!(align_of::<T>(), align_of::<B>());
+        // Safety: size/align are equal and both are bytemuck::Pod.
+        unsafe { transmute(self) }
+    }
 }
 
 pub struct SetOwned<'a, 'borrowed, T>(&'a mut CowSlice<'borrowed, T>);
