@@ -45,6 +45,5 @@ jobs:
         run: cargo miri test --all-features
       - name: Setup Miri (big-endian)
         run: rustup target add mips64-unknown-linux-gnuabi64 && cargo miri setup --target mips64-unknown-linux-gnuabi64
-# TODO miri big-endian (zstd doesn't compile)
-#     - name: Test (miri big-endian)
-#       run: cargo miri test --target mips64-unknown-linux-gnuabi64
+      - name: Test (miri big-endian)
+        run: cargo miri test --target mips64-unknown-linux-gnuabi64

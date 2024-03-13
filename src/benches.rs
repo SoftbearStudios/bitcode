@@ -258,7 +258,9 @@ mod compression {
         ("lz4", lz4_encode, lz4_decode),
         ("deflate-fast", deflate_fast_encode, deflate_decode),
         ("deflate-best", deflate_best_encode, deflate_decode),
+        #[cfg(not(miri))] // zstd doesn't compile with miri big-endian.
         ("zstd-0", zstd_encode::<0>, zstd_decode),
+        #[cfg(not(miri))]
         ("zstd-22", zstd_encode::<22>, zstd_decode),
     ];
 
@@ -288,10 +290,12 @@ mod compression {
         bytes
     }
 
+    #[cfg(not(miri))]
     fn zstd_encode<const LEVEL: i32>(v: &[u8]) -> Vec<u8> {
         zstd::stream::encode_all(v, LEVEL).unwrap()
     }
 
+    #[cfg(not(miri))]
     fn zstd_decode(v: &[u8]) -> Vec<u8> {
         zstd::stream::decode_all(v).unwrap()
     }
