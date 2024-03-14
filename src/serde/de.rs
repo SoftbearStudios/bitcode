@@ -580,9 +580,10 @@ mod tests {
     fn deserialize() {
         macro_rules! test {
             ($v:expr, $t:ty) => {
-                let ser = crate::serialize::<$t>(&$v).unwrap();
+                let v = $v;
+                let ser = crate::serialize::<$t>(&v).unwrap();
                 println!("{:<24} {ser:?}", stringify!($t));
-                assert_eq!($v, crate::deserialize::<$t>(&ser).unwrap());
+                assert_eq!(v, crate::deserialize::<$t>(&ser).unwrap());
             };
         }
         // Primitives
@@ -630,6 +631,7 @@ mod tests {
         // Tuples
         test!((1u8, 2u8, 3u8), (u8, u8, u8));
         test!([1u8, 2u8, 3u8], [u8; 3]);
+        test!([], [u8; 0]);
 
         // Complex.
         test!(vec![(None, 3), (Some(4), 5)], Vec<(Option<u8>, u8)>);
