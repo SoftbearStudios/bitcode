@@ -401,6 +401,7 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
             decoders: &'a mut (SerdeDecoder<'de>, SerdeDecoder<'de>),
             input: &'a mut &'de [u8],
             len: usize,
+            key_deserialized: bool,
         }
 
         impl<'de> MapAccess<'de> for Access<'_, 'de> {
@@ -414,6 +415,9 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
                 guard_zst::<K::Value>(self.len)?;
                 if self.len != 0 {
                     self.len -= 1;
+                    // Safety: Make sure next_value_seed is called at most once after each len decrement.
+                    // We don't care if DeserializeSeed fails after this (not critical to safety).
+                    self.key_deserialized = true;
                     Ok(Some(DeserializeSeed::deserialize(
                         seed,
                         DecoderWrapper {
@@ -426,12 +430,17 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
                 }
             }
 
-            // TODO(unsound): could be called more than len times by buggy safe code and go out of bounds.
             #[inline(always)]
             fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
             where
                 V: DeserializeSeed<'de>,
             {
+                // Safety: Make sure next_value_seed is called at most once after each len decrement
+                // since only len values exist.
+                assert!(
+                    std::mem::take(&mut self.key_deserialized),
+                    "next_value_seed before next_key_seed"
+                );
                 DeserializeSeed::deserialize(
                     seed,
                     DecoderWrapper {
@@ -440,6 +449,7 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
                     },
                 )
             }
+            // TODO implement next_entry_seed to avoid checking key_deserialized.
 
             #[inline(always)]
             fn size_hint(&self) -> Option<usize> {
@@ -451,6 +461,7 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
             decoders,
             input: self.input,
             len,
+            key_deserialized: false, // No keys have been deserialized yet, so next_value_seed can't be called.
         })
     }
 
@@ -561,6 +572,8 @@ impl<'de> VariantAccess<'de> for DecoderWrapper<'_, 'de> {
 
 #[cfg(test)]
 mod tests {
+    use serde::de::MapAccess;
+    use serde::Deserializer;
     use std::collections::BTreeMap;
 
     #[test]
@@ -620,5 +633,36 @@ mod tests {
 
         // Complex.
         test!(vec![(None, 3), (Some(4), 5)], Vec<(Option<u8>, u8)>);
+    }
+
+    #[test]
+    #[should_panic = "next_value_seed before next_key_seed"]
+    fn map_incorrect_len_values() {
+        let mut map = BTreeMap::new();
+        map.insert(1u8, 2u8);
+        let input = crate::serialize(&map).unwrap();
+
+        let w = super::DecoderWrapper {
+            decoder: &mut super::SerdeDecoder::Unspecified { length: 1 },
+            input: &mut input.as_slice(),
+        };
+
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = ();
+            fn expecting(&self, _: &mut std::fmt::Formatter) -> std::fmt::Result {
+                unreachable!()
+            }
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                assert_eq!(map.next_key::<u8>().unwrap().unwrap(), 1u8);
+                assert_eq!(map.next_value::<u8>().unwrap(), 2u8);
+                map.next_value::<u8>().unwrap();
+                Ok(())
+            }
+        }
+        w.deserialize_map(Visitor).unwrap();
     }
 }
