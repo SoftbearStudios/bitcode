@@ -112,9 +112,10 @@ mod tests {
     fn decode() {
         macro_rules! test {
             ($v:expr, $t:ty) => {
-                let encoded = super::encode::<$t>(&$v);
+                let v = $v;
+                let encoded = super::encode::<$t>(&v);
                 println!("{:<24} {encoded:?}", stringify!($t));
-                assert_eq!($v, super::decode::<$t>(&encoded).unwrap());
+                assert_eq!(v, super::decode::<$t>(&encoded).unwrap());
             };
         }
 
@@ -126,6 +127,7 @@ mod tests {
         test!([0, 1], [u8; 2]);
         test!([0, 1, 2], [u8; 3]);
         test!([0, -1, 0, -1, 0, -1, 0], [i8; 7]);
+        test!([], [u8; 0]);
     }
 
     #[derive(Encode, Decode)]

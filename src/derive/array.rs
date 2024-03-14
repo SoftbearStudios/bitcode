@@ -30,6 +30,9 @@ impl<T: Encode, const N: usize> Buffer for ArrayEncoder<T, N> {
     }
 
     fn reserve(&mut self, additional: NonZeroUsize) {
+        if N == 0 {
+            return; // self.0.reserve takes NonZeroUsize and `additional * N == 0`.
+        }
         self.0.reserve(
             additional
                 .checked_mul(NonZeroUsize::new(N).unwrap())
