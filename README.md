@@ -37,7 +37,7 @@ assert_eq!(original, decoded);
 
 ## Library Example
 
-Add bitcode to libraries without specifying the major version so binary crates can use any version.
+Add bitcode to libraries without specifying the major version so binary crates can pick the version.
 This is a minimal stable subset of the bitcode API so avoid using any other functionality.
 ```toml
 bitcode = { version = "0", features = ["derive"], default-features = false, optional = true }
