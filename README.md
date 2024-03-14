@@ -25,16 +25,14 @@ struct Foo<'a> {
     y: &'a str,
 }
 
-fn main() {
-    let original = Foo {
-        x: 10,
-        y: "abc",
-    };
+let original = Foo {
+    x: 10,
+    y: "abc",
+};
 
-    let encoded: Vec<u8> = bitcode::encode(&original); // No error
-    let decoded: Foo<'_> = bitcode::decode(&encoded).unwrap();
-    assert_eq!(original, decoded);
-}
+let encoded: Vec<u8> = bitcode::encode(&original); // No error
+let decoded: Foo<'_> = bitcode::decode(&encoded).unwrap();
+assert_eq!(original, decoded);
 ```
 
 ## Tuple vs Array

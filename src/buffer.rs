@@ -6,18 +6,16 @@ use std::any::TypeId;
 /// ```rust
 /// use bitcode::{Buffer, Encode, Decode};
 ///
-/// fn main() {
-///     let original = "Hello world!";
+/// let original = "Hello world!";
 ///
-///     let mut buffer = Buffer::new();
-///     buffer.encode(&original);
-///     let encoded: &[u8] = buffer.encode(&original); // Won't allocate
+/// let mut buffer = Buffer::new();
+/// buffer.encode(&original);
+/// let encoded: &[u8] = buffer.encode(&original); // Won't allocate
 ///
-///     let mut buffer = Buffer::new();
-///     buffer.decode::<&str>(&encoded).unwrap();
-///     let decoded: &str = buffer.decode(&encoded).unwrap(); // Won't allocate
-///     assert_eq!(original, decoded);
-/// }
+/// let mut buffer = Buffer::new();
+/// buffer.decode::<&str>(&encoded).unwrap();
+/// let decoded: &str = buffer.decode(&encoded).unwrap(); // Won't allocate
+/// assert_eq!(original, decoded);
 /// ```
 #[derive(Default)]
 pub struct Buffer {
