@@ -197,8 +197,8 @@ macro_rules! specify {
                 // Either create the correct encoder if unspecified or panic if we already have an
                 // encoder since it must be a different type.
                 #[cold]
-                fn cold<'a>(
-                    me: &'a mut LazyEncoder,
+                fn cold(
+                    me: &mut LazyEncoder,
                     index_alloc: &mut usize,
                 ) {
                     let &mut LazyEncoder::Unspecified { reserved } = me else {
