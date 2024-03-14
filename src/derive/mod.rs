@@ -136,6 +136,7 @@ mod tests {
         A(u8),
     }
 
+    // cargo expand --lib --tests | grep -A15 Two
     #[derive(Encode, Decode)]
     enum Two {
         A(u8),

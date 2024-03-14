@@ -42,12 +42,12 @@ impl BitcodeAttr {
                         return err(nested, "duplicate");
                     }
                     *b = Some(bound_type);
+                    Ok(())
                 } else {
-                    return err(nested, "can only apply bound to fields");
+                    err(nested, "can only apply bound to fields")
                 }
             }
         }
-        Ok(())
     }
 }
 
@@ -81,7 +81,6 @@ impl BitcodeAttrs {
         Ok(ret)
     }
 
-    #[allow(unused)] // TODO
     pub fn parse_variant(attrs: &[Attribute], _derive_attrs: &Self) -> Result<Self> {
         let mut ret = Self::new(AttrType::Variant);
         ret.parse_inner(attrs)?;
