@@ -35,6 +35,21 @@ let decoded: Foo<'_> = bitcode::decode(&encoded).unwrap();
 assert_eq!(original, decoded);
 ```
 
+## Library Example
+
+Add bitcode to libraries without specifying the major version so binary crates can use any version.
+This is a minimal stable subset of the bitcode API so avoid using any other functionality.
+```toml
+bitcode = { version = "0", features = ["derive"], default-features = false, optional = true }
+```
+```rust
+#[cfg_attr(feature = "bitcode", derive(bitcode::Encode, bitcode::Decode))]
+pub struct Vec2 {
+    x: f32,
+    y: f32,
+}
+```
+
 ## Tuple vs Array
 If you have multiple values of the same type:
 - Use a tuple or struct when the values are semantically different: `x: u32, y: u32`
