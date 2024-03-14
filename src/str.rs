@@ -34,7 +34,7 @@ impl Encoder<str> for StrEncoder {
 
     #[inline(always)]
     fn encode_vectored<'a>(&mut self, i: impl Iterator<Item = &'a str> + Clone) {
-        self.0.encode_vectored(i.map(str_as_u8_chars))
+        self.0.encode_vectored(i.map(str_as_u8_chars));
     }
 }
 
@@ -50,7 +50,7 @@ impl<'b> Encoder<&'b str> for StrEncoder {
     where
         &'b str: 'a,
     {
-        self.encode_vectored(i.copied())
+        self.encode_vectored(i.copied());
     }
 }
 
@@ -65,7 +65,7 @@ impl Encoder<String> for StrEncoder {
     where
         String: 'a,
     {
-        self.encode_vectored(i.map(String::as_str))
+        self.encode_vectored(i.map(String::as_str));
     }
 }
 
@@ -143,7 +143,7 @@ fn is_ascii_simd(v: &[u8]) -> bool {
     for chunk in chunks_exact {
         let mut any = false;
         for &v in chunk {
-            any |= v & 0x80 != 0
+            any |= v & 0x80 != 0;
         }
         if any {
             debug_assert!(!chunk.is_ascii());

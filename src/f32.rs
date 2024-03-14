@@ -71,7 +71,7 @@ impl Buffer for F32Encoder {
     }
 
     fn reserve(&mut self, additional: NonZeroUsize) {
-        self.0.reserve(additional.get())
+        self.0.reserve(additional.get());
     }
 }
 

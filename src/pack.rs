@@ -177,7 +177,7 @@ fn unpack_bytes_unsigned<'a>(
         Packing::_4 => unpack_arithmetic::<4>(input, length, out)?,
         Packing::_3 => unpack_arithmetic::<3>(input, length, out)?,
         Packing::_2 => unpack_arithmetic::<2>(input, length, out)?,
-        _ => unreachable!(),
+        Packing::_256 => unreachable!(),
     }
     if let Some(min) = min {
         for v in out {
@@ -343,7 +343,7 @@ pub fn unpack_bytes_less_than<'a, const N: usize, const HISTOGRAM: usize>(
         Packing::_4 => unpack_arithmetic_less_than::<N, HISTOGRAM, 4, 256>(input, length, out),
         Packing::_3 => unpack_arithmetic_less_than::<N, HISTOGRAM, 3, 243>(input, length, out),
         Packing::_2 => unpack_arithmetic_less_than::<N, HISTOGRAM, 2, 256>(input, length, out),
-        _ => unreachable!(),
+        Packing::_256 => unreachable!(),
     }
 }
 

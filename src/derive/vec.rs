@@ -278,7 +278,7 @@ macro_rules! decode_body {
 impl<T: Encode> Encoder<Vec<T>> for VecEncoder<T> {
     #[inline(always)]
     fn encode(&mut self, v: &Vec<T>) {
-        self.encode(v.as_slice())
+        self.encode(v.as_slice());
     }
 
     #[inline(always)]

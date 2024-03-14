@@ -162,7 +162,7 @@ impl LazyEncoder {
                     SpecifiedEncoder::U32(v) => v,
                     SpecifiedEncoder::U64(v) => v,
                     SpecifiedEncoder::U128(v) => v,
-                })
+                });
             }
             Self::Unspecified { .. } => (),
         }

@@ -468,7 +468,7 @@ fn unpack_ints_sized_unsigned<'a, T: SizedUInt>(
             for v in out.iter_mut() {
                 *v = min.wrapping_add(*v);
             }
-        })
+        });
     }
     Ok(())
 }

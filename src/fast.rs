@@ -170,7 +170,7 @@ impl<T> PushUnchecked<T> for Vec<T> {
         debug_assert!(n < self.capacity());
         let end = self.as_mut_ptr().add(n);
         std::ptr::write(end, t);
-        self.set_len(n + 1)
+        self.set_len(n + 1);
     }
 }
 

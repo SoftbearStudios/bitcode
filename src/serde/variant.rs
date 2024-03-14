@@ -23,7 +23,7 @@ impl Buffer for VariantEncoder {
     }
 
     fn reserve(&mut self, additional: NonZeroUsize) {
-        self.data.reserve(additional.get())
+        self.data.reserve(additional.get());
     }
 }
 

@@ -34,7 +34,7 @@ impl<T: Int> Buffer for IntEncoder<T> {
     }
 
     fn reserve(&mut self, additional: NonZeroUsize) {
-        self.0.reserve(additional.get())
+        self.0.reserve(additional.get());
     }
 }
 

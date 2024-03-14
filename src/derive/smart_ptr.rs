@@ -15,7 +15,7 @@ impl<T: Encode + ?Sized> Default for DerefEncoder<T> {
 impl<D: Deref<Target = T>, T: Encode + ?Sized> Encoder<D> for DerefEncoder<T> {
     #[inline(always)]
     fn encode(&mut self, t: &D) {
-        self.0.encode(t)
+        self.0.encode(t);
     }
 }
 

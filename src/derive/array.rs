@@ -61,7 +61,7 @@ impl<'a, T: Decode<'a>, const N: usize> Decoder<'a, [T; N]> for ArrayDecoder<'a,
         // Safety: Equivalent to nightly MaybeUninit::transpose.
         let out = unsafe { &mut *(out.as_mut_ptr() as *mut [MaybeUninit<T>; N]) };
         for out in out {
-            self.0.decode_in_place(out)
+            self.0.decode_in_place(out);
         }
     }
 }

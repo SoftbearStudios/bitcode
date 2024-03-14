@@ -21,7 +21,7 @@ impl<const N: usize> Buffer for VariantEncoder<N> {
     }
 
     fn reserve(&mut self, additional: NonZeroUsize) {
-        self.0.reserve(additional.get())
+        self.0.reserve(additional.get());
     }
 }
 

@@ -119,7 +119,7 @@ fn as_slice_assert_len<T, const N: usize>(t: &ArrayVec<T, N>) -> &[T] {
 impl<T: Encode, const N: usize> Encoder<ArrayVec<T, N>> for VecEncoder<T> {
     #[inline(always)]
     fn encode(&mut self, t: &ArrayVec<T, N>) {
-        self.encode(as_slice_assert_len(t))
+        self.encode(as_slice_assert_len(t));
     }
     #[inline(always)]
     fn encode_vectored<'a>(&mut self, i: impl Iterator<Item = &'a ArrayVec<T, N>> + Clone)

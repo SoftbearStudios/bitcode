@@ -29,7 +29,7 @@ fn get_mut_or_resize<T: Default>(vec: &mut Vec<T>, index: usize) -> &mut T {
         #[cold]
         #[inline(never)]
         fn cold<T: Default>(vec: &mut Vec<T>, index: usize) {
-            vec.resize_with(index + 1, Default::default)
+            vec.resize_with(index + 1, Default::default);
         }
         cold(vec, index);
     }
