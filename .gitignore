@@ -1,6 +1,4 @@
-/target
-/Cargo.lock
-/bitcode_derive/Cargo.lock
+target/
+Cargo.lock
+perf.*
 .idea
-perf.data
-perf.data.old

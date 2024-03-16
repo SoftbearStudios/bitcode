@@ -1,115 +1,329 @@
-use crate::derive::{unwrap_encoding, Derive};
 use crate::private;
-use proc_macro2::TokenStream;
+use crate::shared::{remove_lifetimes, replace_lifetimes, variant_index};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
-use syn::{parse_quote, Path, Type};
+use syn::{
+    parse_quote, GenericParam, Generics, Lifetime, LifetimeParam, Path, PredicateLifetime, Type,
+    WherePredicate,
+};
+
+const DE_LIFETIME: &str = "__de";
+fn de_lifetime() -> Lifetime {
+    parse_quote!('__de) // Must match DE_LIFETIME.
+}
+
+#[derive(Copy, Clone)]
+pub enum Item {
+    Type,
+    Default,
+    Populate,
+    Decode,
+    DecodeInPlace,
+}
+
+impl Item {
+    const ALL: [Self; 4] = [
+        Self::Type,
+        Self::Default,
+        Self::Populate,
+        // No Self::Decode since it's only used for enum variants, not top level struct/enum.
+        Self::DecodeInPlace,
+    ];
+    const COUNT: usize = Self::ALL.len();
+}
+
+impl crate::shared::Item for Item {
+    fn field_impl(
+        self,
+        field_name: TokenStream,
+        global_field_name: TokenStream,
+        real_field_name: TokenStream,
+        field_type: &Type,
+    ) -> TokenStream {
+        match self {
+            Self::Type => {
+                let de_type = replace_lifetimes(field_type, DE_LIFETIME);
+                let private = private();
+                let de = de_lifetime();
+                quote! {
+                    #global_field_name: <#de_type as #private::Decode<#de>>::Decoder,
+                }
+            }
+            Self::Default => quote! {
+                #global_field_name: Default::default(),
+            },
+            Self::Populate => quote! {
+                self.#global_field_name.populate(input, __length)?;
+            },
+            // Only used by enum variants.
+            Self::Decode => quote! {
+                let #field_name = self.#global_field_name.decode();
+            },
+            Self::DecodeInPlace => {
+                let de_type = replace_lifetimes(field_type, DE_LIFETIME);
+                let private = private();
+                quote! {
+                    self.#global_field_name.decode_in_place(#private::uninit_field!(out.#real_field_name: #de_type));
+                }
+            }
+        }
+    }
+
+    fn struct_impl(
+        self,
+        ident: &Ident,
+        destructure_fields: &TokenStream,
+        do_fields: &TokenStream,
+    ) -> TokenStream {
+        match self {
+            Self::Decode => {
+                quote! {
+                    #do_fields
+                    #ident #destructure_fields
+                }
+            }
+            _ => quote! { #do_fields },
+        }
+    }
+
+    fn enum_impl(
+        self,
+        variant_count: usize,
+        pattern: impl Fn(usize) -> TokenStream,
+        inner: impl Fn(Self, usize) -> TokenStream,
+    ) -> TokenStream {
+        // if variant_count is 0 or 1 variants don't have to be decoded.
+        let decode_variants = variant_count > 1;
+        let never = variant_count == 0;
+
+        match self {
+            Self::Type => {
+                let de = de_lifetime();
+                let inners: TokenStream = (0..variant_count).map(|i| inner(self, i)).collect();
+                let variants = decode_variants
+                    .then(|| {
+                        let private = private();
+                        let c_style = inners.is_empty();
+                        quote! { variants: #private::VariantDecoder<#de, #variant_count, #c_style>, }
+                    })
+                    .unwrap_or_default();
+                quote! {
+                    #variants
+                    #inners
+                }
+            }
+            Self::Default => {
+                let variants = decode_variants
+                    .then(|| quote! { variants: Default::default(), })
+                    .unwrap_or_default();
+                let inners: TokenStream = (0..variant_count).map(|i| inner(self, i)).collect();
+                quote! {
+                    #variants
+                    #inners
+                }
+            }
+            Self::Populate => {
+                if never {
+                    let private = private();
+                    return quote! {
+                        if __length != 0 {
+                            return #private::invalid_enum_variant();
+                        }
+                    };
+                }
+
+                let variants = decode_variants
+                    .then(|| {
+                        quote! { self.variants.populate(input, __length)?; }
+                    })
+                    .unwrap_or_default();
+                let inners: TokenStream = (0..variant_count)
+                    .map(|i| {
+                        let inner = inner(self, i);
+                        if inner.is_empty() {
+                            quote! {}
+                        } else {
+                            let i = variant_index(i);
+                            let length = decode_variants
+                                .then(|| {
+                                    quote! {
+                                        let __length = self.variants.length(#i);
+                                    }
+                                })
+                                .unwrap_or_default();
+                            quote! {
+                                #length
+                                #inner
+                            }
+                        }
+                    })
+                    .collect();
+                quote! {
+                    #variants
+                    #inners
+                }
+            }
+            Self::Decode => unimplemented!(),
+            Self::DecodeInPlace => {
+                if never {
+                    return quote! {
+                        // Safety: View::populate will error on length != 0 so decode won't be called.
+                        unsafe { std::hint::unreachable_unchecked() }
+                    };
+                }
+                let pattern = |i: usize| {
+                    let pattern = pattern(i);
+                    matches!(self, Self::DecodeInPlace)
+                        .then(|| {
+                            quote! {
+                                out.write(#pattern);
+                            }
+                        })
+                        .unwrap_or(pattern)
+                };
+                let item = Self::Decode; // DecodeInPlace doesn't work on enums.
+
+                decode_variants
+                    .then(|| {
+                        let variants: TokenStream = (0..variant_count)
+                            .map(|i| {
+                                let inner = inner(item, i);
+                                let pattern = pattern(i);
+                                let i = variant_index(i);
+                                quote! {
+                                    #i => {
+                                        #inner
+                                        #pattern
+                                    },
+                                }
+                            })
+                            .collect();
+                        quote! {
+                            match self.variants.decode() {
+                                #variants
+                                // Safety: VariantDecoder<N, _>::decode outputs numbers less than N.
+                                _ => unsafe { std::hint::unreachable_unchecked() }
+                            }
+                        }
+                    })
+                    .or_else(|| {
+                        (variant_count == 1).then(|| {
+                            let inner = inner(item, 0);
+                            let pattern = pattern(0);
+                            quote! {
+                                #inner
+                                #pattern
+                            }
+                        })
+                    })
+                    .unwrap_or_default()
+            }
+        }
+    }
+}
 
 pub struct Decode;
+impl crate::shared::Derive<{ Item::COUNT }> for Decode {
+    type Item = Item;
+    const ALL: [Self::Item; Item::COUNT] = Item::ALL;
 
-impl Derive for Decode {
-    fn serde_impl(&self) -> (TokenStream, Path) {
+    fn bound(&self) -> Path {
         let private = private();
-        (
-            quote! {
-                end_dec!();
-                #private::deserialize_compat(encoding, reader)
-            },
-            parse_quote!(#private::DeserializeOwned),
-        )
+        let de = de_lifetime();
+        parse_quote!(#private::Decode<#de>)
     }
 
-    fn field_impl(
+    fn derive_impl(
         &self,
-        with_serde: bool,
-        field_name: TokenStream,
-        field_type: &Type,
-        encoding: Option<TokenStream>,
-    ) -> (TokenStream, Path) {
-        let private = private();
-        if with_serde {
-            let encoding = unwrap_encoding(encoding);
-            (
-                // Field is using serde making DECODE_MAX unknown so we flush the current register
-                // buffer and read directly from the reader. See optimized_dec! macro in code.rs.
-                quote! {
-                    let #field_name = #private::deserialize_compat(#encoding, flush!())?;
-                },
-                parse_quote!(#private::DeserializeOwned),
-            )
-        } else if let Some(encoding) = encoding {
-            (
-                // Field has an encoding making DECODE_MAX unknown so we flush the current register
-                // buffer and read directly from the reader. See optimized_dec! macro in code.rs.
-                quote! {
-                    let #field_name = #private::Decode::decode(#encoding, flush!())?;
-                },
-                parse_quote!(#private::Decode),
-            )
-        } else {
-            (
-                // Field has a known DECODE_MAX. dec! will evaluate if it can read from the current
-                // register buffer. See optimized_dec! macro in code.rs.
-                quote! {
-                    dec!(#field_name, #field_type);
-                },
-                parse_quote!(#private::Decode),
-            )
-        }
-    }
-
-    fn struct_impl(&self, destructure_fields: TokenStream, do_fields: TokenStream) -> TokenStream {
-        quote! {
-            #do_fields
-            end_dec!();
-            Ok(Self #destructure_fields)
-        }
-    }
-
-    fn variant_impl(
-        &self,
-        before_fields: TokenStream,
-        field_impls: TokenStream,
-        destructure_variant: TokenStream,
+        output: [TokenStream; Item::COUNT],
+        ident: Ident,
+        mut generics: Generics,
     ) -> TokenStream {
-        quote! {
-            #before_fields
-            #field_impls
-            end_dec!();
-            #destructure_variant
+        let input_generics = generics.clone();
+        let (_, input_generics, _) = input_generics.split_for_impl();
+        let input_ty = quote! { #ident #input_generics };
+
+        // Add 'de lifetime after isolating input_generics.
+        let de = de_lifetime();
+        let de_where_predicate = WherePredicate::Lifetime(PredicateLifetime {
+            lifetime: de.clone(),
+            colon_token: parse_quote!(:),
+            bounds: generics
+                .params
+                .iter()
+                .filter_map(|p| {
+                    if let GenericParam::Lifetime(p) = p {
+                        Some(p.lifetime.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+        });
+
+        // Push de_param after bounding 'de: 'a.
+        let de_param = GenericParam::Lifetime(LifetimeParam::new(de.clone()));
+        generics.params.push(de_param.clone());
+        generics
+            .make_where_clause()
+            .predicates
+            .push(de_where_predicate);
+
+        let combined_generics = generics.clone();
+        let (impl_generics, _, where_clause) = combined_generics.split_for_impl();
+
+        // Decoder can't contain any lifetimes from input (which would limit reuse of decoder).
+        remove_lifetimes(&mut generics);
+        generics.params.push(de_param); // Re-add de_param since remove_lifetimes removed it.
+        let (decoder_impl_generics, decoder_generics, decoder_where_clause) =
+            generics.split_for_impl();
+
+        let [mut type_body, mut default_body, populate_body, decode_in_place_body] = output;
+        if type_body.is_empty() {
+            type_body = quote! { __spooky: std::marker::PhantomData<&#de ()>, };
         }
-    }
+        if default_body.is_empty() {
+            default_body = quote! { __spooky: Default::default(), };
+        }
 
-    fn is_encode(&self) -> bool {
-        false
-    }
-
-    fn stream_trait_ident(&self) -> TokenStream {
+        let decoder_ident = Ident::new(&format!("{ident}Decoder"), Span::call_site());
+        let decoder_ty = quote! { #decoder_ident #decoder_generics };
         let private = private();
-        quote! { #private::Read }
-    }
 
-    fn trait_ident(&self) -> TokenStream {
-        let private = private();
-        quote! { #private::Decode }
-    }
-
-    fn min_bits(&self) -> TokenStream {
-        quote! { DECODE_MIN }
-    }
-
-    fn max_bits(&self) -> TokenStream {
-        quote! { DECODE_MAX }
-    }
-
-    fn trait_fn_impl(&self, body: TokenStream) -> TokenStream {
-        let private = private();
         quote! {
-            #[allow(clippy::all)]
-            #[cfg_attr(not(debug_assertions), inline(always))]
-            fn decode(encoding: impl #private::Encoding, reader: &mut impl #private::Read) -> #private::Result<Self> {
-                #private::optimized_dec!(encoding, reader);
-                #body
-            }
+            const _: () = {
+                impl #impl_generics #private::Decode<#de> for #input_ty #where_clause {
+                    type Decoder = #decoder_ty;
+                }
+
+                #[allow(non_snake_case)]
+                pub struct #decoder_ident #decoder_impl_generics #decoder_where_clause {
+                    #type_body
+                }
+
+                // Avoids bounding #impl_generics: Default.
+                impl #decoder_impl_generics std::default::Default for #decoder_ty #decoder_where_clause {
+                    fn default() -> Self {
+                        Self {
+                            #default_body
+                        }
+                    }
+                }
+
+                impl #decoder_impl_generics #private::View<#de> for #decoder_ty #decoder_where_clause {
+                    fn populate(&mut self, input: &mut &#de [u8], __length: usize) -> #private::Result<()> {
+                        #populate_body
+                        Ok(())
+                    }
+                }
+
+                impl #impl_generics #private::Decoder<#de, #input_ty> for #decoder_ty #where_clause {
+                    #[cfg_attr(not(debug_assertions), inline(always))]
+                    fn decode_in_place(&mut self, out: &mut std::mem::MaybeUninit<#input_ty>) {
+                        #decode_in_place_body
+                    }
+                }
+            };
         }
     }
 }

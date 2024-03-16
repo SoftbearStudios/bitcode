@@ -6,7 +6,7 @@ members = [
 [package]
 name = "bitcode"
 authors = [ "Cai Bear", "Finn Bear" ]
-version = "0.5.1"
+version = "0.6.0-beta.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/SoftbearStudios/bitcode"
@@ -14,32 +14,33 @@ description = "bitcode is a bitwise binary serializer"
 exclude = ["fuzz/"]
 
 [dependencies]
-bitcode_derive = { version = "0.5.0", path="./bitcode_derive", optional = true }
-bytemuck = { version = "1.13", features = [ "extern_crate_alloc" ] }
-from_bytes_or_zeroed = "0.1"
-residua-zigzag = "0.1.0"
+arrayvec = { version = "0.7", default-features = false, optional = true }
+bitcode_derive = { version = "0.6.0-beta.1", path = "./bitcode_derive", optional = true }
+bytemuck = { version = "1.14", features = [ "min_const_generics", "must_cast" ] }
+glam = { version = "0.22", default-features = false, features = [ "std" ], optional = true }
 serde = { version = "1.0", optional = true }
-simdutf8 = { version = "0.1.4", optional = true }
 
 [dev-dependencies]
-arrayvec = { version = "0.7.2", features = [ "serde" ] }
+arrayvec = { version = "0.7", features = [ "serde" ] }
 bincode = "1.3.3"
-bitvec = { version = "1.0.1" }
-flate2 = "1.0.25"
-lz4_flex = "0.10.0"
-musli = "0.0.42"
-paste = "1.0.12"
-postcard = { version = "1.0", features = ["alloc"] }
-rand = { version = "0.8.5", default-features = false }
+flate2 = "1.0.28"
+lz4_flex = { version = "0.11.2", default-features = false }
+paste = "1.0.14"
+rand = "0.8.5"
 rand_chacha = "0.3.1"
-serde = { version = "1.0.159", features = [ "derive" ] }
+serde = { version = "1.0", features = [ "derive" ] }
+
+# zstd doesn't compile with miri big-endian.
+[target.'cfg(not(miri))'.dev-dependencies]
+zstd = "0.13.0"
 
 [features]
 derive = [ "bitcode_derive" ]
-default = [ "derive", "simdutf8" ]
+default = [ "derive" ]
 
 [package.metadata.docs.rs]
-features = ["serde"]
+features = [ "derive", "serde" ]
 
-[profile.bench]
-lto = true
+# TODO halfs speed of benches_borrowed::bench_bitcode_decode
+#[profile.bench]
+#lto = true

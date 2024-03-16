@@ -23,15 +23,16 @@ impl FieldBounds {
         }
     }
 
-    pub fn apply_to_generics(self, generics: &mut syn::Generics) {
+    pub fn added_to(self, mut generics: syn::Generics) -> syn::Generics {
         for (bound, (fields, extra_bound_types)) in self.bounds {
-            *generics = with_bound(&fields, extra_bound_types, generics, &bound);
+            generics = with_bound(&fields, extra_bound_types, &generics, &bound);
         }
+        generics
     }
 }
 
 // Based on https://github.com/serde-rs/serde/blob/0c6a2bbf794abe966a4763f5b7ff23acb535eb7f/serde_derive/src/bound.rs#L94-L314
-pub fn with_bound(
+fn with_bound(
     fields: &[syn::Field],
     extra_bound_types: Vec<syn::Type>,
     generics: &syn::Generics,

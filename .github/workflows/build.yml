@@ -24,22 +24,26 @@ jobs:
           # `i686-unknown-linux-gnu` so we just need to check this page for a
           # compatible nightly:
           # https://rust-lang.github.io/rustup-components-history/mips64-unknown-linux-gnuabi64.html
-          toolchain: nightly-2023-07-04
+          toolchain: nightly-2023-04-25
           override: true
           components: rustfmt, miri
       - name: Lint
         run: cargo fmt --check
-      - name: Test (debug)
+      - name: Check (no-default-features)
+        run: cargo check --no-default-features
+      - name: Test
         run: cargo test
+      - name: Test (all-features)
+        run: cargo test --all-features
       - name: Install i686 and GCC multilib
         run: rustup target add i686-unknown-linux-gnu && sudo apt update && sudo apt install -y gcc-multilib
-      - name: Test (32-bit)
-        run: cargo test --target i686-unknown-linux-gnu
+      - name: Test (32-bit all-features)
+        run: cargo test --target i686-unknown-linux-gnu --all-features
       - name: Setup Miri
         run: cargo miri setup
-      - name: Test (miri)
-        run: MIRIFLAGS="-Zmiri-permissive-provenance" cargo miri test
+      - name: Test (miri all-features)
+        run: cargo miri test --all-features
       - name: Setup Miri (big-endian)
         run: rustup target add mips64-unknown-linux-gnuabi64 && cargo miri setup --target mips64-unknown-linux-gnuabi64
       - name: Test (miri big-endian)
-        run: MIRIFLAGS="-Zmiri-permissive-provenance" cargo miri test --target mips64-unknown-linux-gnuabi64
+        run: cargo miri test --target mips64-unknown-linux-gnuabi64

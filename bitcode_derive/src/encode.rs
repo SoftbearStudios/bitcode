@@ -1,119 +1,302 @@
-use crate::derive::{unwrap_encoding, Derive};
 use crate::private;
-use proc_macro2::TokenStream;
+use crate::shared::{remove_lifetimes, replace_lifetimes, variant_index};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
-use syn::{parse_quote, Path, Type};
+use syn::{parse_quote, Generics, Path, Type};
+
+#[derive(Copy, Clone)]
+pub enum Item {
+    Type,
+    Default,
+    Encode,
+    EncodeVectored,
+    CollectInto,
+    Reserve,
+}
+impl Item {
+    const ALL: [Self; 6] = [
+        Self::Type,
+        Self::Default,
+        Self::Encode,
+        Self::EncodeVectored,
+        Self::CollectInto,
+        Self::Reserve,
+    ];
+    const COUNT: usize = Self::ALL.len();
+}
+impl crate::shared::Item for Item {
+    fn field_impl(
+        self,
+        field_name: TokenStream,
+        global_field_name: TokenStream,
+        real_field_name: TokenStream,
+        field_type: &Type,
+    ) -> TokenStream {
+        match self {
+            Self::Type => {
+                let static_type = replace_lifetimes(field_type, "static");
+                let private = private();
+                quote! {
+                    #global_field_name: <#static_type as #private::Encode>::Encoder,
+                }
+            }
+            Self::Default => quote! {
+                #global_field_name: Default::default(),
+            },
+            Self::Encode | Self::EncodeVectored => {
+                let static_type = replace_lifetimes(field_type, "static");
+                let value = if &static_type != field_type {
+                    let underscore_type = replace_lifetimes(field_type, "_");
+
+                    // HACK: Since encoders don't have lifetimes we can't reference <T<'a> as Encode>::Encoder since 'a
+                    // does not exist. Instead we replace this with <T<'static> as Encode>::Encoder and transmute it to
+                    // T<'a>. No encoder actually encodes T<'static> any differently from T<'a> so this is sound.
+                    quote! {
+                        unsafe { std::mem::transmute::<&#underscore_type, &#static_type>(#field_name) }
+                    }
+                } else {
+                    quote! { #field_name }
+                };
+
+                if matches!(self, Self::EncodeVectored) {
+                    quote! {
+                        self.#global_field_name.encode_vectored(i.clone().map(|me| {
+                            let #field_name = &me.#real_field_name;
+                            #value
+                        }));
+                    }
+                } else {
+                    quote! {
+                        self.#global_field_name.encode(#value);
+                    }
+                }
+            }
+            Self::CollectInto => quote! {
+                self.#global_field_name.collect_into(out);
+            },
+            Self::Reserve => quote! {
+                self.#global_field_name.reserve(__additional);
+            },
+        }
+    }
+
+    fn struct_impl(
+        self,
+        ident: &Ident,
+        destructure_fields: &TokenStream,
+        do_fields: &TokenStream,
+    ) -> TokenStream {
+        match self {
+            Self::Encode => {
+                quote! {
+                    let #ident #destructure_fields = v;
+                    #do_fields
+                }
+            }
+            _ => quote! { #do_fields },
+        }
+    }
+
+    fn enum_impl(
+        self,
+        variant_count: usize,
+        pattern: impl Fn(usize) -> TokenStream,
+        inner: impl Fn(Self, usize) -> TokenStream,
+    ) -> TokenStream {
+        // if variant_count is 0 or 1 variants don't have to be encoded.
+        let encode_variants = variant_count > 1;
+        match self {
+            Self::Type => {
+                let variants = encode_variants
+                    .then(|| {
+                        let private = private();
+                        quote! { variants: #private::VariantEncoder<#variant_count>, }
+                    })
+                    .unwrap_or_default();
+                let inners: TokenStream = (0..variant_count).map(|i| inner(self, i)).collect();
+                quote! {
+                    #variants
+                    #inners
+                }
+            }
+            Self::Default => {
+                let variants = encode_variants
+                    .then(|| quote! { variants: Default::default(), })
+                    .unwrap_or_default();
+                let inners: TokenStream = (0..variant_count).map(|i| inner(self, i)).collect();
+                quote! {
+                    #variants
+                    #inners
+                }
+            }
+            Self::Encode => {
+                let variants = encode_variants
+                    .then(|| {
+                        let variants: TokenStream = (0..variant_count)
+                            .map(|i| {
+                                let pattern = pattern(i);
+                                let i = variant_index(i);
+                                quote! {
+                                    #pattern => #i,
+                                }
+                            })
+                            .collect();
+                        quote! {
+                            #[allow(unused_variables)]
+                            self.variants.encode(&match v {
+                                #variants
+                            });
+                        }
+                    })
+                    .unwrap_or_default();
+                let inners: TokenStream = (0..variant_count)
+                    .map(|i| {
+                        // We don't know the exact number of this variant since there is more than
+                        // one, so we have to reserve one at a time.
+                        let reserve = encode_variants
+                            .then(|| {
+                                let reserve = inner(Self::Reserve, i);
+                                quote! {
+                                    let __additional = std::num::NonZeroUsize::MIN;
+                                    #reserve
+                                }
+                            })
+                            .unwrap_or_default();
+                        let inner = inner(self, i);
+                        let pattern = pattern(i);
+                        quote! {
+                            #pattern => {
+                                #reserve
+                                #inner
+                            }
+                        }
+                    })
+                    .collect();
+                (variant_count != 0)
+                    .then(|| {
+                        quote! {
+                            #variants
+                            match v {
+                                #inners
+                            }
+                        }
+                    })
+                    .unwrap_or_default()
+            }
+            // This is a copy of Encode::encode_vectored's default impl (which provides no speedup).
+            // TODO optimize enum encode_vectored.
+            Self::EncodeVectored => quote! {
+                for t in i {
+                    self.encode(t);
+                }
+            },
+            Self::CollectInto => {
+                let variants = encode_variants
+                    .then(|| {
+                        quote! { self.variants.collect_into(out); }
+                    })
+                    .unwrap_or_default();
+                let inners: TokenStream = (0..variant_count).map(|i| inner(self, i)).collect();
+                quote! {
+                    #variants
+                    #inners
+                }
+            }
+            Self::Reserve => {
+                encode_variants
+                    .then(|| {
+                        quote! { self.variants.reserve(__additional); }
+                    })
+                    .or_else(|| {
+                        (variant_count == 1).then(|| {
+                            // We know the exact number of this variant since it's the only one so we can reserve it.
+                            inner(self, 0)
+                        })
+                    })
+                    .unwrap_or_default()
+            }
+        }
+    }
+}
 
 pub struct Encode;
+impl crate::shared::Derive<{ Item::COUNT }> for Encode {
+    type Item = Item;
+    const ALL: [Self::Item; Item::COUNT] = Item::ALL;
 
-impl Derive for Encode {
-    fn serde_impl(&self) -> (TokenStream, Path) {
+    fn bound(&self) -> Path {
         let private = private();
-        (
-            quote! {
-                #private::serialize_compat(self, encoding, writer)?;
-            },
-            parse_quote!(#private::Serialize),
-        )
+        parse_quote!(#private::Encode)
     }
 
-    fn field_impl(
+    fn derive_impl(
         &self,
-        with_serde: bool,
-        field_name: TokenStream,
-        field_type: &Type,
-        encoding: Option<TokenStream>,
-    ) -> (TokenStream, Path) {
-        let private = private();
-        if with_serde {
-            let encoding = unwrap_encoding(encoding);
-            (
-                // Field is using serde making ENCODE_MAX unknown so we flush the current register
-                // buffer and write directly to the writer. See optimized_enc! macro in code.rs.
-                quote! {
-                    #private::serialize_compat(#field_name, #encoding, flush!())?;
-                },
-                parse_quote!(#private::Serialize),
-            )
-        } else if let Some(encoding) = encoding {
-            (
-                // Field has an encoding making ENCODE_MAX unknown so we flush the current register
-                // buffer and write directly to the writer. See optimized_enc! macro in code.rs.
-                quote! {
-                    #private::Encode::encode(#field_name, #encoding, flush!())?;
-                },
-                parse_quote!(#private::Encode),
-            )
-        } else {
-            (
-                // Field has a known ENCODE_MAX. enc! will evaluate if it can fit within the current
-                // register buffer. See optimized_enc! macro in code.rs.
-                quote! {
-                    enc!(#field_name, #field_type);
-                },
-                parse_quote!(#private::Encode),
-            )
-        }
-    }
-
-    fn struct_impl(&self, destructure_fields: TokenStream, do_fields: TokenStream) -> TokenStream {
-        let private = private();
-        quote! {
-            let Self #destructure_fields = self;
-            #private::optimized_enc!(encoding, writer);
-            #do_fields
-            end_enc!();
-        }
-    }
-
-    fn variant_impl(
-        &self,
-        before_fields: TokenStream,
-        field_impls: TokenStream,
-        destructure_variant: TokenStream,
+        output: [TokenStream; Item::COUNT],
+        ident: Ident,
+        mut generics: Generics,
     ) -> TokenStream {
+        let input_generics = generics.clone();
+        let (impl_generics, input_generics, where_clause) = input_generics.split_for_impl();
+        let input_ty = quote! { #ident #input_generics };
+
+        // Encoder can't contain any lifetimes from input (which would limit reuse of encoder).
+        remove_lifetimes(&mut generics);
+        let (encoder_impl_generics, encoder_generics, encoder_where_clause) =
+            generics.split_for_impl();
+
+        let [type_body, default_body, encode_body, encode_vectored_body, collect_into_body, reserve_body] =
+            output;
+        let encoder_ident = Ident::new(&format!("{ident}Encoder"), Span::call_site());
+        let encoder_ty = quote! { #encoder_ident #encoder_generics };
         let private = private();
+
         quote! {
-            #destructure_variant => {
-                #private::optimized_enc!(encoding, writer);
-                #before_fields
-                #field_impls
-                end_enc!();
-            },
-        }
-    }
+            const _: () = {
+                impl #impl_generics #private::Encode for #input_ty #where_clause {
+                    type Encoder = #encoder_ty;
+                }
 
-    fn is_encode(&self) -> bool {
-        true
-    }
+                #[allow(non_snake_case)]
+                pub struct #encoder_ident #encoder_impl_generics #encoder_where_clause {
+                    #type_body
+                }
 
-    fn stream_trait_ident(&self) -> TokenStream {
-        let private = private();
-        quote! { #private::Write }
-    }
+                // Avoids bounding #impl_generics: Default.
+                impl #encoder_impl_generics std::default::Default for #encoder_ty #encoder_where_clause {
+                    fn default() -> Self {
+                        Self {
+                            #default_body
+                        }
+                    }
+                }
 
-    fn trait_ident(&self) -> TokenStream {
-        let private = private();
-        quote! { #private::Encode }
-    }
+                impl #impl_generics #private::Encoder<#input_ty> for #encoder_ty #where_clause {
+                    #[cfg_attr(not(debug_assertions), inline(always))]
+                    fn encode(&mut self, v: &#input_ty) {
+                        #[allow(unused_imports)]
+                        use #private::Buffer as _;
+                        #encode_body
+                    }
 
-    fn min_bits(&self) -> TokenStream {
-        quote! { ENCODE_MIN }
-    }
+                    // #[cfg_attr(not(debug_assertions), inline(always))]
+                    // #[inline(never)]
+                    fn encode_vectored<'__v>(&mut self, i: impl Iterator<Item = &'__v #input_ty> + Clone) where #input_ty: '__v {
+                        #[allow(unused_imports)]
+                        use #private::Buffer as _;
+                        #encode_vectored_body
+                    }
+                }
 
-    fn max_bits(&self) -> TokenStream {
-        quote! { ENCODE_MAX }
-    }
+                impl #encoder_impl_generics #private::Buffer for #encoder_ty #encoder_where_clause {
+                    fn collect_into(&mut self, out: &mut Vec<u8>) {
+                        #collect_into_body
+                    }
 
-    fn trait_fn_impl(&self, body: TokenStream) -> TokenStream {
-        let private = private();
-        quote! {
-            #[allow(clippy::all)]
-            #[cfg_attr(not(debug_assertions), inline(always))]
-            fn encode(&self, encoding: impl #private::Encoding, writer: &mut impl #private::Write) -> #private::Result<()> {
-                #body
-                Ok(())
-            }
+                    fn reserve(&mut self, __additional: std::num::NonZeroUsize) {
+                        #reserve_body
+                    }
+                }
+            };
         }
     }
 }

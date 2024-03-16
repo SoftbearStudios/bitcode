@@ -1,113 +1,245 @@
-use crate::read::Read;
-use crate::word_buffer::WordBuffer;
-use crate::write::Write;
-use crate::{Result, E};
+use std::any::TypeId;
 
-/// A buffer for reusing allocations between any number of calls to [`Buffer::encode`] and/or
-/// [`Buffer::decode`].
+/// A buffer for reusing allocations between calls to [`Buffer::encode`] and/or [`Buffer::decode`].
+/// TODO Send + Sync
 ///
-/// ### Usage
-/// ```edition2021
-/// use bitcode::Buffer;
+/// ```rust
+/// use bitcode::{Buffer, Encode, Decode};
 ///
-/// // We preallocate buffers with capacity 1000. This will allow us to encode and decode without
-/// // any allocations as long as the encoded object takes less than 1000 bytes.
-/// let bytes = 1000;
-/// let mut encode_buf = Buffer::with_capacity(bytes);
-/// let mut decode_buf = Buffer::with_capacity(bytes);
+/// let original = "Hello world!";
 ///
-/// // The object that we will encode.
-/// let target: [u8; 5] = [1, 2, 3, 4, 5];
+/// let mut buffer = Buffer::new();
+/// buffer.encode(&original);
+/// let encoded: &[u8] = buffer.encode(&original); // Won't allocate
 ///
-/// // We encode into `encode_buf`. This won't cause any allocations.
-/// let encoded: &[u8] = encode_buf.encode(&target).unwrap();
-/// assert!(encoded.len() <= bytes, "oh no we allocated");
-///
-/// // We decode into `decode_buf` because `encoded` is borrowing `encode_buf`.
-/// let decoded: [u8; 5] = decode_buf.decode(&encoded).unwrap();
-/// assert_eq!(target, decoded);
-///
-/// // If we need ownership of `encoded`, we can convert it to a vec.
-/// // This will allocate, but it's still more efficient than calling bitcode::encode.
-/// let _owned: Vec<u8> = encoded.to_vec();
+/// let mut buffer = Buffer::new();
+/// buffer.decode::<&str>(&encoded).unwrap();
+/// let decoded: &str = buffer.decode(&encoded).unwrap(); // Won't allocate
+/// assert_eq!(original, decoded);
 /// ```
 #[derive(Default)]
-pub struct Buffer(pub(crate) WordBuffer);
+pub struct Buffer {
+    pub(crate) registry: Registry,
+    pub(crate) out: Vec<u8>, // Isn't stored in registry because all encoders can share this.
+}
 
 impl Buffer {
-    /// Constructs a new buffer without any capacity.
+    /// Constructs a new buffer.
     pub fn new() -> Self {
         Self::default()
     }
+}
 
-    /// Constructs a new buffer with at least the specified capacity in bytes.
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self(BufferTrait::with_capacity(capacity))
-    }
+// Set of arbitrary types.
+#[derive(Default)]
+pub(crate) struct Registry(Vec<(TypeId, ErasedBox)>);
 
-    /// Returns the capacity in bytes.
+impl Registry {
+    /// Gets a `&mut T` if it already exists or initializes one with [`Default`].
     #[cfg(test)]
-    pub(crate) fn capacity(&self) -> usize {
-        self.0.capacity()
+    pub(crate) fn get<T: Default + 'static>(&mut self) -> &mut T {
+        // Safety: T is static.
+        unsafe { self.get_non_static::<T>() }
     }
-}
 
-pub trait BufferTrait: Default {
-    type Writer: Write;
-    type Reader<'a>: Read;
-    type Context;
-
-    fn capacity(&self) -> usize;
-    fn with_capacity(capacity: usize) -> Self;
-
-    /// Clears the buffer.
-    fn start_write(&mut self) -> Self::Writer;
-    /// Returns the written bytes.
-    fn finish_write(&mut self, writer: Self::Writer) -> &[u8];
-
-    fn start_read<'a>(&'a mut self, bytes: &'a [u8]) -> (Self::Reader<'a>, Self::Context);
-    /// Check for errors such as Eof and ExpectedEof
-    fn finish_read(reader: Self::Reader<'_>, context: Self::Context) -> Result<()>;
-    /// Overrides decoding errors with Eof since the reader might allow reading slightly past the
-    /// end. Only WordBuffer currently does this.
-    fn finish_read_with_result<T>(
-        reader: Self::Reader<'_>,
-        context: Self::Context,
-        decode_result: Result<T>,
-    ) -> Result<T> {
-        let finish_result = Self::finish_read(reader, context);
-        if let Err(e) = &finish_result {
-            if e.same(&E::Eof.e()) {
-                return Err(E::Eof.e());
-            }
-        }
-        let t = decode_result?;
-        finish_result?;
-        Ok(t)
-    }
-}
-
-#[cfg(all(test, not(miri), debug_assertions))]
-mod tests {
-    use crate::bit_buffer::BitBuffer;
-    use crate::buffer::BufferTrait;
-    use crate::word_buffer::WordBuffer;
-    use paste::paste;
-
-    macro_rules! test_with_capacity {
-        ($name:ty, $t:ty) => {
-            paste! {
-                #[test]
-                fn [<test_ $name _with_capacity>]() {
-                    for cap in 0..200 {
-                        let buf = $t::with_capacity(cap);
-                        assert!(buf.capacity() >= cap, "with_capacity: {cap}, capacity {}", buf.capacity());
-                    }
+    /// Like [`Registry::get`] but can get non-static types.
+    /// # Safety
+    /// Lifetimes are the responsibility of the caller. `&'static [u8]` and `&'a [u8]` are the same
+    /// type from the perspective of this function.
+    pub(crate) unsafe fn get_non_static<T: Default>(&mut self) -> &mut T {
+        // Use sorted Vec + binary search because we expect fewer insertions than lookups.
+        // We could use a HashMap, but that seems like overkill.
+        let type_id = non_static_type_id::<T>();
+        let i = match self.0.binary_search_by_key(&type_id, |(k, _)| *k) {
+            Ok(i) => i,
+            Err(i) => {
+                #[cold]
+                #[inline(never)]
+                unsafe fn cold<T: Default>(me: &mut Registry, i: usize) {
+                    let type_id = non_static_type_id::<T>();
+                    // Safety: caller of `Registry::get` upholds any lifetime requirements.
+                    let erased = ErasedBox::new(T::default());
+                    me.0.insert(i, (type_id, erased));
                 }
+                cold::<T>(self, i);
+                i
             }
+        };
+        // Safety: binary_search_by_key either found item at `i` or cold initialized item at `i`.
+        let item = &mut self.0.get_unchecked_mut(i).1;
+        // Safety: type_id uniquely identifies the type, so the entry with equal type_id is a T.
+        item.cast_unchecked_mut()
+    }
+}
+
+/// Ignores lifetimes in `T` when determining its [`TypeId`].
+/// https://github.com/rust-lang/rust/issues/41875#issuecomment-317292888
+fn non_static_type_id<T: ?Sized>() -> TypeId {
+    use std::marker::PhantomData;
+    trait NonStaticAny {
+        fn get_type_id(&self) -> TypeId
+        where
+            Self: 'static;
+    }
+    impl<T: ?Sized> NonStaticAny for PhantomData<T> {
+        fn get_type_id(&self) -> TypeId
+        where
+            Self: 'static,
+        {
+            TypeId::of::<T>()
         }
     }
+    let phantom_data = PhantomData::<T>;
+    NonStaticAny::get_type_id(unsafe {
+        std::mem::transmute::<&dyn NonStaticAny, &(dyn NonStaticAny + 'static)>(&phantom_data)
+    })
+}
 
-    test_with_capacity!(bit_buffer, BitBuffer);
-    test_with_capacity!(word_buffer, WordBuffer);
+/// `Box<T>` but of an unknown runtime `T`, requires unsafe to get the `T` back out.
+struct ErasedBox {
+    ptr: *mut (),    // Box<T>
+    drop: *const (), // unsafe fn(*mut Box<T>)
+}
+
+impl ErasedBox {
+    /// Allocates a [`Box<T>`] which doesn't know its own type. Only works on `T: Sized`.
+    /// # Safety
+    /// Ignores lifetimes so drop may be called after `T`'s lifetime has expired.
+    unsafe fn new<T>(t: T) -> Self {
+        let ptr = Box::into_raw(Box::new(t)) as *mut ();
+        let drop = std::ptr::drop_in_place::<Box<T>> as *const ();
+        Self { ptr, drop }
+    }
+
+    /// Casts to a `&mut T`.
+    /// # Safety
+    /// `T` must be the same `T` passed to [`ErasedBox::new`].
+    unsafe fn cast_unchecked_mut<T>(&mut self) -> &mut T {
+        &mut *(self.ptr as *mut T)
+    }
+}
+
+impl Drop for ErasedBox {
+    fn drop(&mut self) {
+        // Safety: `ErasedBox::new` put a `Box<T>` in self.ptr and an `unsafe fn(*mut Box<T>)` in self.drop.
+        unsafe {
+            let drop: unsafe fn(*mut *mut ()) = std::mem::transmute(self.drop);
+            drop((&mut self.ptr) as *mut *mut ()); // Pass *mut Box<T>.
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{non_static_type_id, Buffer, ErasedBox, Registry};
+    use test::{black_box, Bencher};
+
+    #[test]
+    fn buffer() {
+        let mut b = Buffer::new();
+        assert_eq!(b.encode(&false), &[0]);
+        assert_eq!(b.encode(&true), &[1]);
+        assert_eq!(b.decode::<bool>(&[0]).unwrap(), false);
+        assert_eq!(b.decode::<bool>(&[1]).unwrap(), true);
+    }
+
+    #[test]
+    fn registry() {
+        let mut r = Registry::default();
+        assert_eq!(*r.get::<u8>(), 0);
+        *r.get::<u8>() = 1;
+        assert_eq!(*r.get::<u8>(), 1);
+
+        assert_eq!(*r.get::<u16>(), 0);
+        *r.get::<u16>() = 5;
+        assert_eq!(*r.get::<u16>(), 5);
+
+        assert_eq!(*r.get::<u8>(), 1);
+    }
+
+    #[test]
+    fn type_id() {
+        assert_ne!(non_static_type_id::<u8>(), non_static_type_id::<i8>());
+        assert_ne!(non_static_type_id::<()>(), non_static_type_id::<[(); 1]>());
+        assert_ne!(
+            non_static_type_id::<&'static mut [u8]>(),
+            non_static_type_id::<&'static [u8]>()
+        );
+        assert_ne!(
+            non_static_type_id::<*mut u8>(),
+            non_static_type_id::<*const u8>()
+        );
+        fn f<'a>(_: &'a ()) {
+            assert_eq!(
+                non_static_type_id::<&'static [u8]>(),
+                non_static_type_id::<&'a [u8]>()
+            );
+            assert_eq!(
+                non_static_type_id::<&'static ()>(),
+                non_static_type_id::<&'a ()>()
+            );
+        }
+        f(&());
+    }
+
+    #[test]
+    fn erased_box() {
+        use std::rc::Rc;
+        let rc = Rc::new(());
+        struct TestDrop(Rc<()>);
+        let b = unsafe { ErasedBox::new(TestDrop(Rc::clone(&rc))) };
+        assert_eq!(Rc::strong_count(&rc), 2);
+        drop(b);
+        assert_eq!(Rc::strong_count(&rc), 1);
+    }
+
+    macro_rules! register10 {
+        ($registry:ident $(, $t:literal)*) => {
+            $(
+                $registry.get::<[u8; $t]>();
+                $registry.get::<[i8; $t]>();
+                $registry.get::<[u16; $t]>();
+                $registry.get::<[i16; $t]>();
+                $registry.get::<[u32; $t]>();
+                $registry.get::<[i32; $t]>();
+                $registry.get::<[u64; $t]>();
+                $registry.get::<[i64; $t]>();
+                $registry.get::<[u128; $t]>();
+                $registry.get::<[i128; $t]>();
+            )*
+        }
+    }
+    type T = [u8; 1];
+
+    #[bench]
+    fn bench_registry1_get(b: &mut Bencher) {
+        let mut r = Registry::default();
+        r.get::<T>();
+        assert_eq!(r.0.len(), 1);
+        b.iter(|| {
+            black_box(*black_box(&mut r).get::<T>());
+        })
+    }
+
+    #[bench]
+    fn bench_registry10_get(b: &mut Bencher) {
+        let mut r = Registry::default();
+        r.get::<T>();
+        register10!(r, 1);
+        assert_eq!(r.0.len(), 10);
+        b.iter(|| {
+            black_box(*black_box(&mut r).get::<T>());
+        })
+    }
+
+    #[bench]
+    fn bench_registry100_get(b: &mut Bencher) {
+        let mut r = Registry::default();
+        r.get::<T>();
+        register10!(r, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+        assert_eq!(r.0.len(), 100);
+        b.iter(|| {
+            black_box(*black_box(&mut r).get::<T>());
+        })
+    }
 }
