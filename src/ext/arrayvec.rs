@@ -215,4 +215,23 @@ mod tests {
         assert!(decode::<ArrayVec<u8, 499>>(&b).is_err());
         assert_eq!(decode::<ArrayVec<u8, 500>>(&b).unwrap(), v);
     }
+
+    #[test]
+    fn array_string_bug() {
+        type T = ArrayString<1>;
+        let mut v = T::default();
+        v.push(' ');
+
+        let mut buffer = crate::Buffer::new();
+        // Put the buffer in a state where its ArrayStringDecoder's LengthDecoder has a len of 1.
+        // If this didn't error, the decoder would end up with a len of 0 since all items would be consumed.
+        buffer
+            .decode::<Vec<T>>(&encode::<Vec<T>>(&vec![v])[..2])
+            .unwrap_err();
+        // Now decode 0 ArrayStrings. Previously LengthDecoder wouldn't get populated if StrDecoder
+        // was passed `length` of 0. This results in a debug assert failing in
+        // LengthDecoder::any_greater_than, since FastSlice::as_slice is called with len of 0, but
+        // the FastSlice has a len of 1 from before.
+        buffer.decode::<Vec<T>>(&encode::<Vec<T>>(&vec![])).unwrap();
+    }
 }

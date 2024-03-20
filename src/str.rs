@@ -79,11 +79,7 @@ pub struct StrDecoder<'a> {
 
 impl<'a> View<'a> for StrDecoder<'a> {
     fn populate(&mut self, input: &mut &'a [u8], length: usize) -> Result<()> {
-        // TODO take NonZeroUsize length in View::populate.
-        let Some(length) = NonZeroUsize::new(length) else {
-            return Ok(());
-        };
-        self.lengths.populate(input, length.get())?;
+        self.lengths.populate(input, length)?;
         let bytes = consume_bytes(input, self.lengths.length())?;
 
         // Fast path: If bytes are ASCII then they're valid UTF-8 and no char boundary can be invalid.
@@ -92,8 +88,14 @@ impl<'a> View<'a> for StrDecoder<'a> {
         // - We should subdivide it into chunks in that case.
         if is_ascii_simd(bytes)
             || from_utf8(bytes).is_ok_and(|s| {
+                // length == 0 implies bytes.is_empty() so no char boundaries can be broken. This
+                // early exit allows us to do length.get() - 1 without possibility of overflow.
+                let Some(length) = NonZeroUsize::new(length) else {
+                    debug_assert_eq!(bytes.len(), 0);
+                    return true;
+                };
                 // Check that gaps between individual strings are on char boundaries in larger string.
-                // Indices 0 and s.len() are not checked since s: &str guarantees them.
+                // Boundaries at start and end of `s` aren't checked since s: &str guarantees them.
                 let mut length_decoder = self.lengths.borrowed_clone();
                 let mut end = 0;
                 for _ in 0..length.get() - 1 {
