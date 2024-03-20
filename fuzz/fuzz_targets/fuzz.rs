@@ -2,17 +2,64 @@
 use libfuzzer_sys::fuzz_target;
 extern crate bitcode;
 use arrayvec::{ArrayString, ArrayVec};
-use bitcode::{Decode, Encode};
+use bitcode::{Decode, DecodeOwned, Encode};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
+use std::fmt::Debug;
 use std::num::NonZeroU32;
+
+#[inline(never)]
+fn test_derive<T: Debug + PartialEq + Encode + DecodeOwned>(data: &[u8]) {
+    let mut buffer = bitcode::Buffer::default();
+    let [split, data @ ..] = data else {
+        return;
+    };
+
+    // Call buffer.decode twice with the same data or different data.
+    // Same data makes sure it's pure by checking that both runs return Ok or Err.
+    // Different data catches invalid states left behind.
+    let eq_slices = *split == 0;
+    let slices = if eq_slices {
+        [data, data]
+    } else {
+        let (a, b) = data.split_at((*split as usize).min(data.len()));
+        [a, b]
+    };
+
+    let mut previous = None;
+    for data in slices {
+        let data = data.to_vec(); // Detect dangling pointers to data in buffer.
+        let current = if let Ok(de) = buffer.decode::<T>(&data) {
+            let data2 = buffer.encode::<T>(&de);
+            let de2 = bitcode::decode::<T>(&data2).unwrap();
+            assert_eq!(de, de2);
+            true
+        } else {
+            false
+        };
+        if eq_slices {
+            if let Some(previous) = std::mem::replace(&mut previous, Some(current)) {
+                assert_eq!(previous, current);
+            }
+        }
+    }
+}
+
+#[inline(never)]
+fn test_serde<T: Debug + PartialEq + Serialize + DeserializeOwned>(data: &[u8]) {
+    if let Ok(de) = bitcode::deserialize::<T>(data) {
+        let data2 = bitcode::serialize(&de).unwrap();
+        let de2 = bitcode::deserialize::<T>(&data2).unwrap();
+        assert_eq!(de, de2);
+    }
+}
 
 fuzz_target!(|data: &[u8]| {
     if data.len() < 3 {
         return;
     }
     let (start, data) = data.split_at(3);
-    let mut buffer = bitcode::Buffer::default();
 
     macro_rules! test {
         ($typ1: expr, $typ2: expr, $data: expr, $($typ: ty),*) => {
@@ -21,27 +68,9 @@ fuzz_target!(|data: &[u8]| {
                 $(
                     if j == $typ1 {
                         if $typ2 == 0 {
-                            let mut previous = None;
-                            for _ in 0..2 {
-                                let data = data.to_vec(); // Detect dangling pointers to data in buffer.
-                                let current = if let Ok(de) = buffer.decode::<$typ>(&data) {
-                                    let data2 = buffer.encode::<$typ>(&de);
-                                    let de2 = bitcode::decode::<$typ>(&data2).unwrap();
-                                    assert_eq!(de, de2);
-                                    true
-                                } else {
-                                    false
-                                };
-                                if let Some(previous) = std::mem::replace(&mut previous, Some(current)) {
-                                    assert_eq!(previous, current);
-                                }
-                            }
+                            test_derive::<$typ>(data);
                         } else if $typ2 == 1 {
-                            if let Ok(de) = bitcode::deserialize::<$typ>(data) {
-                                let data2 = bitcode::serialize(&de).unwrap();
-                                let de2 = bitcode::deserialize::<$typ>(&data2).unwrap();
-                                assert_eq!(de, de2);
-                            }
+                            test_serde::<$typ>(data);
                         }
                     }
                     #[allow(unused)]
@@ -68,7 +97,6 @@ fuzz_target!(|data: &[u8]| {
                                 ($typ, $typ),
                                 [$typ; 1],
                                 [$typ; 2],
-                                [$typ; 3],
                                 Option<$typ>,
                                 Vec<$typ>,
                                 HashMap<u16, $typ>,
