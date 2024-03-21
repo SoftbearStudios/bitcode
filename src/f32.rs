@@ -9,6 +9,11 @@ pub struct F32Encoder(VecImpl<f32>);
 
 impl Encoder<f32> for F32Encoder {
     #[inline(always)]
+    fn as_primitive(&mut self) -> Option<&mut VecImpl<f32>> {
+        Some(&mut self.0)
+    }
+
+    #[inline(always)]
     fn encode(&mut self, t: &f32) {
         unsafe { self.0.push_unchecked(*t) };
     }
@@ -140,10 +145,18 @@ mod tests {
     }
 
     fn bench_data() -> Vec<f32> {
-        let mut rng = ChaCha20Rng::from_seed(Default::default());
-        (0..crate::limit_bench_miri(1500001))
-            .map(|_| rng.gen())
-            .collect()
+        crate::random_data::<f32>(1500001)
     }
     crate::bench_encode_decode!(f32_vec: Vec<f32>);
+}
+
+#[cfg(test)]
+mod tests2 {
+    fn bench_data() -> Vec<Vec<f32>> {
+        crate::random_data::<u8>(125)
+            .into_iter()
+            .map(|n| (0..n / 16).map(|_| 0.0).collect())
+            .collect()
+    }
+    crate::bench_encode_decode!(f32_vecs: Vec<Vec<f32>>);
 }
