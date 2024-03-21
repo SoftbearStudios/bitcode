@@ -195,7 +195,7 @@ impl<'a, T: Copy, const N: usize> FastArrayVec<'a, T, N> {
 
     #[inline(always)]
     pub fn as_slice(&self) -> &[T] {
-        let len = (self.end as usize - self.start as usize) / std::mem::size_of::<T>();
+        let len = sub_ptr(self.end, self.start);
         unsafe { std::slice::from_raw_parts(self.start, len) }
     }
 }
