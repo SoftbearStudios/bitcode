@@ -1,6 +1,7 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::consume::mul_length;
 use crate::derive::{Decode, Encode};
+use crate::fast::{FastSlice, FastVec, Unaligned};
 use std::mem::MaybeUninit;
 use std::num::NonZeroUsize;
 
@@ -15,6 +16,23 @@ impl<T: Encode, const N: usize> Default for ArrayEncoder<T, N> {
 }
 
 impl<T: Encode, const N: usize> Encoder<[T; N]> for ArrayEncoder<T, N> {
+    fn as_primitive(&mut self) -> Option<&mut FastVec<[T; N]>> {
+        // FastVec doesn't work on ZST.
+        if N == 0 {
+            return None;
+        }
+        self.0.as_primitive().map(|v| {
+            debug_assert!(v.len() % N == 0);
+            // Safety: FastVec uses pointers for len/cap unlike Vec, so casting to FastVec<[T; N]>
+            // is safe as long as `v.len() % N == 0`. This will always be the case since we only
+            // encode in chunks of N.
+            // NOTE: If panics occurs during ArrayEncoder::encode and Buffer is reused, this
+            // invariant can be violated. Luckily primitive encoders never panic.
+            // TODO std::mem::take Buffer while encoding to avoid corrupted buffers.
+            unsafe { std::mem::transmute(v) }
+        })
+    }
+
     #[inline(always)]
     fn encode(&mut self, array: &[T; N]) {
         // TODO use encode_vectored if N is large enough.
@@ -59,6 +77,14 @@ impl<'a, T: Decode<'a>, const N: usize> View<'a> for ArrayDecoder<'a, T, N> {
 }
 
 impl<'a, T: Decode<'a>, const N: usize> Decoder<'a, [T; N]> for ArrayDecoder<'a, T, N> {
+    fn as_primitive(&mut self) -> Option<&mut FastSlice<Unaligned<[T; N]>>> {
+        self.0.as_primitive().map(|s| {
+            // Safety: FastSlice doesn't have a length unlike slice, so casting to FastSlice<[T; N]>
+            // is safe. N == 0 case is also safe for the same reason.
+            unsafe { std::mem::transmute(s) }
+        })
+    }
+
     #[inline(always)]
     fn decode_in_place(&mut self, out: &mut MaybeUninit<[T; N]>) {
         // Safety: Equivalent to nightly MaybeUninit::transpose.
@@ -67,4 +93,23 @@ impl<'a, T: Decode<'a>, const N: usize> Decoder<'a, [T; N]> for ArrayDecoder<'a,
             self.0.decode_in_place(out);
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_empty_array() {
+        type T = [u8; 0];
+        let empty_array = T::default();
+        crate::decode::<T>(&crate::encode(&empty_array)).unwrap();
+        crate::decode::<Vec<T>>(&crate::encode(&vec![empty_array; 100])).unwrap();
+    }
+
+    fn bench_data() -> Vec<Vec<[u8; 3]>> {
+        crate::random_data::<u8>(125)
+            .into_iter()
+            .map(|n| (0..n / 16).map(|_| [0, 0, 255]).collect())
+            .collect()
+    }
+    crate::bench_encode_decode!(u8_array_vecs: Vec<Vec<[u8; 3]>>);
 }

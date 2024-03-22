@@ -67,7 +67,7 @@ impl<T> From<Vec<T>> for FastVec<T> {
 }
 
 impl<T> FastVec<T> {
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         sub_ptr(self.end, self.start)
     }
 
@@ -212,7 +212,7 @@ impl<'a, T: Copy, const N: usize> PushUnchecked<T> for FastArrayVec<'a, T, N> {
 pub struct FastSlice<'a, T> {
     ptr: *const T,
     #[cfg(debug_assertions)]
-    len: usize, // TODO could store end ptr to allow Debug and as_slice.
+    end: *const T, // Uses pointer instead of len to permit &mut FastSlice<T> -> &mut FastSlice<[T; N]> cast.
     _spooky: PhantomData<&'a T>,
 }
 
@@ -233,7 +233,7 @@ impl<'a, T> From<&'a [T]> for FastSlice<'a, T> {
         Self {
             ptr: slice.as_ptr(),
             #[cfg(debug_assertions)]
-            len: slice.len(),
+            end: slice.as_ptr_range().end,
             _spooky: PhantomData,
         }
     }
@@ -247,7 +247,7 @@ impl<'a, T> FastSlice<'a, T> {
         Self {
             ptr,
             #[cfg(debug_assertions)]
-            len,
+            end: ptr.wrapping_add(len),
             _spooky: PhantomData,
         }
     }
@@ -256,9 +256,7 @@ impl<'a, T> FastSlice<'a, T> {
     #[inline(always)]
     pub unsafe fn next_unchecked_as_ptr(&mut self) -> *const T {
         #[cfg(debug_assertions)]
-        {
-            self.len = self.len.checked_sub(1).unwrap();
-        }
+        assert!((self.ptr.wrapping_add(1) as usize) <= self.end as usize);
         let p = self.ptr;
         self.ptr = self.ptr.add(1);
         p
@@ -267,9 +265,7 @@ impl<'a, T> FastSlice<'a, T> {
     #[inline(always)]
     pub unsafe fn advance(&mut self, n: usize) {
         #[cfg(debug_assertions)]
-        {
-            self.len = self.len.checked_sub(n).unwrap();
-        }
+        assert!((self.ptr.wrapping_add(n) as usize) <= self.end as usize);
         self.ptr = self.ptr.add(n);
     }
 
@@ -307,9 +303,7 @@ impl<'a, T: Copy> NextUnchecked<'a, T> for FastSlice<'a, T> {
     #[inline(always)]
     unsafe fn next_unchecked(&mut self) -> T {
         #[cfg(debug_assertions)]
-        {
-            self.len = self.len.checked_sub(1).unwrap();
-        }
+        assert!((self.ptr.wrapping_add(1) as usize) <= self.end as usize);
         let t = *self.ptr;
         self.ptr = self.ptr.add(1);
         t
@@ -318,9 +312,7 @@ impl<'a, T: Copy> NextUnchecked<'a, T> for FastSlice<'a, T> {
     #[inline(always)]
     unsafe fn chunk_unchecked(&mut self, length: usize) -> &'a [T] {
         #[cfg(debug_assertions)]
-        {
-            self.len = self.len.checked_sub(length).unwrap();
-        }
+        assert!((self.ptr.wrapping_add(length) as usize) <= self.end as usize);
         let slice = std::slice::from_raw_parts(self.ptr, length);
         self.ptr = self.ptr.add(length);
         slice
@@ -373,7 +365,7 @@ impl<'borrowed, T> CowSlice<'borrowed, T> {
         'borrowed: 'me,
     {
         #[cfg(debug_assertions)]
-        assert_eq!(self.slice.len, len);
+        assert_eq!(self.slice.ptr.wrapping_add(len), self.slice.end);
         std::slice::from_raw_parts(self.slice.ptr, len)
     }
 
