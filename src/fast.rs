@@ -277,6 +277,20 @@ impl<'a, T> FastSlice<'a, T> {
     pub fn as_ptr(&self) -> *const T {
         self.ptr
     }
+
+    /// Casts `&mut FastSlice<T>` to `&mut FastSlice<B>`.
+    #[inline(always)]
+    pub fn cast<B>(&mut self) -> &mut FastSlice<'a, B>
+    where
+        T: bytemuck::Pod,
+        B: bytemuck::Pod,
+    {
+        use std::mem::*;
+        assert_eq!(size_of::<T>(), size_of::<B>());
+        assert_eq!(align_of::<T>(), align_of::<B>());
+        // Safety: size/align are equal and both are bytemuck::Pod.
+        unsafe { transmute(self) }
+    }
 }
 
 pub trait NextUnchecked<'a, T: Copy> {
@@ -458,6 +472,14 @@ impl<'a, T> std::ops::DerefMut for SetOwned<'a, '_, T> {
         &mut self.0.vec
     }
 }
+
+#[derive(Copy, Clone)]
+#[repr(C, packed)]
+pub struct Unaligned<T>(T);
+
+// Could derive with bytemuck/derive.
+unsafe impl<T: bytemuck::Zeroable> bytemuck::Zeroable for Unaligned<T> {}
+unsafe impl<T: bytemuck::Pod> bytemuck::Pod for Unaligned<T> {}
 
 #[cfg(test)]
 mod tests {

@@ -1,5 +1,5 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
-use crate::fast::{CowSlice, NextUnchecked, PushUnchecked, VecImpl};
+use crate::fast::{CowSlice, NextUnchecked, PushUnchecked, SliceImpl, Unaligned, VecImpl};
 use crate::pack::{pack_bools, unpack_bools};
 use std::num::NonZeroUsize;
 
@@ -41,13 +41,10 @@ impl<'a> View<'a> for BoolDecoder<'a> {
 
 impl<'a> Decoder<'a, bool> for BoolDecoder<'a> {
     #[inline(always)]
-    fn as_primitive_ptr(&self) -> Option<*const u8> {
-        Some(self.0.ref_slice().as_ptr() as *const u8)
-    }
-
-    #[inline(always)]
-    unsafe fn as_primitive_advance(&mut self, n: usize) {
-        self.0.mut_slice().advance(n);
+    fn as_primitive(&mut self) -> Option<&mut SliceImpl<Unaligned<bool>>> {
+        // Safety: `Unaligned<bool>` is equivalent to bool since it's a `#[repr(C, packed)]` wrapper
+        // around bool and both have size/align of 1.
+        unsafe { Some(std::mem::transmute(self.0.mut_slice())) }
     }
 
     #[inline(always)]

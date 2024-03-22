@@ -1,4 +1,4 @@
-use crate::fast::VecImpl;
+use crate::fast::{SliceImpl, Unaligned, VecImpl};
 use std::mem::MaybeUninit;
 use std::num::NonZeroUsize;
 
@@ -25,7 +25,7 @@ pub trait Buffer {
 pub const MAX_VECTORED_CHUNK: usize = 64;
 
 pub trait Encoder<T: ?Sized>: Buffer + Default {
-    /// Returns a `VecImpl<T>` if `T` is a type that can be encoded by copying.
+    /// Returns a `&mut VecImpl<T>` if `T` is a type that can be encoded by copying.
     #[inline(always)]
     fn as_primitive(&mut self) -> Option<&mut VecImpl<T>>
     where
@@ -67,18 +67,11 @@ pub trait View<'a> {
 /// One of [`Decoder::decode`] and [`Decoder::decode_in_place`] must be implemented or calling
 /// either one will result in infinite recursion and a stack overflow.
 pub trait Decoder<'a, T>: View<'a> + Default {
-    /// Returns a pointer to the current element if it can be decoded by copying.
+    /// Returns a `&mut SliceImpl<Unaligned<T>>` if `T` is a type that can be decoded by copying.
+    /// Uses `Unaligned<T>` so `IntDecoder` can borrow from input `[u8]`.
     #[inline(always)]
-    fn as_primitive_ptr(&self) -> Option<*const u8> {
+    fn as_primitive(&mut self) -> Option<&mut SliceImpl<Unaligned<T>>> {
         None
-    }
-
-    /// Assuming [`Self::as_primitive_ptr`] returns `Some(ptr)`, this advances `ptr` by `n`.
-    /// # Safety
-    /// Can only decode `self.populate(_, length)` items.
-    unsafe fn as_primitive_advance(&mut self, n: usize) {
-        let _ = n;
-        unreachable!();
     }
 
     /// Decodes a single value. Can't error since `View::populate` has already validated the input.

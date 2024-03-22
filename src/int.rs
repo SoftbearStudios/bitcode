@@ -1,6 +1,6 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::error::err;
-use crate::fast::{CowSlice, NextUnchecked, PushUnchecked, VecImpl};
+use crate::fast::{CowSlice, NextUnchecked, PushUnchecked, SliceImpl, Unaligned, VecImpl};
 use crate::pack_ints::{pack_ints, unpack_ints, Int};
 use bytemuck::{CheckedBitPattern, NoUninit, Pod};
 use std::marker::PhantomData;
@@ -60,6 +60,11 @@ impl<'a, T: Int> View<'a> for IntDecoder<'a, T> {
 // Makes IntDecoder<u32> able to decode i32/f32 (but not char since it can fail).
 impl<'a, T: Int, P: Pod> Decoder<'a, P> for IntDecoder<'a, T> {
     #[inline(always)]
+    fn as_primitive(&mut self) -> Option<&mut SliceImpl<Unaligned<P>>> {
+        Some(self.0.mut_slice().cast())
+    }
+
+    #[inline(always)]
     fn decode(&mut self) -> P {
         let v = unsafe { self.0.mut_slice().next_unchecked() };
         bytemuck::must_cast(v)
@@ -81,7 +86,6 @@ where
     <C as CheckedBitPattern>::Bits: Pod,
 {
     fn populate(&mut self, input: &mut &'a [u8], length: usize) -> Result<()> {
-        assert_eq!(std::mem::size_of::<C>(), std::mem::size_of::<I>());
         self.0.populate(input, length)?;
 
         let mut decoder = self.0.borrowed_clone();
@@ -97,13 +101,23 @@ where
     <C as CheckedBitPattern>::Bits: Pod,
 {
     #[inline(always)]
-    fn decode(&mut self) -> C {
-        let i: I = self.0.decode();
+    fn as_primitive(&mut self) -> Option<&mut SliceImpl<Unaligned<C>>> {
+        self.0
+            .as_primitive()
+            .map(|p: &mut SliceImpl<'_, Unaligned<I>>| {
+                let p = p.cast::<Unaligned<C::Bits>>();
+                // Safety: `Unaligned<C::Bits>` and `Unaligned<C>` have the same layout and populate
+                // ensured C's bit pattern is valid.
+                unsafe { std::mem::transmute(p) }
+            })
+    }
 
-        // Safety: populate ensures:
-        // - C and I are of the same size.
-        // - The checked bit pattern of C is valid.
-        unsafe { std::mem::transmute_copy(&i) }
+    #[inline(always)]
+    fn decode(&mut self) -> C {
+        let v: I = self.0.decode();
+        let v: C::Bits = bytemuck::must_cast(v);
+        // Safety: C::Bits and C have the same layout and populate ensured C's bit pattern is valid.
+        unsafe { std::mem::transmute_copy(&v) }
     }
 }
 

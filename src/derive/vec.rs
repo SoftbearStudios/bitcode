@@ -1,5 +1,6 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View, MAX_VECTORED_CHUNK};
 use crate::derive::{Decode, Encode};
+use crate::fast::Unaligned;
 use crate::length::{LengthDecoder, LengthEncoder};
 use std::collections::{BTreeSet, BinaryHeap, HashSet, LinkedList, VecDeque};
 use std::hash::{BuildHasher, Hash};
@@ -40,7 +41,8 @@ impl<T: Encode> Buffer for VecEncoder<T> {
 
 /// Copies `N` or `n` bytes from `src` to `dst` depending on if `src` lies within a memory page.
 /// https://stackoverflow.com/questions/37800739/is-it-safe-to-read-past-the-end-of-a-buffer-within-the-same-page-on-x86-and-x64
-/// Safety: Same as [`copy_nonoverlapping_unaligned`] but with the additional requirements that
+/// # Safety
+/// Same as [`std::ptr::copy_nonoverlapping`] but with the additional requirements that
 /// `n != 0 && n <= N` and `dst` has room for a `[T; N]`.
 /// Is a macro instead of an `#[inline(always)] fn` because it optimizes better.
 macro_rules! unsafe_wild_copy {
@@ -62,30 +64,17 @@ macro_rules! unsafe_wild_copy {
         ));
 
         if within_page {
-            std::ptr::write_unaligned($dst as *mut std::mem::MaybeUninit<[$T; $N]>,
-                std::ptr::read_unaligned($src as *const std::mem::MaybeUninit<[$T; $N]>)
-            );
+            *($dst as *mut std::mem::MaybeUninit<[$T; $N]>) = std::ptr::read($src as *const std::mem::MaybeUninit<[$T; $N]>);
         } else {
             #[cold]
             unsafe fn cold<T>(src: *const T, dst: *mut T, n: usize) {
-                crate::derive::vec::copy_nonoverlapping_unaligned(src, dst, n);
+                src.copy_to_nonoverlapping(dst, n);
             }
             cold($src, $dst, $n);
         }
     }
 }
 pub(crate) use unsafe_wild_copy;
-
-/// Equivalent to `std::ptr::copy_nonoverlapping` but neither `src` nor `dst` has to be aligned.
-/// Safety: Same as [`std::ptr::copy_nonoverlapping`], but without any alignment requirements.
-#[inline(always)]
-pub unsafe fn copy_nonoverlapping_unaligned<T>(src: *const T, dst: *mut T, n: usize) {
-    std::ptr::copy_nonoverlapping(
-        src as *const u8,
-        dst as *mut u8,
-        n * std::mem::size_of::<T>(),
-    );
-}
 
 impl<T: Encode> VecEncoder<T> {
     /// Copy fixed size slices. Much faster than memcpy.
@@ -143,7 +132,7 @@ impl<T: Encode> VecEncoder<T> {
             let n = s.len();
             primitives.reserve(n);
             let ptr = primitives.end_ptr();
-            copy_nonoverlapping_unaligned(s.as_ptr(), ptr, n);
+            s.as_ptr().copy_to_nonoverlapping(ptr, n);
             primitives.set_end_ptr(ptr.add(n));
         });
     }
@@ -159,7 +148,7 @@ impl<T: Encode> Encoder<[T]> for VecEncoder<T> {
             primitive.reserve(n);
             unsafe {
                 let ptr = primitive.end_ptr();
-                copy_nonoverlapping_unaligned(v.as_ptr(), ptr, n);
+                v.as_ptr().copy_to_nonoverlapping(ptr, n);
                 primitive.set_end_ptr(ptr.add(n));
             }
         } else if let Some(n) = NonZeroUsize::new(n) {
@@ -300,10 +289,12 @@ impl<'a, T: Decode<'a>> Decoder<'a, Vec<T>> for VecDecoder<'a, T> {
         }
 
         let v = out.write(Vec::with_capacity(length));
-        if let Some(primitive) = self.elements.as_primitive_ptr() {
+        if let Some(primitive) = self.elements.as_primitive() {
             unsafe {
-                copy_nonoverlapping_unaligned(primitive as *const T, v.as_mut_ptr(), length);
-                self.elements.as_primitive_advance(length);
+                primitive
+                    .as_ptr()
+                    .copy_to_nonoverlapping(v.as_mut_ptr() as *mut Unaligned<T>, length);
+                primitive.advance(length);
             }
         } else {
             let spare = v.spare_capacity_mut();
