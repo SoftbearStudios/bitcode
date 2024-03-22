@@ -6,14 +6,13 @@ use std::collections::{BTreeSet, BinaryHeap, HashSet, LinkedList, VecDeque};
 use std::hash::{BuildHasher, Hash};
 use std::mem::MaybeUninit;
 use std::num::NonZeroUsize;
-use std::ptr::NonNull;
 
 #[derive(Debug)]
 pub struct VecEncoder<T: Encode> {
     // pub(crate) for arrayvec.rs
     pub(crate) lengths: LengthEncoder,
     pub(crate) elements: T::Encoder,
-    vectored_impl: Option<NonNull<()>>,
+    vectored_impl: Option<fn()>,
 }
 
 // Can't derive since it would bound T: Default.
@@ -104,7 +103,7 @@ impl<T: Encode> VecEncoder<T> {
             ) {
                 // Use fallback for impls that copy more than 64 bytes.
                 let size = std::mem::size_of::<T>();
-                self.vectored_impl = NonNull::new(match N {
+                self.vectored_impl = std::mem::transmute(match N {
                     1 if size <= 32 => Self::encode_vectored_max_len::<I, 2>,
                     2 if size <= 16 => Self::encode_vectored_max_len::<I, 4>,
                     4 if size <= 8 => Self::encode_vectored_max_len::<I, 8>,
@@ -112,8 +111,8 @@ impl<T: Encode> VecEncoder<T> {
                     16 if size <= 2 => Self::encode_vectored_max_len::<I, 32>,
                     32 if size <= 1 => Self::encode_vectored_max_len::<I, 64>,
                     _ => Self::encode_vectored_fallback::<I>,
-                } as *mut ());
-                let f: fn(&mut Self, i: I) = std::mem::transmute(self.vectored_impl);
+                } as fn(&mut Self, I));
+                let f: fn(&mut Self, I) = std::mem::transmute(self.vectored_impl);
                 f(self, i);
                 return;
             }
@@ -172,21 +171,24 @@ impl<T: Encode> Encoder<[T]> for VecEncoder<T> {
                 me: &mut VecEncoder<T>,
                 i: I,
             ) {
-                // We can't set this in the Default constructor because we don't have the type I.
-                if me.vectored_impl.is_none() {
-                    // Use match to avoid "use of generic parameter from outer function".
-                    // Start at the pointer size (assumed to be 8 bytes) to not be wasteful.
-                    me.vectored_impl = NonNull::new(match (8 / std::mem::size_of::<T>()).max(1) {
-                        1 => VecEncoder::encode_vectored_max_len::<I, 1>,
-                        2 => VecEncoder::encode_vectored_max_len::<I, 2>,
-                        4 => VecEncoder::encode_vectored_max_len::<I, 4>,
-                        8 => VecEncoder::encode_vectored_max_len::<I, 8>,
-                        _ => unreachable!(),
-                    } as *mut ());
+                unsafe {
+                    // We can't set this in the Default constructor because we don't have the type I.
+                    if me.vectored_impl.is_none() {
+                        // Use match to avoid "use of generic parameter from outer function".
+                        // Start at the pointer size (assumed to be 8 bytes) to not be wasteful.
+                        me.vectored_impl =
+                            std::mem::transmute(match (8 / std::mem::size_of::<T>()).max(1) {
+                                1 => VecEncoder::encode_vectored_max_len::<I, 1>,
+                                2 => VecEncoder::encode_vectored_max_len::<I, 2>,
+                                4 => VecEncoder::encode_vectored_max_len::<I, 4>,
+                                8 => VecEncoder::encode_vectored_max_len::<I, 8>,
+                                _ => unreachable!(),
+                            }
+                                as fn(&mut VecEncoder<T>, I));
+                    }
+                    let f: fn(&mut VecEncoder<T>, I) = std::mem::transmute(me.vectored_impl);
+                    f(me, i);
                 }
-                let f: fn(&mut VecEncoder<T>, i: I) =
-                    unsafe { std::mem::transmute(me.vectored_impl) };
-                f(me, i);
             }
             inner(self, i);
         } else {

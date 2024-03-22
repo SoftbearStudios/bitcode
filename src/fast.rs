@@ -33,6 +33,10 @@ impl<T> Drop for FastVec<T> {
     }
 }
 
+// Safety: Same bounds as [`Vec`] impls.
+unsafe impl<T: Send> Send for FastVec<T> {}
+unsafe impl<T: Sync> Sync for FastVec<T> {}
+
 /// Replacement for `feature = "ptr_sub_ptr"` which isn't yet stable.
 #[inline(always)]
 fn sub_ptr<T>(ptr: *mut T, origin: *mut T) -> usize {
@@ -227,6 +231,10 @@ impl<T> Default for FastSlice<'_, T> {
         Self::from([].as_slice())
     }
 }
+
+// Safety: Same bounds as slice impls.
+unsafe impl<T: Send> Send for FastSlice<'_, T> {}
+unsafe impl<T: Sync> Sync for FastSlice<'_, T> {}
 
 impl<'a, T> From<&'a [T]> for FastSlice<'a, T> {
     fn from(slice: &'a [T]) -> Self {

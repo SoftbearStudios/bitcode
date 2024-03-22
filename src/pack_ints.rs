@@ -58,9 +58,9 @@ fn usize_too_big() -> Error {
     error("encountered a isize/usize with more than 32 bits on a 32 bit platform")
 }
 
-pub trait Int: Copy + std::fmt::Debug + Default + Ord + Pod + Sized {
+pub trait Int: Copy + std::fmt::Debug + Default + Ord + Pod + Send + Sized + Sync {
     // Unaligned native endian. TODO could be aligned on big endian since we always have to copy.
-    type Une: Pod + Default;
+    type Une: Pod + Default + Send + Sync;
     type Int: SizedInt;
     #[inline]
     fn from_unaligned(unaligned: Self::Une) -> Self {

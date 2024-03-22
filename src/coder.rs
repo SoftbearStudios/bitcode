@@ -24,7 +24,7 @@ pub trait Buffer {
 /// Iterators passed to [`Encoder::encode_vectored`] must have length <= this.
 pub const MAX_VECTORED_CHUNK: usize = 64;
 
-pub trait Encoder<T: ?Sized>: Buffer + Default {
+pub trait Encoder<T: ?Sized>: Buffer + Default + Send + Sync {
     /// Returns a `&mut VecImpl<T>` if `T` is a type that can be encoded by copying.
     #[inline(always)]
     fn as_primitive(&mut self) -> Option<&mut VecImpl<T>>
@@ -66,7 +66,7 @@ pub trait View<'a> {
 
 /// One of [`Decoder::decode`] and [`Decoder::decode_in_place`] must be implemented or calling
 /// either one will result in infinite recursion and a stack overflow.
-pub trait Decoder<'a, T>: View<'a> + Default {
+pub trait Decoder<'a, T>: View<'a> + Default + Send + Sync {
     /// Returns a `&mut SliceImpl<Unaligned<T>>` if `T` is a type that can be decoded by copying.
     /// Uses `Unaligned<T>` so `IntDecoder` can borrow from input `[u8]`.
     #[inline(always)]

@@ -96,7 +96,7 @@ where
     }
 }
 
-impl<'a, C: CheckedBitPattern, I: Int> Decoder<'a, C> for CheckedIntDecoder<'a, C, I>
+impl<'a, C: CheckedBitPattern + Send + Sync, I: Int> Decoder<'a, C> for CheckedIntDecoder<'a, C, I>
 where
     <C as CheckedBitPattern>::Bits: Pod,
 {

@@ -1,7 +1,6 @@
 use std::any::TypeId;
 
 /// A buffer for reusing allocations between calls to [`Buffer::encode`] and/or [`Buffer::decode`].
-/// TODO Send + Sync
 ///
 /// ```rust
 /// use bitcode::{Buffer, Encode, Decode};
@@ -37,7 +36,7 @@ pub(crate) struct Registry(Vec<(TypeId, ErasedBox)>);
 impl Registry {
     /// Gets a `&mut T` if it already exists or initializes one with [`Default`].
     #[cfg(test)]
-    pub(crate) fn get<T: Default + 'static>(&mut self) -> &mut T {
+    pub(crate) fn get<T: Default + Send + Sync + 'static>(&mut self) -> &mut T {
         // Safety: T is static.
         unsafe { self.get_non_static::<T>() }
     }
@@ -46,7 +45,7 @@ impl Registry {
     /// # Safety
     /// Lifetimes are the responsibility of the caller. `&'static [u8]` and `&'a [u8]` are the same
     /// type from the perspective of this function.
-    pub(crate) unsafe fn get_non_static<T: Default>(&mut self) -> &mut T {
+    pub(crate) unsafe fn get_non_static<T: Default + Send + Sync>(&mut self) -> &mut T {
         // Use sorted Vec + binary search because we expect fewer insertions than lookups.
         // We could use a HashMap, but that seems like overkill.
         let type_id = non_static_type_id::<T>();
@@ -55,7 +54,7 @@ impl Registry {
             Err(i) => {
                 #[cold]
                 #[inline(never)]
-                unsafe fn cold<T: Default>(me: &mut Registry, i: usize) {
+                unsafe fn cold<T: Default + Send + Sync>(me: &mut Registry, i: usize) {
                     let type_id = non_static_type_id::<T>();
                     // Safety: caller of `Registry::get` upholds any lifetime requirements.
                     let erased = ErasedBox::new(T::default());
@@ -97,35 +96,36 @@ fn non_static_type_id<T: ?Sized>() -> TypeId {
 
 /// `Box<T>` but of an unknown runtime `T`, requires unsafe to get the `T` back out.
 struct ErasedBox {
-    ptr: *mut (),    // Box<T>
-    drop: *const (), // unsafe fn(*mut Box<T>)
+    ptr: *mut (),             // Box<T>
+    drop: unsafe fn(*mut ()), // fn(Box<T>)
 }
+
+// Safety: `ErasedBox::new` ensures `T: Send + Sync`.
+unsafe impl Send for ErasedBox {}
+unsafe impl Sync for ErasedBox {}
 
 impl ErasedBox {
     /// Allocates a [`Box<T>`] which doesn't know its own type. Only works on `T: Sized`.
     /// # Safety
     /// Ignores lifetimes so drop may be called after `T`'s lifetime has expired.
-    unsafe fn new<T>(t: T) -> Self {
+    unsafe fn new<T: Send + Sync>(t: T) -> Self {
         let ptr = Box::into_raw(Box::new(t)) as *mut ();
-        let drop = std::ptr::drop_in_place::<Box<T>> as *const ();
+        let drop: unsafe fn(*mut ()) = std::mem::transmute(drop::<Box<T>> as fn(Box<T>));
         Self { ptr, drop }
     }
 
     /// Casts to a `&mut T`.
     /// # Safety
     /// `T` must be the same `T` passed to [`ErasedBox::new`].
-    unsafe fn cast_unchecked_mut<T>(&mut self) -> &mut T {
+    unsafe fn cast_unchecked_mut<T: Send + Sync>(&mut self) -> &mut T {
         &mut *(self.ptr as *mut T)
     }
 }
 
 impl Drop for ErasedBox {
     fn drop(&mut self) {
-        // Safety: `ErasedBox::new` put a `Box<T>` in self.ptr and an `unsafe fn(*mut Box<T>)` in self.drop.
-        unsafe {
-            let drop: unsafe fn(*mut *mut ()) = std::mem::transmute(self.drop);
-            drop((&mut self.ptr) as *mut *mut ()); // Pass *mut Box<T>.
-        }
+        // Safety: `ErasedBox::new` put a `Box<T>` in self.ptr and an `fn(Box<T>)` in self.drop.
+        unsafe { (self.drop)(self.ptr) };
     }
 }
 
@@ -141,6 +141,9 @@ mod tests {
         assert_eq!(b.encode(&true), &[1]);
         assert_eq!(b.decode::<bool>(&[0]).unwrap(), false);
         assert_eq!(b.decode::<bool>(&[1]).unwrap(), true);
+
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<Buffer>()
     }
 
     #[test]
@@ -184,13 +187,13 @@ mod tests {
 
     #[test]
     fn erased_box() {
-        use std::rc::Rc;
-        let rc = Rc::new(());
-        struct TestDrop(Rc<()>);
-        let b = unsafe { ErasedBox::new(TestDrop(Rc::clone(&rc))) };
-        assert_eq!(Rc::strong_count(&rc), 2);
+        use std::sync::Arc;
+        let rc = Arc::new(());
+        struct TestDrop(Arc<()>);
+        let b = unsafe { ErasedBox::new(TestDrop(Arc::clone(&rc))) };
+        assert_eq!(Arc::strong_count(&rc), 2);
         drop(b);
-        assert_eq!(Rc::strong_count(&rc), 1);
+        assert_eq!(Arc::strong_count(&rc), 1);
     }
 
     macro_rules! register10 {
