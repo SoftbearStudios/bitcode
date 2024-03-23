@@ -1,6 +1,6 @@
 use crate::coder::{Buffer, Encoder};
 use crate::derive::Encode;
-use crate::fast::{PushUnchecked, VecImpl};
+use crate::fast::VecImpl;
 use std::num::NonZeroUsize;
 
 /// Represents a single byte of a string, unlike u8 which represents an integer.
@@ -26,8 +26,8 @@ impl Encoder<U8Char> for U8CharEncoder {
     }
 
     #[inline(always)]
-    fn encode(&mut self, &v: &U8Char) {
-        unsafe { self.0.push_unchecked(v) }
+    fn encode(&mut self, _: &U8Char) {
+        unimplemented!(); // StrEncoder only uses Encoder::as_primitive.
     }
 }
 
@@ -37,7 +37,7 @@ impl Buffer for U8CharEncoder {
         self.0.clear();
     }
 
-    fn reserve(&mut self, additional: NonZeroUsize) {
-        self.0.reserve(additional.get());
+    fn reserve(&mut self, _: NonZeroUsize) {
+        unimplemented!(); // StrEncoder only uses Encoder::as_primitive.
     }
 }

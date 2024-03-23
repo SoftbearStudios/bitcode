@@ -97,12 +97,28 @@ impl<'a, T: Decode<'a>, const N: usize> Decoder<'a, [T; N]> for ArrayDecoder<'a,
 
 #[cfg(test)]
 mod tests {
+    use crate::coder::{Buffer, Encoder};
+    use crate::error::err;
+    use crate::length::LengthEncoder;
+    use crate::{decode, encode};
+    use std::num::NonZeroUsize;
+
     #[test]
     fn test_empty_array() {
         type T = [u8; 0];
         let empty_array = T::default();
-        crate::decode::<T>(&crate::encode(&empty_array)).unwrap();
-        crate::decode::<Vec<T>>(&crate::encode(&vec![empty_array; 100])).unwrap();
+        decode::<T>(&encode(&empty_array)).unwrap();
+        decode::<Vec<T>>(&encode(&vec![empty_array; 100])).unwrap();
+    }
+
+    #[test]
+    fn test_length_overflow() {
+        const N: usize = 16384;
+        let mut encoder = LengthEncoder::default();
+        encoder.reserve(NonZeroUsize::MIN);
+        encoder.encode(&(usize::MAX / N + 1));
+        let bytes = encoder.collect();
+        assert_eq!(decode::<Vec<[u8; N]>>(&bytes), err("length overflow"));
     }
 
     fn bench_data() -> Vec<Vec<[u8; 3]>> {

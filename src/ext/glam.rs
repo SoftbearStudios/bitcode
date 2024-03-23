@@ -40,3 +40,12 @@ impl_glam!(f64, DVec2, DVec3, DVec4, DQuat, DMat2, DMat3, DMat4);
 impl_glam!(u32, UVec2, UVec3, UVec4);
 impl_glam!(i32, IVec2, IVec3, IVec4);
 impl_glam!(bool, BVec2, BVec3, BVec4);
+
+#[cfg(test)]
+mod tests {
+    use glam::Vec2;
+    fn bench_data() -> Vec<Vec2> {
+        crate::random_data(1000)
+    }
+    crate::bench_encode_decode!(vec2_vec: Vec<_>);
+}

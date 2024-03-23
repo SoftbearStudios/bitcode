@@ -476,6 +476,7 @@ fn unpack_ints_sized_unsigned<'a, T: SizedUInt>(
 #[cfg(test)]
 mod tests {
     use super::{usize_too_big, CowSlice, Int, Result};
+    use crate::error::err;
     use std::fmt::Debug;
     use test::{black_box, Bencher};
 
@@ -547,6 +548,18 @@ mod tests {
         assert_eq!(
             pack_ints(&[0isize, -1, 0, -1, 0, -1, 0]),
             [5, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 10, 0b1010101]
+        );
+    }
+
+    #[test]
+    fn unpack_ints_errors() {
+        assert_eq!(
+            super::unpack_ints::<u16>(&mut [1].as_slice(), 5, &mut Default::default()),
+            err("EOF")
+        );
+        assert_eq!(
+            super::unpack_ints::<u16>(&mut [255].as_slice(), 5, &mut Default::default()),
+            super::invalid_packing()
         );
     }
 

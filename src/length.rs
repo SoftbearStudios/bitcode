@@ -44,13 +44,6 @@ impl<T> Len for &[T] {
     }
 }
 
-impl Len for &str {
-    #[inline(always)]
-    fn len(&self) -> usize {
-        str::len(self)
-    }
-}
-
 impl LengthEncoder {
     /// Encodes a length known to be < `255`.
     #[cfg(feature = "arrayvec")]
@@ -67,7 +60,7 @@ impl LengthEncoder {
     pub fn encode_vectored_max_len<T: Len, const N: usize>(
         &mut self,
         i: impl Iterator<Item = T>,
-        mut enocde: impl FnMut(T),
+        mut encode: impl FnMut(T),
     ) -> bool {
         debug_assert!(N <= 64);
         let mut ptr = self.small.end_ptr();
@@ -84,7 +77,7 @@ impl LengthEncoder {
                 // Don't set end ptr (elements won't be saved).
                 return true;
             }
-            enocde(t);
+            encode(t);
         }
         self.small.set_end_ptr(ptr);
         false
@@ -190,7 +183,7 @@ impl<'a> View<'a> for LengthDecoder<'a> {
                 .ok_or_else(|| error("length overflow"))?;
         }
         if sum >= HUGE_LEN {
-            return err("length overflow"); // Lets us optimize decode with unreachable_unchecked.
+            return err("huge length"); // Lets us optimize decode with unreachable_unchecked.
         }
         self.sum = sum.try_into().map_err(|_| error("length > usize::MAX"))?;
         Ok(())

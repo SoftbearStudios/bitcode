@@ -25,3 +25,12 @@ impl<'a, T> Decoder<'a, PhantomData<T>> for EmptyCoder {
         PhantomData
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::marker::PhantomData;
+    fn bench_data() -> Vec<PhantomData<()>> {
+        vec![PhantomData; 100]
+    }
+    crate::bench_encode_decode!(phantom_data_vec: Vec<_>);
+}

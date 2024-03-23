@@ -483,6 +483,7 @@ fn unpack_arithmetic<const FACTOR: usize>(
 
 #[cfg(test)]
 mod tests {
+    use crate::error::err;
     use paste::paste;
     use test::{black_box, Bencher};
 
@@ -534,6 +535,18 @@ mod tests {
                 assert_eq!(original.as_slice(), unpacked.as_slice());
             }
         }
+    }
+
+    #[test]
+    fn unpack_bytes_errors() {
+        assert_eq!(
+            super::unpack_bytes::<u8>(&mut [1].as_slice(), 5, &mut Default::default()),
+            err("EOF")
+        );
+        assert_eq!(
+            super::unpack_bytes::<u8>(&mut [255].as_slice(), 5, &mut Default::default()),
+            super::invalid_packing()
+        );
     }
 
     fn pack_arithmetic<const FACTOR: usize>(bytes: &[u8]) -> Vec<u8> {

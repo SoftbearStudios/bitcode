@@ -83,6 +83,24 @@ macro_rules! bench_encode_decode {
                     let encoded = crate::encode(&data);
                     let mut buffer = crate::Buffer::default();
 
+                    // Help type inference.
+                    fn check_eof<'a, T: crate::Decode<'a>>(_: &T, incomplete: &'a [u8], padded: &'a [u8]) {
+                        let Err(e) = crate::decode::<T>(incomplete) else {
+                            panic!("no eof");
+                        };
+                        assert_eq!(e, crate::error::error("EOF"));
+
+                        let Err(e) = crate::decode::<T>(&padded) else {
+                            panic!("no expected eof");
+                        };
+                        assert_eq!(e, crate::error::error("Expected EOF"));
+                    }
+                    {
+                        let mut padded = encoded.to_vec();
+                        padded.push(0);
+                        check_eof(&data, &encoded[..encoded.len() - 1], &padded);
+                    }
+
                     let mut f = || {
                         #[cfg(miri)] // Make sure dangling pointers aren't read due to Buffer.
                         let encoded = encoded.clone();

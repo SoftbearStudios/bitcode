@@ -71,17 +71,12 @@ impl crate::shared::Item for Item {
 
     fn struct_impl(
         self,
-        ident: &Ident,
-        destructure_fields: &TokenStream,
+        _ident: &Ident,
+        _destructure_fields: &TokenStream,
         do_fields: &TokenStream,
     ) -> TokenStream {
         match self {
-            Self::Decode => {
-                quote! {
-                    #do_fields
-                    #ident #destructure_fields
-                }
-            }
+            Self::Decode => unimplemented!(),
             _ => quote! { #do_fields },
         }
     }
@@ -173,21 +168,19 @@ impl crate::shared::Item for Item {
                 }
                 let pattern = |i: usize| {
                     let pattern = pattern(i);
-                    matches!(self, Self::DecodeInPlace)
-                        .then(|| {
-                            quote! {
-                                out.write(#pattern);
-                            }
-                        })
-                        .unwrap_or(pattern)
+                    quote! {
+                        out.write(#pattern);
+                    }
                 };
-                let item = Self::Decode; // DecodeInPlace doesn't work on enums.
+                let inner = |i: usize| {
+                    inner(Self::Decode, i) // DecodeInPlace doesn't work on enums.
+                };
 
                 decode_variants
                     .then(|| {
                         let variants: TokenStream = (0..variant_count)
                             .map(|i| {
-                                let inner = inner(item, i);
+                                let inner = inner(i);
                                 let pattern = pattern(i);
                                 let i = variant_index(i);
                                 quote! {
@@ -208,7 +201,7 @@ impl crate::shared::Item for Item {
                     })
                     .or_else(|| {
                         (variant_count == 1).then(|| {
-                            let inner = inner(item, 0);
+                            let inner = inner(0);
                             let pattern = pattern(0);
                             quote! {
                                 #inner
