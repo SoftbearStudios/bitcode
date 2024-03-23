@@ -35,7 +35,6 @@ mod inner {
 }
 pub use inner::deserialize;
 
-#[derive(Debug)]
 enum SerdeDecoder<'a> {
     Bool(BoolDecoder<'a>),
     Enum((VariantDecoder<'a>, Vec<SerdeDecoder<'a>>)), // (variants, values)

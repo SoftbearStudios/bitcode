@@ -5,7 +5,6 @@ use crate::fast::{FastArrayVec, PushUnchecked};
 use std::mem::MaybeUninit;
 use std::num::NonZeroUsize;
 
-#[derive(Debug)]
 pub struct OptionEncoder<T: Encode> {
     variants: VariantEncoder<2>,
     some: T::Encoder,
@@ -85,7 +84,6 @@ impl<T: Encode> Buffer for OptionEncoder<T> {
     }
 }
 
-#[derive(Debug)]
 pub struct OptionDecoder<'a, T: Decode<'a>> {
     variants: VariantDecoder<'a, 2, false>,
     some: T::Decoder,

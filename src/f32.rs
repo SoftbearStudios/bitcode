@@ -4,7 +4,7 @@ use crate::fast::{FastSlice, NextUnchecked, PushUnchecked, VecImpl};
 use std::mem::MaybeUninit;
 use std::num::NonZeroUsize;
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct F32Encoder(VecImpl<f32>);
 
 impl Encoder<f32> for F32Encoder {
@@ -80,7 +80,7 @@ impl Buffer for F32Encoder {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct F32Decoder<'a> {
     // While it is true that this contains 1 bit of the exp we still call it mantissa.
     mantissa: FastSlice<'a, [u8; 3]>,

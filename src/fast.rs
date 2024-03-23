@@ -1,4 +1,3 @@
-use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 
@@ -11,12 +10,6 @@ pub struct FastVec<T> {
     end: *mut T,      // vec.as_mut_ptr().add(vec.len())
     capacity: *mut T, // vec.as_mut_ptr().add(vec.capacity())
     _spooky: PhantomData<Vec<T>>,
-}
-
-impl<T: Debug> Debug for FastVec<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        self.as_slice().fmt(f)
-    }
 }
 
 impl<T> Default for FastVec<T> {
@@ -220,12 +213,6 @@ pub struct FastSlice<'a, T> {
     _spooky: PhantomData<&'a T>,
 }
 
-impl<T: Debug> Debug for FastSlice<'_, T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str("FastSlice") // We don't have len so we can't debug elements.
-    }
-}
-
 impl<T> Default for FastSlice<'_, T> {
     fn default() -> Self {
         Self::from([].as_slice())
@@ -344,7 +331,7 @@ impl<'a, T: Copy> NextUnchecked<'a, T> for &'a [T] {
 }
 
 /// Maybe owned [`FastSlice`]. Saves its allocation even if borrowing something.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct CowSlice<'borrowed, T> {
     slice: SliceImpl<'borrowed, T>, // Lifetime is min of 'borrowed and &'me self.
     vec: Vec<T>,

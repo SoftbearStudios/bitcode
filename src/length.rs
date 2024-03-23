@@ -5,7 +5,7 @@ use crate::int::{IntDecoder, IntEncoder};
 use crate::pack::{pack_bytes, unpack_bytes};
 use std::num::NonZeroUsize;
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct LengthEncoder {
     small: VecImpl<u8>,
     large: IntEncoder<usize>,
@@ -109,7 +109,7 @@ impl Buffer for LengthEncoder {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct LengthDecoder<'a> {
     small: CowSlice<'a, u8>,
     large: IntDecoder<'a, usize>,

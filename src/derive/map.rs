@@ -5,7 +5,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::hash::{BuildHasher, Hash};
 use std::num::NonZeroUsize;
 
-#[derive(Debug)]
 pub struct MapEncoder<K: Encode, V: Encode> {
     lengths: LengthEncoder,
     keys: K::Encoder,
@@ -36,7 +35,6 @@ impl<K: Encode, V: Encode> Buffer for MapEncoder<K, V> {
     }
 }
 
-#[derive(Debug)]
 pub struct MapDecoder<'a, K: Decode<'a>, V: Decode<'a>> {
     lengths: LengthDecoder<'a>,
     keys: K::Decoder,

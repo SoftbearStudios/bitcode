@@ -29,7 +29,6 @@ impl<T: Encode + ?Sized> Buffer for DerefEncoder<T> {
 }
 
 /// Decodes a `T` and then converts it with [`From`]. For `T` -> `Box<T>` and `Vec<T>` -> `Box<[T]>`.
-#[derive(Debug)]
 pub struct FromDecoder<'a, T: Decode<'a>>(T::Decoder);
 
 // Can't derive since it would bound T: Default.

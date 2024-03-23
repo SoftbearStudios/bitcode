@@ -8,7 +8,7 @@ use crate::u8_char::U8Char;
 use std::num::NonZeroUsize;
 use std::str::{from_utf8, from_utf8_unchecked};
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct StrEncoder(pub(crate) VecEncoder<U8Char>); // pub(crate) for arrayvec.rs
 
 #[inline(always)]
@@ -70,7 +70,7 @@ impl Encoder<String> for StrEncoder {
 }
 
 // Doesn't use VecDecoder because can't decode &[u8].
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct StrDecoder<'a> {
     // pub(crate) for arrayvec::ArrayString.
     pub(crate) lengths: LengthDecoder<'a>,

@@ -3,7 +3,7 @@ use crate::fast::{CowSlice, NextUnchecked, PushUnchecked, VecImpl};
 use crate::pack::{pack_bytes_less_than, unpack_bytes_less_than};
 use std::num::NonZeroUsize;
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct VariantEncoder<const N: usize>(VecImpl<u8>);
 
 impl<const N: usize> Encoder<u8> for VariantEncoder<N> {
@@ -25,7 +25,6 @@ impl<const N: usize> Buffer for VariantEncoder<N> {
     }
 }
 
-#[derive(Debug)]
 pub struct VariantDecoder<'a, const N: usize, const C_STYLE: bool> {
     variants: CowSlice<'a, u8>,
     histogram: [usize; N], // Not required if C_STYLE. TODO don't reserve space for it.
@@ -70,12 +69,12 @@ impl<'a, const N: usize, const C_STYLE: bool> Decoder<'a, u8> for VariantDecoder
 
 #[cfg(test)]
 mod tests {
-    use crate::{decode, encode};
+    use crate::{decode, encode, Decode, Encode};
 
     #[allow(unused)]
     #[test]
     fn test_c_style_enum() {
-        #[derive(crate::Encode, crate::Decode)]
+        #[derive(Encode, Decode)]
         enum Enum1 {
             A,
             B,
@@ -84,7 +83,7 @@ mod tests {
             E,
             F,
         }
-        #[derive(crate::Decode)]
+        #[derive(Decode)]
         enum Enum2 {
             A,
             B,
@@ -101,7 +100,7 @@ mod tests {
     #[allow(unused)]
     #[test]
     fn test_rust_style_enum() {
-        #[derive(crate::Encode, crate::Decode)]
+        #[derive(Encode, Decode)]
         enum Enum1 {
             A(u8),
             B,
@@ -110,7 +109,7 @@ mod tests {
             E,
             F,
         }
-        #[derive(crate::Decode)]
+        #[derive(Decode)]
         enum Enum2 {
             A(u8),
             B,
@@ -124,7 +123,7 @@ mod tests {
         assert!(matches!(decode(&encode(&Enum1::F)), Ok(Enum1::F)));
     }
 
-    #[derive(Debug, PartialEq, crate::Encode, crate::Decode)]
+    #[derive(Debug, PartialEq, Encode, Decode)]
     enum BoolEnum {
         True,
         False,

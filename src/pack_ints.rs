@@ -477,10 +477,9 @@ fn unpack_ints_sized_unsigned<'a, T: SizedUInt>(
 mod tests {
     use super::{usize_too_big, CowSlice, Int, Result};
     use crate::error::err;
-    use std::fmt::Debug;
     use test::{black_box, Bencher};
 
-    pub fn pack_ints<T: Int + Debug>(ints: &[T]) -> Vec<u8> {
+    pub fn pack_ints<T: Int>(ints: &[T]) -> Vec<u8> {
         let mut out = vec![];
         super::pack_ints(&mut ints.to_vec(), &mut out);
         assert_eq!(ints, unpack_ints(&out, ints.len()).unwrap());
@@ -563,7 +562,7 @@ mod tests {
         );
     }
 
-    fn test_inner<T: Int + Debug>(ints: &[T]) -> Vec<u8> {
+    fn test_inner<T: Int>(ints: &[T]) -> Vec<u8> {
         let out = pack_ints(&mut ints.to_owned());
         let unpacked = unpack_ints::<T>(&out, ints.len()).unwrap();
         assert_eq!(unpacked, ints);
@@ -636,7 +635,7 @@ mod tests {
         assert_eq!(out.capacity(), starting_cap);
     }
 
-    fn bench_unpack_ints<T: Int + Debug>(b: &mut Bencher, src: &[T]) {
+    fn bench_unpack_ints<T: Int>(b: &mut Bencher, src: &[T]) {
         let packed = pack_ints(&mut src.to_vec());
         let mut out = CowSlice::with_allocation(Vec::<T::Une>::with_capacity(src.len()));
         b.iter(|| {

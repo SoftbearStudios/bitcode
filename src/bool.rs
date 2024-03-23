@@ -3,7 +3,7 @@ use crate::fast::{CowSlice, NextUnchecked, PushUnchecked, SliceImpl, Unaligned, 
 use crate::pack::{pack_bools, unpack_bools};
 use std::num::NonZeroUsize;
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct BoolEncoder(VecImpl<bool>);
 
 impl Encoder<bool> for BoolEncoder {
@@ -29,7 +29,7 @@ impl Buffer for BoolEncoder {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct BoolDecoder<'a>(CowSlice<'a, bool>);
 
 impl<'a> View<'a> for BoolDecoder<'a> {

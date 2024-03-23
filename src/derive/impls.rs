@@ -188,7 +188,6 @@ macro_rules! impl_tuples {
                     type Encoder = TupleEncoder<$($name,)*>;
                 }
 
-                #[derive(Debug)]
                 pub struct TupleEncoder<$($name: Encode,)*>(
                     $($name::Encoder,)*
                 );
@@ -235,7 +234,6 @@ macro_rules! impl_tuples {
                     type Decoder = TupleDecoder<'a, $($name,)*>;
                 }
 
-                #[derive(Debug)]
                 pub struct TupleDecoder<'a, $($name: Decode<'a>,)*>(
                     $($name::Decoder,)*
                     std::marker::PhantomData<&'a ()>,

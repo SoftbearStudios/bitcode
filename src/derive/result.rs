@@ -5,7 +5,6 @@ use crate::error::Error;
 use std::mem::MaybeUninit;
 use std::num::NonZeroUsize;
 
-#[derive(Debug)]
 pub struct ResultEncoder<T: Encode, E: Encode> {
     variants: VariantEncoder<2>,
     ok: T::Encoder,
@@ -54,7 +53,6 @@ impl<T: Encode, E: Encode> Buffer for ResultEncoder<T, E> {
     }
 }
 
-#[derive(Debug)]
 pub struct ResultDecoder<'a, T: Decode<'a>, E: Decode<'a>> {
     variants: VariantDecoder<'a, 2, false>,
     ok: T::Decoder,

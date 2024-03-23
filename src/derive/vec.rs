@@ -7,7 +7,6 @@ use std::hash::{BuildHasher, Hash};
 use std::mem::MaybeUninit;
 use std::num::NonZeroUsize;
 
-#[derive(Debug)]
 pub struct VecEncoder<T: Encode> {
     // pub(crate) for arrayvec.rs
     pub(crate) lengths: LengthEncoder,
@@ -199,7 +198,6 @@ impl<T: Encode> Encoder<[T]> for VecEncoder<T> {
     }
 }
 
-#[derive(Debug)]
 pub struct VecDecoder<'a, T: Decode<'a>> {
     // pub(crate) for arrayvec::ArrayVec.
     pub(crate) lengths: LengthDecoder<'a>,

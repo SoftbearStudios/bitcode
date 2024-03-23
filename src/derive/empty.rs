@@ -2,7 +2,7 @@ use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct EmptyCoder;
 
 impl<T> Encoder<PhantomData<T>> for EmptyCoder {

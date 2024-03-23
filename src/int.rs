@@ -6,7 +6,7 @@ use bytemuck::{CheckedBitPattern, NoUninit, Pod};
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct IntEncoder<T>(VecImpl<T>);
 
 /// Makes IntEncoder<u32> able to encode i32/f32/char.
@@ -38,7 +38,7 @@ impl<T: Int> Buffer for IntEncoder<T> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct IntDecoder<'a, T: Int>(CowSlice<'a, T::Une>);
 
 impl<'a, T: Int> IntDecoder<'a, T> {

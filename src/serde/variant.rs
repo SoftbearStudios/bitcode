@@ -4,7 +4,7 @@ use crate::pack::{pack_bytes, unpack_bytes};
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct VariantEncoder {
     data: VecImpl<u8>,
 }
@@ -27,7 +27,7 @@ impl Buffer for VariantEncoder {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct VariantDecoder<'a> {
     variants: CowSlice<'a, u8>,
     histogram: Vec<usize>,

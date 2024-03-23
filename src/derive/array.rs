@@ -5,7 +5,6 @@ use crate::fast::{FastSlice, FastVec, Unaligned};
 use std::mem::MaybeUninit;
 use std::num::NonZeroUsize;
 
-#[derive(Debug)]
 pub struct ArrayEncoder<T: Encode, const N: usize>(T::Encoder);
 
 // Can't derive since it would bound T: Default.
@@ -59,7 +58,6 @@ impl<T: Encode, const N: usize> Buffer for ArrayEncoder<T, N> {
     }
 }
 
-#[derive(Debug)]
 pub struct ArrayDecoder<'a, T: Decode<'a>, const N: usize>(T::Decoder);
 
 // Can't derive since it would bound T: Default.

@@ -53,7 +53,6 @@ mod inner {
 }
 pub use inner::serialize;
 
-#[derive(Debug)]
 enum SpecifiedEncoder {
     Bool(BoolEncoder),
     Enum((VariantEncoder, Vec<LazyEncoder>)), // (variants, values)
@@ -110,7 +109,6 @@ impl SpecifiedEncoder {
     }
 }
 
-#[derive(Debug)]
 enum LazyEncoder {
     Unspecified {
         reserved: Option<NonZeroUsize>,

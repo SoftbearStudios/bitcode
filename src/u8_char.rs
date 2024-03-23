@@ -4,7 +4,7 @@ use crate::fast::VecImpl;
 use std::num::NonZeroUsize;
 
 /// Represents a single byte of a string, unlike u8 which represents an integer.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct U8Char(pub u8);
 
@@ -16,7 +16,7 @@ impl Encode for U8Char {
     type Encoder = U8CharEncoder;
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct U8CharEncoder(VecImpl<U8Char>);
 
 impl Encoder<U8Char> for U8CharEncoder {
