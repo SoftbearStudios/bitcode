@@ -46,28 +46,36 @@ impl Registry {
     /// Lifetimes are the responsibility of the caller. `&'static [u8]` and `&'a [u8]` are the same
     /// type from the perspective of this function.
     pub(crate) unsafe fn get_non_static<T: Default + Send + Sync>(&mut self) -> &mut T {
-        // Use sorted Vec + binary search because we expect fewer insertions than lookups.
-        // We could use a HashMap, but that seems like overkill.
-        let type_id = non_static_type_id::<T>();
-        let i = match self.0.binary_search_by_key(&type_id, |(k, _)| *k) {
-            Ok(i) => i,
-            Err(i) => {
-                #[cold]
-                #[inline(never)]
-                unsafe fn cold<T: Default + Send + Sync>(me: &mut Registry, i: usize) {
-                    let type_id = non_static_type_id::<T>();
-                    // Safety: caller of `Registry::get` upholds any lifetime requirements.
-                    let erased = ErasedBox::new(T::default());
-                    me.0.insert(i, (type_id, erased));
+        // Use non-generic function to avoid monomorphization.
+        #[inline(never)]
+        fn inner(me: &mut Registry, type_id: TypeId, create: fn() -> ErasedBox) -> *mut () {
+            // Use sorted Vec + binary search because we expect fewer insertions than lookups.
+            // We could use a HashMap, but that seems like overkill.
+            match me.0.binary_search_by_key(&type_id, |(k, _)| *k) {
+                Ok(i) => me.0[i].1.ptr,
+                Err(i) => {
+                    #[cold]
+                    #[inline(never)]
+                    fn cold(
+                        me: &mut Registry,
+                        i: usize,
+                        type_id: TypeId,
+                        create: fn() -> ErasedBox,
+                    ) -> *mut () {
+                        me.0.insert(i, (type_id, create()));
+                        me.0[i].1.ptr
+                    }
+                    cold(me, i, type_id, create)
                 }
-                cold::<T>(self, i);
-                i
             }
-        };
-        // Safety: binary_search_by_key either found item at `i` or cold initialized item at `i`.
-        let item = &mut self.0.get_unchecked_mut(i).1;
-        // Safety: type_id uniquely identifies the type, so the entry with equal type_id is a T.
-        item.cast_unchecked_mut()
+        }
+        let erased_ptr = inner(self, non_static_type_id::<T>(), || {
+            // Safety: Caller upholds any lifetime requirements.
+            ErasedBox::new(T::default())
+        });
+
+        // Safety: type_id uniquely identifies the type, so the entry with equal TypeId is a T.
+        &mut *(erased_ptr as *mut T)
     }
 }
 
@@ -112,13 +120,6 @@ impl ErasedBox {
         let ptr = Box::into_raw(Box::new(t)) as *mut ();
         let drop: unsafe fn(*mut ()) = std::mem::transmute(drop::<Box<T>> as fn(Box<T>));
         Self { ptr, drop }
-    }
-
-    /// Casts to a `&mut T`.
-    /// # Safety
-    /// `T` must be the same `T` passed to [`ErasedBox::new`].
-    unsafe fn cast_unchecked_mut<T: Send + Sync>(&mut self) -> &mut T {
-        &mut *(self.ptr as *mut T)
     }
 }
 
