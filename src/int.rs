@@ -89,7 +89,12 @@ where
         self.0.populate(input, length)?;
 
         let mut decoder = self.0.borrowed_clone();
-        if (0..length).any(|_| !C::is_valid_bit_pattern(&decoder.decode())) {
+        // Optimizes much better than Iterator::any.
+        if (0..length)
+            .filter(|_| !C::is_valid_bit_pattern(&decoder.decode()))
+            .count()
+            != 0
+        {
             return err("invalid bit pattern");
         }
         Ok(())

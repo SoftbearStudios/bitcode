@@ -4,6 +4,7 @@ use crate::Error;
 use std::num::NonZeroUsize;
 
 mod array;
+mod duration;
 mod empty;
 mod impls;
 mod map;

@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Debug;
 use std::num::NonZeroU32;
+use std::time::Duration;
 
 #[inline(never)]
 fn test_derive<T: Debug + PartialEq + Encode + DecodeOwned>(data: &[u8]) {
@@ -62,7 +63,7 @@ fuzz_target!(|data: &[u8]| {
     let (start, data) = data.split_at(3);
 
     macro_rules! test {
-        ($typ1: expr, $typ2: expr, $data: expr, $($typ: ty),*) => {
+        ($typ1: expr, $typ2: expr, $data: expr, $($typ: ty,)*) => {
             {
                 let mut j = 0;
                 $(
@@ -83,7 +84,7 @@ fuzz_target!(|data: &[u8]| {
     }
 
     macro_rules! tests {
-        ($typ0: expr, $typ1: expr, $typ2: expr, $data: expr, $($typ: ty),*) => {
+        ($typ0: expr, $typ1: expr, $typ2: expr, $data: expr, $($typ: ty,)*) => {
             {
                 let mut i = 0;
                 $(
@@ -102,7 +103,7 @@ fuzz_target!(|data: &[u8]| {
                                 HashMap<u16, $typ>,
                                 ArrayVec<$typ, 0>,
                                 ArrayVec<$typ, 5>,
-                                Result<$typ, u32>
+                                Result<$typ, u32>,
                             );
                         }
                         #[allow(unused)]
@@ -206,6 +207,7 @@ fuzz_target!(|data: &[u8]| {
         ArrayString<5>,
         ArrayString<70>,
         ArrayVec<u8, 5>,
-        ArrayVec<u8, 70>
+        ArrayVec<u8, 70>,
+        Duration,
     );
 });
