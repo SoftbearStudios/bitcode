@@ -687,6 +687,7 @@ mod tests {
                 .collect();
             let n = bytes.len(); // random_data shrinks n on miri.
 
+            #[cfg(feature = "std")]
             println!("n {n}, N {N}, FACTOR {FACTOR}");
             if N != FACTOR {
                 let mut bytes = bytes.clone();

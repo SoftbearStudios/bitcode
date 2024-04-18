@@ -17,11 +17,11 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::num::*;
-use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
-use std::hash::{BuildHasher, Hash};
-use std::marker::PhantomData;
-use std::mem::MaybeUninit;
-use std::num::*;
+
+#[cfg(feature = "std")]
+use std::collections::{HashMap, HashSet};
+#[cfg(feature = "std")]
+use core::hash::{Hash, BuildHasher};
 
 macro_rules! impl_both {
     ($t:ty, $encoder:ident, $decoder:ident) => {
@@ -150,9 +150,11 @@ impl<T: Encode> Encode for BTreeSet<T> {
 impl<'a, T: Decode<'a> + Ord> Decode<'a> for BTreeSet<T> {
     type Decoder = VecDecoder<'a, T>;
 }
+#[cfg(feature = "std")]
 impl<T: Encode, S> Encode for HashSet<T, S> {
     type Encoder = VecEncoder<T>;
 }
+#[cfg(feature = "std")]
 impl<'a, T: Decode<'a> + Eq + Hash, S: BuildHasher + Default> Decode<'a> for HashSet<T, S> {
     type Decoder = VecDecoder<'a, T>;
 }
@@ -163,9 +165,11 @@ impl<K: Encode, V: Encode> Encode for BTreeMap<K, V> {
 impl<'a, K: Decode<'a> + Ord, V: Decode<'a>> Decode<'a> for BTreeMap<K, V> {
     type Decoder = MapDecoder<'a, K, V>;
 }
+#[cfg(feature = "std")]
 impl<K: Encode, V: Encode, S> Encode for HashMap<K, V, S> {
     type Encoder = MapEncoder<K, V>;
 }
+#[cfg(feature = "std")]
 impl<'a, K: Decode<'a> + Eq + Hash, V: Decode<'a>, S: BuildHasher + Default> Decode<'a>
     for HashMap<K, V, S>
 {

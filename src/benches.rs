@@ -168,6 +168,7 @@ bench!(serialize, deserialize, bitcode);
 #[cfg(feature = "derive")]
 bench!(encode, decode, bitcode);
 
+#[cfg(feature = "std")]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -248,6 +249,7 @@ mod tests {
     }
 }
 
+#[cfg(feature = "std")]
 mod compression {
     use flate2::read::DeflateDecoder;
     use flate2::write::DeflateEncoder;

@@ -6,10 +6,11 @@ use alloc::collections::{BTreeSet, BinaryHeap, LinkedList, VecDeque};
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 use core::num::NonZeroUsize;
-use std::collections::{BTreeSet, BinaryHeap, HashSet, LinkedList, VecDeque};
-use std::hash::{BuildHasher, Hash};
-use std::mem::MaybeUninit;
-use std::num::NonZeroUsize;
+
+#[cfg(feature = "std")]
+use std::collections::HashSet;
+#[cfg(feature = "std")]
+use core::hash::{BuildHasher, Hash};
 
 pub struct VecEncoder<T: Encode> {
     // pub(crate) for arrayvec.rs
@@ -329,11 +330,13 @@ impl<'a, T: Decode<'a> + Ord> Decoder<'a, BTreeSet<T>> for VecDecoder<'a, T> {
     decode_body!(BTreeSet<T>);
 }
 
+#[cfg(feature = "std")]
 impl<T: Encode, S> Encoder<HashSet<T, S>> for VecEncoder<T> {
     // Internal iteration is 1.6x faster. Interestingly this does not apply to HashMap<T, ()> which
     // I assume is due to HashSet::iter being implemented with HashMap::keys.
     encode_body_internal_iteration!(HashSet<T, S>);
 }
+#[cfg(feature = "std")]
 impl<'a, T: Decode<'a> + Eq + Hash, S: BuildHasher + Default> Decoder<'a, HashSet<T, S>>
     for VecDecoder<'a, T>
 {
@@ -362,13 +365,24 @@ impl<'a, T: Decode<'a>> Decoder<'a, VecDeque<T>> for VecDecoder<'a, T> {
 mod test {
     use alloc::collections::*;
     use alloc::vec::Vec;
+    #[cfg(feature = "std")]
     use std::collections::*;
+
     fn bench_data<T: FromIterator<u8>>() -> T {
         (0..=255).collect()
     }
+
+    #[cfg(feature = "std")]
     crate::bench_encode_decode!(
         btree_set: BTreeSet<_>,
         hash_set: HashSet<_>,
+        linked_list: LinkedList<_>,
+        vec: Vec<_>,
+        vec_deque: VecDeque<_>
+    );
+    #[cfg(not(feature = "std"))]
+    crate::bench_encode_decode!(
+        btree_set: BTreeSet<_>,
         linked_list: LinkedList<_>,
         vec: Vec<_>,
         vec_deque: VecDeque<_>

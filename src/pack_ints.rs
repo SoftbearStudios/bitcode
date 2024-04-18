@@ -569,10 +569,12 @@ mod tests {
         let out = pack_ints(&mut ints.to_owned());
         let unpacked = unpack_ints::<T>(&out, ints.len()).unwrap();
         assert_eq!(unpacked, ints);
-
-        let packing = out[0];
-        let size = 100.0 * out.len() as f32 / std::mem::size_of_val(ints) as f32;
-        println!("{packing} {size:>5.1}%");
+        #[cfg(feature = "std")]
+        {
+            let packing = out[0];
+            let size = 100.0 * out.len() as f32 / core::mem::size_of_val(ints) as f32;
+            println!("{packing} {size:>5.1}%");
+        }
         out
     }
 
@@ -597,15 +599,18 @@ mod tests {
                         let Ok(start) = T::try_from(max) else {
                             continue;
                         };
+                        #[cfg(feature = "std")]
                         let s = format!("{start} {increment}");
                         if increment == 1 {
-                           print!("{s:<19} mod 2 => ");
-                           test_inner::<T>(&std::array::from_fn::<_, 100, _>(|i| {
-                               start + (i as T % 2) * increment
-                           }));
+                            #[cfg(feature = "std")]
+                            print!("{s:<19} mod 2 => ");
+                            test_inner::<T>(&core::array::from_fn::<_, 100, _>(|i| {
+                                start + (i as T % 2) * increment
+                            }));
                         }
+                        #[cfg(feature = "std")]
                         print!("{s:<25} => ");
-                        test_inner::<T>(&std::array::from_fn::<_, 100, _>(|i| {
+                        test_inner::<T>(&core::array::from_fn::<_, 100, _>(|i| {
                             start + i as T * increment
                         }));
                     }

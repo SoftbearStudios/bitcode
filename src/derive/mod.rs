@@ -117,6 +117,7 @@ mod tests {
             ($v:expr, $t:ty) => {
                 let v = $v;
                 let encoded = super::encode::<$t>(&v);
+                #[cfg(feature = "std")]
                 println!("{:<24} {encoded:?}", stringify!($t));
                 assert_eq!(v, super::decode::<$t>(&encoded).unwrap());
             };
