@@ -1,3 +1,5 @@
+extern crate alloc;
+
 use crate::decode::Decode;
 use crate::encode::Encode;
 use crate::shared::Derive;
