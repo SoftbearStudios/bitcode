@@ -237,7 +237,7 @@ macro_rules! impl_smaller {
 // In theory, we could avoid this intermediate step, but it would result in a lot of generated code.
 fn with_scratch<T>(f: impl FnOnce(&mut Vec<u8>) -> T) -> T {
     thread_local! {
-        static SCRATCH: core::cell::RefCell<Vec<u8>> = Default::default();
+        static SCRATCH: core::cell::RefCell<Vec<u8>> = const { core::cell::RefCell::new(Vec::new()) }
     }
     SCRATCH.with(|s| {
         let s = &mut s.borrow_mut();
