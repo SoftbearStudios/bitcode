@@ -4,6 +4,9 @@
 #![cfg_attr(test, feature(test))]
 #![doc = include_str!("../README.md")]
 
+#[macro_use]
+extern crate alloc;
+
 // Fixes derive macro in tests/doc tests.
 #[cfg(test)]
 extern crate self as bitcode;
@@ -44,6 +47,9 @@ pub use crate::serde::*;
 mod benches;
 #[cfg(test)]
 mod benches_borrowed;
+
+#[cfg(test)]
+use alloc::vec::Vec;
 
 #[cfg(test)]
 fn random_data<T>(n: usize) -> Vec<T>

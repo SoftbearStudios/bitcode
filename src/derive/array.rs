@@ -2,8 +2,9 @@ use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::consume::mul_length;
 use crate::derive::{Decode, Encode};
 use crate::fast::{FastSlice, FastVec, Unaligned};
-use std::mem::MaybeUninit;
-use std::num::NonZeroUsize;
+use alloc::vec::Vec;
+use core::mem::MaybeUninit;
+use core::num::NonZeroUsize;
 
 pub struct ArrayEncoder<T: Encode, const N: usize>(T::Encoder);
 
@@ -28,7 +29,7 @@ impl<T: Encode, const N: usize> Encoder<[T; N]> for ArrayEncoder<T, N> {
             // NOTE: If panics occurs during ArrayEncoder::encode and Buffer is reused, this
             // invariant can be violated. Luckily primitive encoders never panic.
             // TODO std::mem::take Buffer while encoding to avoid corrupted buffers.
-            unsafe { std::mem::transmute(v) }
+            unsafe { core::mem::transmute(v) }
         })
     }
 
@@ -79,7 +80,7 @@ impl<'a, T: Decode<'a>, const N: usize> Decoder<'a, [T; N]> for ArrayDecoder<'a,
         self.0.as_primitive().map(|s| {
             // Safety: FastSlice doesn't have a length unlike slice, so casting to FastSlice<[T; N]>
             // is safe. N == 0 case is also safe for the same reason.
-            unsafe { std::mem::transmute(s) }
+            unsafe { core::mem::transmute(s) }
         })
     }
 
@@ -99,7 +100,8 @@ mod tests {
     use crate::error::err;
     use crate::length::LengthEncoder;
     use crate::{decode, encode};
-    use std::num::NonZeroUsize;
+    use alloc::vec::Vec;
+    use core::num::NonZeroUsize;
 
     #[test]
     fn test_empty_array() {

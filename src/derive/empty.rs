@@ -1,6 +1,7 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
-use std::marker::PhantomData;
-use std::num::NonZeroUsize;
+use alloc::vec::Vec;
+use core::marker::PhantomData;
+use core::num::NonZeroUsize;
 
 #[derive(Default)]
 pub struct EmptyCoder;
@@ -28,7 +29,9 @@ impl<'a, T> Decoder<'a, PhantomData<T>> for EmptyCoder {
 
 #[cfg(test)]
 mod tests {
-    use std::marker::PhantomData;
+    use alloc::vec::Vec;
+    use core::marker::PhantomData;
+
     fn bench_data() -> Vec<PhantomData<()>> {
         vec![PhantomData; 100]
     }

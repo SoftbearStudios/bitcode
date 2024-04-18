@@ -11,6 +11,12 @@ use crate::derive::{Decode, Encode};
 use crate::f32::{F32Decoder, F32Encoder};
 use crate::int::{CheckedIntDecoder, IntDecoder, IntEncoder};
 use crate::str::{StrDecoder, StrEncoder};
+use alloc::collections::{BTreeMap, BTreeSet, BinaryHeap, LinkedList, VecDeque};
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::marker::PhantomData;
+use core::mem::MaybeUninit;
+use core::num::*;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
 use std::hash::{BuildHasher, Hash};
 use std::marker::PhantomData;
@@ -105,9 +111,9 @@ macro_rules! impl_smart_ptr {
         }
     }
 }
-impl_smart_ptr!(::std::boxed::Box);
-impl_smart_ptr!(::std::rc::Rc);
-impl_smart_ptr!(::std::sync::Arc);
+impl_smart_ptr!(::alloc::boxed::Box);
+impl_smart_ptr!(::alloc::rc::Rc);
+impl_smart_ptr!(::alloc::sync::Arc);
 
 impl<T: Encode, const N: usize> Encode for [T; N] {
     type Encoder = ArrayEncoder<T, N>;
@@ -166,10 +172,10 @@ impl<'a, K: Decode<'a> + Eq + Hash, V: Decode<'a>, S: BuildHasher + Default> Dec
     type Decoder = MapDecoder<'a, K, V>;
 }
 
-impl<T: Encode, E: Encode> Encode for std::result::Result<T, E> {
+impl<T: Encode, E: Encode> Encode for core::result::Result<T, E> {
     type Encoder = ResultEncoder<T, E>;
 }
-impl<'a, T: Decode<'a>, E: Decode<'a>> Decode<'a> for std::result::Result<T, E> {
+impl<'a, T: Decode<'a>, E: Decode<'a>> Decode<'a> for core::result::Result<T, E> {
     type Decoder = ResultDecoder<'a, T, E>;
 }
 impl<T> Encode for PhantomData<T> {
@@ -236,7 +242,7 @@ macro_rules! impl_tuples {
 
                 pub struct TupleDecoder<'a, $($name: Decode<'a>,)*>(
                     $($name::Decoder,)*
-                    std::marker::PhantomData<&'a ()>,
+                    core::marker::PhantomData<&'a ()>,
                 );
 
                 impl<'a, $($name: Decode<'a>,)*> Default for TupleDecoder<'a, $($name,)*> {
@@ -292,6 +298,9 @@ impl_tuples! {
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::String;
+    use alloc::vec::Vec;
+
     type Tuple = (u64, u32, u8, i32, u8, u16, i8, (u8, u8, u8, u8), i8);
     fn bench_data() -> Vec<(Tuple, Option<String>)> {
         crate::random_data(1000)

@@ -1,5 +1,6 @@
-use std::marker::PhantomData;
-use std::mem::{ManuallyDrop, MaybeUninit};
+use alloc::vec::Vec;
+use core::marker::PhantomData;
+use core::mem::{ManuallyDrop, MaybeUninit};
 
 pub type VecImpl<T> = FastVec<T>;
 pub type SliceImpl<'a, T> = FastSlice<'a, T>;
@@ -21,7 +22,7 @@ impl<T> Default for FastVec<T> {
 impl<T> Drop for FastVec<T> {
     fn drop(&mut self) {
         unsafe {
-            drop(Vec::from(std::ptr::read(self)));
+            drop(Vec::from(core::ptr::read(self)));
         }
     }
 }
@@ -34,7 +35,7 @@ unsafe impl<T: Sync> Sync for FastVec<T> {}
 #[inline(always)]
 fn sub_ptr<T>(ptr: *mut T, origin: *mut T) -> usize {
     // unsafe { ptr.sub_ptr(origin) }
-    (ptr as usize - origin as usize) / std::mem::size_of::<T>()
+    (ptr as usize - origin as usize) / core::mem::size_of::<T>()
 }
 
 impl<T> From<FastVec<T>> for Vec<T> {
@@ -42,18 +43,18 @@ impl<T> From<FastVec<T>> for Vec<T> {
         let start = fast.start;
         let length = fast.len();
         let capacity = sub_ptr(fast.capacity, fast.start);
-        std::mem::forget(fast);
+        core::mem::forget(fast);
         unsafe { Vec::from_raw_parts(start, length, capacity) }
     }
 }
 
 impl<T> From<Vec<T>> for FastVec<T> {
     fn from(mut vec: Vec<T>) -> Self {
-        assert_ne!(std::mem::size_of::<T>(), 0);
+        assert_ne!(core::mem::size_of::<T>(), 0);
         let start = vec.as_mut_ptr();
         let end = unsafe { start.add(vec.len()) };
         let capacity = unsafe { start.add(vec.capacity()) };
-        std::mem::forget(vec);
+        core::mem::forget(vec);
         Self {
             start,
             end,
@@ -69,11 +70,11 @@ impl<T> FastVec<T> {
     }
 
     pub fn as_slice(&self) -> &[T] {
-        unsafe { std::slice::from_raw_parts(self.start, self.len()) }
+        unsafe { core::slice::from_raw_parts(self.start, self.len()) }
     }
 
     pub fn as_mut_slice(&mut self) -> &mut [T] {
-        unsafe { std::slice::from_raw_parts_mut(self.start, self.len()) }
+        unsafe { core::slice::from_raw_parts_mut(self.start, self.len()) }
     }
 
     pub fn clear(&mut self) {
@@ -83,7 +84,7 @@ impl<T> FastVec<T> {
         unsafe {
             let elems: *mut [T] = self.as_mut_slice();
             self.end = self.start;
-            std::ptr::drop_in_place(elems);
+            core::ptr::drop_in_place(elems);
         }
     }
 
@@ -98,7 +99,7 @@ impl<T> FastVec<T> {
                         // Optimizes out a redundant check in `Vec::reserve`.
                         // Safety: we've already ensured this condition before calling reserve_slow.
                         if additional <= v.capacity().wrapping_sub(v.len()) {
-                            std::hint::unreachable_unchecked();
+                            core::hint::unreachable_unchecked();
                         }
                         v.reserve(additional);
                     });
@@ -112,11 +113,11 @@ impl<T> FastVec<T> {
     /// # Safety
     /// If `f` panics the [`Vec`] must be unmodified.
     unsafe fn mut_vec(&mut self, f: impl FnOnce(&mut Vec<T>)) {
-        let copied = std::ptr::read(self as *mut FastVec<T>);
+        let copied = core::ptr::read(self as *mut FastVec<T>);
         let mut vec = ManuallyDrop::new(Vec::from(copied));
         f(&mut vec);
         let copied = FastVec::from(ManuallyDrop::into_inner(vec));
-        std::ptr::write(self as *mut FastVec<T>, copied);
+        core::ptr::write(self as *mut FastVec<T>, copied);
     }
 
     /// Get a pointer to write to without incrementing length.
@@ -155,7 +156,7 @@ impl<T> PushUnchecked<T> for FastVec<T> {
     #[inline(always)]
     unsafe fn push_unchecked(&mut self, t: T) {
         debug_assert!(self.end < self.capacity);
-        std::ptr::write(self.end, t);
+        core::ptr::write(self.end, t);
         self.end = self.end.add(1);
     }
 }
@@ -166,7 +167,7 @@ impl<T> PushUnchecked<T> for Vec<T> {
         let n = self.len();
         debug_assert!(n < self.capacity());
         let end = self.as_mut_ptr().add(n);
-        std::ptr::write(end, t);
+        core::ptr::write(end, t);
         self.set_len(n + 1);
     }
 }
@@ -193,14 +194,14 @@ impl<'a, T: Copy, const N: usize> FastArrayVec<'a, T, N> {
     #[inline(always)]
     pub fn as_slice(&self) -> &[T] {
         let len = sub_ptr(self.end, self.start);
-        unsafe { std::slice::from_raw_parts(self.start, len) }
+        unsafe { core::slice::from_raw_parts(self.start, len) }
     }
 }
 
 impl<'a, T: Copy, const N: usize> PushUnchecked<T> for FastArrayVec<'a, T, N> {
     #[inline(always)]
     unsafe fn push_unchecked(&mut self, t: T) {
-        std::ptr::write(self.end, t);
+        core::ptr::write(self.end, t);
         self.end = self.end.add(1);
     }
 }
@@ -276,7 +277,7 @@ impl<'a, T> FastSlice<'a, T> {
         T: bytemuck::Pod,
         B: bytemuck::Pod,
     {
-        use std::mem::*;
+        use core::mem::*;
         assert_eq!(size_of::<T>(), size_of::<B>());
         assert_eq!(align_of::<T>(), align_of::<B>());
         // Safety: size/align are equal and both are bytemuck::Pod.
@@ -308,7 +309,7 @@ impl<'a, T: Copy> NextUnchecked<'a, T> for FastSlice<'a, T> {
     unsafe fn chunk_unchecked(&mut self, length: usize) -> &'a [T] {
         #[cfg(debug_assertions)]
         assert!((self.ptr.wrapping_add(length) as usize) <= self.end as usize);
-        let slice = std::slice::from_raw_parts(self.ptr, length);
+        let slice = core::slice::from_raw_parts(self.ptr, length);
         self.ptr = self.ptr.add(length);
         slice
     }
@@ -361,7 +362,7 @@ impl<'borrowed, T> CowSlice<'borrowed, T> {
     {
         #[cfg(debug_assertions)]
         assert_eq!(self.slice.ptr.wrapping_add(len), self.slice.end);
-        std::slice::from_raw_parts(self.slice.ptr, len)
+        core::slice::from_raw_parts(self.slice.ptr, len)
     }
 
     /// References the inner [`SliceImpl`].
@@ -372,7 +373,7 @@ impl<'borrowed, T> CowSlice<'borrowed, T> {
         'borrowed: 'me,
     {
         // Safety: 'me is min of 'borrowed and &'me self because of `where 'borrowed: 'me`.
-        let slice: &'me SliceImpl<'me, T> = unsafe { std::mem::transmute(&self.slice) };
+        let slice: &'me SliceImpl<'me, T> = unsafe { core::mem::transmute(&self.slice) };
         slice
     }
 
@@ -384,7 +385,7 @@ impl<'borrowed, T> CowSlice<'borrowed, T> {
         'borrowed: 'me,
     {
         // Safety: 'me is min of 'borrowed and &'me self because of `where 'borrowed: 'me`.
-        let slice: &'me mut SliceImpl<'me, T> = unsafe { std::mem::transmute(&mut self.slice) };
+        let slice: &'me mut SliceImpl<'me, T> = unsafe { core::mem::transmute(&mut self.slice) };
         slice
     }
 
@@ -414,12 +415,12 @@ impl<'borrowed, T> CowSlice<'borrowed, T> {
     ///
     /// If self is not owned (set_owned hasn't been called).
     pub fn mut_owned<R>(&mut self, f: impl FnOnce(&mut Vec<T>) -> R) -> R {
-        assert!(std::ptr::eq(self.slice.ptr, self.vec.as_ptr()), "not owned");
+        assert!(core::ptr::eq(self.slice.ptr, self.vec.as_ptr()), "not owned");
         // Clear self.slice before mutating self.vec, so we don't point to freed memory.
         self.slice = [].as_slice().into();
         let ret = f(&mut self.vec);
         // Safety: We clear `CowSlice.slice` whenever we mutate `CowSlice.vec`.
-        let slice: &'borrowed [T] = unsafe { std::mem::transmute(self.vec.as_slice()) };
+        let slice: &'borrowed [T] = unsafe { core::mem::transmute(self.vec.as_slice()) };
         self.slice = slice.into();
         ret
     }
@@ -431,7 +432,7 @@ impl<'borrowed, T> CowSlice<'borrowed, T> {
         T: bytemuck::Pod,
         B: bytemuck::Pod,
     {
-        use std::mem::*;
+        use core::mem::*;
         assert_eq!(size_of::<T>(), size_of::<B>());
         assert_eq!(align_of::<T>(), align_of::<B>());
         // Safety: size/align are equal and both are bytemuck::Pod.
@@ -443,18 +444,18 @@ pub struct SetOwned<'a, 'borrowed, T>(&'a mut CowSlice<'borrowed, T>);
 impl<'borrowed, T> Drop for SetOwned<'_, 'borrowed, T> {
     fn drop(&mut self) {
         // Safety: We clear `CowSlice.slice` whenever we mutate `CowSlice.vec`.
-        let slice: &'borrowed [T] = unsafe { std::mem::transmute(self.0.vec.as_slice()) };
+        let slice: &'borrowed [T] = unsafe { core::mem::transmute(self.0.vec.as_slice()) };
         self.0.slice = slice.into();
     }
 }
-impl<'a, T> std::ops::Deref for SetOwned<'a, '_, T> {
+impl<'a, T> core::ops::Deref for SetOwned<'a, '_, T> {
     type Target = Vec<T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0.vec
     }
 }
-impl<'a, T> std::ops::DerefMut for SetOwned<'a, '_, T> {
+impl<'a, T> core::ops::DerefMut for SetOwned<'a, '_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0.vec
     }
@@ -527,7 +528,7 @@ mod tests {
         let mut buffer = VecT::with_capacity(N);
         b.iter(|| {
             buffer.clear();
-            let mut vec = black_box(FastVec::from(std::mem::take(&mut buffer)));
+            let mut vec = black_box(FastVec::from(core::mem::take(&mut buffer)));
             for _ in 0..black_box(N) {
                 let v = black_box(&mut vec);
                 v.reserve(1);
@@ -555,7 +556,7 @@ mod tests {
         let mut buffer = VecT::with_capacity(N);
         b.iter(|| {
             buffer.clear();
-            let mut vec = black_box(FastVec::from(std::mem::take(&mut buffer)));
+            let mut vec = black_box(FastVec::from(core::mem::take(&mut buffer)));
             for _ in 0..black_box(N) {
                 let v = black_box(&mut vec);
                 unsafe { v.push_unchecked(black_box(0)) };
@@ -581,7 +582,7 @@ mod tests {
         let mut buffer = VecT::with_capacity(N);
         b.iter(|| {
             buffer.clear();
-            let mut vec = black_box(FastVec::from(std::mem::take(&mut buffer)));
+            let mut vec = black_box(FastVec::from(core::mem::take(&mut buffer)));
             for _ in 0..black_box(N) {
                 black_box(&mut vec).reserve(1);
             }

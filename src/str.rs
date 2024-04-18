@@ -5,8 +5,11 @@ use crate::error::err;
 use crate::fast::{NextUnchecked, SliceImpl};
 use crate::length::LengthDecoder;
 use crate::u8_char::U8Char;
-use std::num::NonZeroUsize;
-use std::str::{from_utf8, from_utf8_unchecked};
+use alloc::borrow::ToOwned;
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::num::NonZeroUsize;
+use core::str::{from_utf8, from_utf8_unchecked};
 
 #[derive(Default)]
 pub struct StrEncoder(pub(crate) VecEncoder<U8Char>); // pub(crate) for arrayvec.rs
@@ -161,6 +164,7 @@ mod tests {
     use super::is_ascii_simd;
     use crate::u8_char::U8Char;
     use crate::{decode, encode};
+    use alloc::borrow::ToOwned;
     use test::{black_box, Bencher};
 
     #[test]
@@ -205,6 +209,9 @@ mod tests {
 
 #[cfg(test)]
 mod tests2 {
+    use alloc::string::String;
+    use alloc::vec::Vec;
+
     fn bench_data() -> Vec<String> {
         crate::random_data::<u8>(40000)
             .into_iter()

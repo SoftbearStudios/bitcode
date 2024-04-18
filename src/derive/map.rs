@@ -1,6 +1,9 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::derive::{Decode, Encode};
 use crate::length::{LengthDecoder, LengthEncoder};
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
+use core::num::NonZeroUsize;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{BuildHasher, Hash};
 use std::num::NonZeroUsize;

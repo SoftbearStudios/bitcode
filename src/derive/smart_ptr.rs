@@ -1,7 +1,8 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::derive::{Decode, Encode};
-use std::num::NonZeroUsize;
-use std::ops::Deref;
+use alloc::vec::Vec;
+use core::num::NonZeroUsize;
+use core::ops::Deref;
 
 pub struct DerefEncoder<T: Encode + ?Sized>(T::Encoder);
 
@@ -54,6 +55,8 @@ impl<'a, F: From<T>, T: Decode<'a>> Decoder<'a, F> for FromDecoder<'a, T> {
 #[cfg(test)]
 mod tests {
     use crate::{decode, encode};
+    use alloc::boxed::Box;
+    use alloc::string::ToString;
 
     #[test]
     fn box_() {

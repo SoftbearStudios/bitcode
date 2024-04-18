@@ -1,8 +1,9 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::consume::consume_byte_arrays;
 use crate::fast::{FastSlice, NextUnchecked, PushUnchecked, VecImpl};
-use std::mem::MaybeUninit;
-use std::num::NonZeroUsize;
+use alloc::vec::Vec;
+use core::mem::MaybeUninit;
+use core::num::NonZeroUsize;
 
 #[derive(Default)]
 pub struct F32Encoder(VecImpl<f32>);
@@ -22,20 +23,20 @@ impl Encoder<f32> for F32Encoder {
 /// [`bytemuck`] doesn't implement [`MaybeUninit`] casts. Slightly different from
 /// [`bytemuck::cast_slice_mut`] in that it will truncate partial elements instead of panicking.
 fn chunks_uninit<A, B>(m: &mut [MaybeUninit<A>]) -> &mut [MaybeUninit<B>] {
-    use std::mem::{align_of, size_of};
+    use core::mem::{align_of, size_of};
     assert_eq!(align_of::<B>(), align_of::<A>());
     assert_eq!(0, size_of::<B>() % size_of::<A>());
     let divisor = size_of::<B>() / size_of::<A>();
     // Safety: `align_of<B> == align_of<A>` and `size_of<B>()` is a multiple of `size_of<A>()`
     unsafe {
-        std::slice::from_raw_parts_mut(m.as_mut_ptr() as *mut MaybeUninit<B>, m.len() / divisor)
+        core::slice::from_raw_parts_mut(m.as_mut_ptr() as *mut MaybeUninit<B>, m.len() / divisor)
     }
 }
 
 impl Buffer for F32Encoder {
     fn collect_into(&mut self, out: &mut Vec<u8>) {
         let floats = self.0.as_slice();
-        let byte_len = std::mem::size_of_val(floats);
+        let byte_len = core::mem::size_of_val(floats);
         out.reserve(byte_len);
         let uninit = &mut out.spare_capacity_mut()[..byte_len];
 
@@ -152,6 +153,8 @@ mod tests {
 
 #[cfg(test)]
 mod tests2 {
+    use alloc::vec::Vec;
+
     fn bench_data() -> Vec<Vec<f32>> {
         crate::random_data::<u8>(125)
             .into_iter()

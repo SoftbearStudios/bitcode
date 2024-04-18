@@ -2,8 +2,9 @@ use crate::coder::{Buffer, Decoder, Encoder, Result, View, MAX_VECTORED_CHUNK};
 use crate::derive::variant::{VariantDecoder, VariantEncoder};
 use crate::derive::{Decode, Encode};
 use crate::fast::{FastArrayVec, PushUnchecked};
-use std::mem::MaybeUninit;
-use std::num::NonZeroUsize;
+use alloc::vec::Vec;
+use core::mem::MaybeUninit;
+use core::num::NonZeroUsize;
 
 pub struct OptionEncoder<T: Encode> {
     variants: VariantEncoder<2>,
@@ -36,7 +37,7 @@ impl<T: Encode> Encoder<Option<T>> for OptionEncoder<T> {
     {
         // Types with many vectorized encoders benefit from a &[&T] since encode_vectorized is still
         // faster even with the extra indirection. TODO vectored encoder count >= 8 instead of size_of.
-        if std::mem::size_of::<T>() >= 64 {
+        if core::mem::size_of::<T>() >= 64 {
             let mut uninit = MaybeUninit::uninit();
             let mut refs = FastArrayVec::<_, MAX_VECTORED_CHUNK>::new(&mut uninit);
 
@@ -119,6 +120,8 @@ impl<'a, T: Decode<'a>> Decoder<'a, Option<T>> for OptionDecoder<'a, T> {
 
 #[cfg(test)]
 mod tests {
+    use alloc::vec::Vec;
+
     #[rustfmt::skip]
     fn bench_data() -> Vec<Option<(u64, u32, u8, i32, u64, u32, u8, i32, u64, (u32, u8, i32, u64, u32, u8, i32))>> {
         crate::random_data(1000)
@@ -128,6 +131,8 @@ mod tests {
 
 #[cfg(test)]
 mod tests2 {
+    use alloc::vec::Vec;
+
     #[rustfmt::skip]
     fn bench_data() -> Vec<Option<u16>> {
         crate::random_data(1000)

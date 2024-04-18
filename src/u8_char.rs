@@ -1,7 +1,8 @@
 use crate::coder::{Buffer, Encoder};
 use crate::derive::Encode;
 use crate::fast::VecImpl;
-use std::num::NonZeroUsize;
+use alloc::vec::Vec;
+use core::num::NonZeroUsize;
 
 /// Represents a single byte of a string, unlike u8 which represents an integer.
 #[derive(Copy, Clone)]
