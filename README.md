@@ -62,6 +62,11 @@ If you have multiple values of the same type:
 - Validation is performed up front on typed vectors before deserialization
 - Code is designed to be auto-vectorized by LLVM
 
+## `#![no_std]`
+All `std`-only functionality is gated behind the (default) `"std"` feature.
+
+`alloc` is required.
+
 ## License
 Licensed under either of
 * Apache License, Version 2.0
