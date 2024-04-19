@@ -2,8 +2,8 @@ use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::error::err;
 use crate::fast::{CowSlice, NextUnchecked, PushUnchecked, SliceImpl, Unaligned, VecImpl};
 use crate::pack_ints::{pack_ints, unpack_ints, Int};
-use bytemuck::{CheckedBitPattern, NoUninit, Pod};
 use alloc::vec::Vec;
+use bytemuck::{CheckedBitPattern, NoUninit, Pod};
 use core::marker::PhantomData;
 use core::num::NonZeroUsize;
 

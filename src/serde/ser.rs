@@ -7,14 +7,14 @@ use crate::length::LengthEncoder;
 use crate::serde::variant::VariantEncoder;
 use crate::serde::{default_box_slice, get_mut_or_resize, type_changed};
 use crate::str::StrEncoder;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+use core::num::NonZeroUsize;
 use serde::ser::{
     SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant, SerializeTuple,
     SerializeTupleStruct, SerializeTupleVariant,
 };
 use serde::{Serialize, Serializer};
-use alloc::boxed::Box;
-use alloc::vec::Vec;
-use core::num::NonZeroUsize;
 
 // Redefine Result from crate::coder::Result to std::result::Result since the former isn't public.
 mod inner {
@@ -587,9 +587,9 @@ impl SerializeMap for MapSerializer<'_> {
 
 #[cfg(test)]
 mod tests {
+    use core::num::NonZeroUsize;
     use serde::ser::{SerializeMap, SerializeSeq, SerializeTuple};
     use serde::{Serialize, Serializer};
-    use core::num::NonZeroUsize;
 
     #[test]
     fn enum_256_variants() {

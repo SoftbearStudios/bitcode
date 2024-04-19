@@ -415,7 +415,10 @@ impl<'borrowed, T> CowSlice<'borrowed, T> {
     ///
     /// If self is not owned (set_owned hasn't been called).
     pub fn mut_owned<R>(&mut self, f: impl FnOnce(&mut Vec<T>) -> R) -> R {
-        assert!(core::ptr::eq(self.slice.ptr, self.vec.as_ptr()), "not owned");
+        assert!(
+            core::ptr::eq(self.slice.ptr, self.vec.as_ptr()),
+            "not owned"
+        );
         // Clear self.slice before mutating self.vec, so we don't point to freed memory.
         self.slice = [].as_slice().into();
         let ret = f(&mut self.vec);

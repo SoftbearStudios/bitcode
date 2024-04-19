@@ -571,12 +571,12 @@ impl<'de> VariantAccess<'de> for DecoderWrapper<'_, 'de> {
 
 #[cfg(test)]
 mod tests {
-    use serde::de::MapAccess;
-    use serde::Deserializer;
     use alloc::borrow::ToOwned;
     use alloc::collections::BTreeMap;
     use alloc::string::String;
     use alloc::vec::Vec;
+    use serde::de::MapAccess;
+    use serde::Deserializer;
 
     #[test]
     fn deserialize() {

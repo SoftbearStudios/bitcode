@@ -19,9 +19,9 @@ use core::mem::MaybeUninit;
 use core::num::*;
 
 #[cfg(feature = "std")]
-use std::collections::{HashMap, HashSet};
+use core::hash::{BuildHasher, Hash};
 #[cfg(feature = "std")]
-use core::hash::{Hash, BuildHasher};
+use std::collections::{HashMap, HashSet};
 
 macro_rules! impl_both {
     ($t:ty, $encoder:ident, $decoder:ident) => {

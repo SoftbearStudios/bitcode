@@ -8,9 +8,9 @@ use core::mem::MaybeUninit;
 use core::num::NonZeroUsize;
 
 #[cfg(feature = "std")]
-use std::collections::HashSet;
-#[cfg(feature = "std")]
 use core::hash::{BuildHasher, Hash};
+#[cfg(feature = "std")]
+use std::collections::HashSet;
 
 pub struct VecEncoder<T: Encode> {
     // pub(crate) for arrayvec.rs

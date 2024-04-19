@@ -1,7 +1,7 @@
 use crate::benches::{bench_data, Data, DataEnum, MAX_DATA_ENUMS};
-use serde::{Deserialize, Serialize};
 use alloc::vec::Vec;
 use core::array;
+use serde::{Deserialize, Serialize};
 use test::{black_box, Bencher};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]

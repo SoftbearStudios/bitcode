@@ -6,9 +6,9 @@ use alloc::vec::Vec;
 use core::num::NonZeroUsize;
 
 #[cfg(feature = "std")]
-use std::collections::HashMap;
-#[cfg(feature = "std")]
 use core::hash::{BuildHasher, Hash};
+#[cfg(feature = "std")]
+use std::collections::HashMap;
 
 pub struct MapEncoder<K: Encode, V: Encode> {
     lengths: LengthEncoder,

@@ -1,9 +1,9 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::{Decode, Encode};
+use alloc::vec::Vec;
 use bytemuck::CheckedBitPattern;
 use core::num::NonZeroUsize;
 use core::time::Duration;
-use alloc::vec::Vec;
 
 #[derive(Default)]
 pub struct DurationEncoder {
@@ -87,8 +87,8 @@ mod tests {
         assert!(crate::decode::<Duration>(&crate::encode(&(u64::MAX, 1_000_000_000))).is_err());
     }
 
-    use core::time::Duration;
     use alloc::vec::Vec;
+    use core::time::Duration;
     fn bench_data() -> Vec<Duration> {
         crate::random_data(1000)
             .into_iter()

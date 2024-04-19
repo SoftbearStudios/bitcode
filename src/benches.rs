@@ -1,10 +1,10 @@
+use alloc::string::String;
+use alloc::vec::Vec;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use test::black_box;
-use alloc::string::String;
-use alloc::vec::Vec;
 
 #[cfg(feature = "arrayvec")]
 use arrayvec::{ArrayString, ArrayVec};
