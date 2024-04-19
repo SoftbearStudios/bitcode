@@ -9,6 +9,8 @@ use crate::serde::guard::guard_zst;
 use crate::serde::variant::VariantDecoder;
 use crate::serde::{default_box_slice, get_mut_or_resize, type_changed};
 use crate::str::StrDecoder;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
 use serde::de::{
     DeserializeSeed, EnumAccess, IntoDeserializer, MapAccess, SeqAccess, VariantAccess, Visitor,
 };
@@ -17,7 +19,7 @@ use serde::{Deserialize, Deserializer};
 // Redefine Result from crate::coder::Result to std::result::Result since the former isn't public.
 mod inner {
     use super::*;
-    use std::result::Result;
+    use core::result::Result;
 
     /// Deserializes a [`&[u8]`][`prim@slice`] into an instance of `T:` [`Deserialize`].
     ///
@@ -108,32 +110,30 @@ struct DecoderWrapper<'a, 'de> {
 }
 
 macro_rules! specify {
-    ($self:ident, $variant:ident) => {
-        {
-            match &mut $self.decoder {
-                // Check if it's already the correct decoder. This results in 1 branch in the hot path.
-                SerdeDecoder::$variant(_) => (),
-                _ => {
-                    // Either create the correct decoder if unspecified or diverge via panic/error.
-                    #[cold]
-                    fn cold<'de>(decoder: &mut SerdeDecoder<'de>, input: &mut &'de[u8]) -> Result<()> {
-                        let &mut SerdeDecoder::Unspecified { length } = decoder else {
-                            type_changed!();
-                        };
-                        *decoder = SerdeDecoder::$variant(Default::default());
-                        decoder.populate(input, length)
-                    }
-                    cold(&mut *$self.decoder, &mut *$self.input)?;
+    ($self:ident, $variant:ident) => {{
+        match &mut $self.decoder {
+            // Check if it's already the correct decoder. This results in 1 branch in the hot path.
+            SerdeDecoder::$variant(_) => (),
+            _ => {
+                // Either create the correct decoder if unspecified or diverge via panic/error.
+                #[cold]
+                fn cold<'de>(decoder: &mut SerdeDecoder<'de>, input: &mut &'de [u8]) -> Result<()> {
+                    let &mut SerdeDecoder::Unspecified { length } = decoder else {
+                        type_changed!();
+                    };
+                    *decoder = SerdeDecoder::$variant(Default::default());
+                    decoder.populate(input, length)
                 }
+                cold(&mut *$self.decoder, &mut *$self.input)?;
             }
-            let SerdeDecoder::$variant(d) = &mut *$self.decoder else {
-                // Safety: `cold` gets called when decoder isn't the correct decoder. `cold` either
-                // errors or sets lazy to the correct decoder.
-                unsafe { std::hint::unreachable_unchecked() };
-            };
-            d
         }
-    };
+        let SerdeDecoder::$variant(d) = &mut *$self.decoder else {
+            // Safety: `cold` gets called when decoder isn't the correct decoder. `cold` either
+            // errors or sets lazy to the correct decoder.
+            unsafe { core::hint::unreachable_unchecked() };
+        };
+        d
+    }};
 }
 
 macro_rules! impl_de {
@@ -308,7 +308,7 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
         // Fast path: avoid overhead of tuple for 1 element.
         if tuple_len == 1 {
             return v.visit_seq(Access {
-                decoders: std::slice::from_mut(self.decoder),
+                decoders: core::slice::from_mut(self.decoder),
                 input: self.input,
                 index: 0,
             });
@@ -335,7 +335,7 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
         }
         let SerdeDecoder::Tuple(decoders) = &mut *self.decoder else {
             // Safety: see specify! macro which this is based on.
-            unsafe { std::hint::unreachable_unchecked() };
+            unsafe { core::hint::unreachable_unchecked() };
         };
         if decoders.len() != tuple_len {
             type_changed!(); // Removes multiple bounds checks.
@@ -437,7 +437,7 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
                 // Safety: Make sure next_value_seed is called at most once after each len decrement
                 // since only len values exist.
                 assert!(
-                    std::mem::take(&mut self.key_deserialized),
+                    core::mem::take(&mut self.key_deserialized),
                     "next_value_seed before next_key_seed"
                 );
                 DeserializeSeed::deserialize(
@@ -573,7 +573,10 @@ impl<'de> VariantAccess<'de> for DecoderWrapper<'_, 'de> {
 mod tests {
     use serde::de::MapAccess;
     use serde::Deserializer;
-    use std::collections::BTreeMap;
+    use alloc::borrow::ToOwned;
+    use alloc::collections::BTreeMap;
+    use alloc::string::String;
+    use alloc::vec::Vec;
 
     #[test]
     fn deserialize() {
@@ -581,6 +584,7 @@ mod tests {
             ($v:expr, $t:ty) => {
                 let v = $v;
                 let ser = crate::serialize::<$t>(&v).unwrap();
+                #[cfg(feature = "std")]
                 println!("{:<24} {ser:?}", stringify!($t));
                 assert_eq!(v, crate::deserialize::<$t>(&ser).unwrap());
             };
@@ -651,7 +655,7 @@ mod tests {
         struct Visitor;
         impl<'de> serde::de::Visitor<'de> for Visitor {
             type Value = ();
-            fn expecting(&self, _: &mut std::fmt::Formatter) -> std::fmt::Result {
+            fn expecting(&self, _: &mut core::fmt::Formatter) -> core::fmt::Result {
                 unreachable!()
             }
             fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>

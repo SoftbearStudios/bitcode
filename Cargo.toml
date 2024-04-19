@@ -18,7 +18,7 @@ arrayvec = { version = "0.7", default-features = false, optional = true }
 bitcode_derive = { version = "0.6.0", path = "./bitcode_derive", optional = true }
 bytemuck = { version = "1.14", features = [ "min_const_generics", "must_cast" ] }
 glam = { version = ">=0.21", default-features = false, features = [ "std" ], optional = true }
-serde = { version = "1.0", optional = true }
+serde = { version = "1.0", default-features = false, features = [ "alloc" ], optional = true }
 
 [dev-dependencies]
 arrayvec = { version = "0.7", features = [ "serde" ] }
@@ -37,7 +37,7 @@ zstd = "0.13.0"
 
 [features]
 derive = [ "bitcode_derive" ]
-std = []
+std = [ "serde?/std" ]
 default = [ "derive", "std" ]
 
 [package.metadata.docs.rs]

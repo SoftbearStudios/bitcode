@@ -12,12 +12,14 @@ use serde::ser::{
     SerializeTupleStruct, SerializeTupleVariant,
 };
 use serde::{Serialize, Serializer};
-use std::num::NonZeroUsize;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+use core::num::NonZeroUsize;
 
 // Redefine Result from crate::coder::Result to std::result::Result since the former isn't public.
 mod inner {
     use super::*;
-    use std::result::Result;
+    use core::result::Result;
 
     /// Serializes a `T:` [`Serialize`] into a [`Vec<u8>`].
     ///
@@ -208,7 +210,7 @@ macro_rules! specify {
                     };
                     *me = LazyEncoder::Specified {
                         specified: SpecifiedEncoder::$variant(Default::default()),
-                        index: std::mem::replace(index_alloc, *index_alloc + 1),
+                        index: core::mem::replace(index_alloc, *index_alloc + 1),
                     };
                     let LazyEncoder::Specified { specified, .. } = me else {
                         unreachable!();
@@ -223,7 +225,7 @@ macro_rules! specify {
         let LazyEncoder::Specified { specified: SpecifiedEncoder::$variant(b), .. } = lazy else {
             // Safety: `cold` gets called when lazy isn't the correct encoder. `cold` either diverges
             // or sets lazy to the correct encoder.
-            unsafe { std::hint::unreachable_unchecked() };
+            unsafe { core::hint::unreachable_unchecked() };
         };
         b
     }};
@@ -371,7 +373,7 @@ impl<'a> Serializer for EncoderWrapper<'a> {
         // Fast path: avoid overhead of tuple for 1 element.
         if len == 1 {
             return Ok(TupleSerializer {
-                encoders: std::slice::from_mut(self.lazy),
+                encoders: core::slice::from_mut(self.lazy),
                 index_alloc: self.index_alloc,
             });
         }
@@ -406,9 +408,10 @@ impl<'a> Serializer for EncoderWrapper<'a> {
         let LazyEncoder::Specified {
             specified: SpecifiedEncoder::Tuple(encoders),
             ..
-        } = lazy else {
+        } = lazy
+        else {
             // Safety: see specify! macro which this is based on.
-            unsafe { std::hint::unreachable_unchecked() };
+            unsafe { core::hint::unreachable_unchecked() };
         };
         if encoders.len() != len {
             type_changed!(); // Removes multiple bounds checks.
@@ -516,7 +519,7 @@ macro_rules! impl_tuple {
             ok_error_end!();
             #[inline(always)]
             fn $fun<T: Serialize + ?Sized>(&mut self, $($key: &'static str,)? value: &T) -> Result<()> {
-                let (lazy, remaining) = std::mem::take(&mut self.encoders)
+                let (lazy, remaining) = core::mem::take(&mut self.encoders)
                     .split_first_mut()
                     .expect("length mismatch");
                 self.encoders = remaining;
@@ -571,7 +574,7 @@ impl SerializeMap for MapSerializer<'_> {
     {
         // Safety: Make sure serialize_value is called at most once after each serialize_key.
         assert!(
-            std::mem::take(&mut self.key_serialized),
+            core::mem::take(&mut self.key_serialized),
             "serialize_value before serialize_key"
         );
         value.serialize(EncoderWrapper {
@@ -586,7 +589,7 @@ impl SerializeMap for MapSerializer<'_> {
 mod tests {
     use serde::ser::{SerializeMap, SerializeSeq, SerializeTuple};
     use serde::{Serialize, Serializer};
-    use std::num::NonZeroUsize;
+    use core::num::NonZeroUsize;
 
     #[test]
     fn enum_256_variants() {

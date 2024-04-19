@@ -1,5 +1,7 @@
 use crate::error::{error_from_display, Error};
-use std::fmt::Display;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+use core::fmt::Display;
 
 mod de;
 mod guard;
@@ -36,6 +38,9 @@ fn get_mut_or_resize<T: Default>(vec: &mut Vec<T>, index: usize) -> &mut T {
     // Safety we've just resized `vec.len()` to be > than `index`.
     unsafe { vec.get_unchecked_mut(index) }
 }
+
+//#[cfg(not(feature = "std"))]
+impl serde::ser::StdError for Error {}
 
 impl serde::ser::Error for Error {
     fn custom<T>(t: T) -> Self
