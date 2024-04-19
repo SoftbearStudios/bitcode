@@ -39,7 +39,7 @@ fn get_mut_or_resize<T: Default>(vec: &mut Vec<T>, index: usize) -> &mut T {
     unsafe { vec.get_unchecked_mut(index) }
 }
 
-//#[cfg(not(feature = "std"))]
+#[cfg(not(feature = "std"))]
 impl serde::ser::StdError for Error {}
 
 impl serde::ser::Error for Error {

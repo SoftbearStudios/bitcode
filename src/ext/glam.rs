@@ -1,4 +1,5 @@
 use super::impl_struct;
+use alloc::vec::Vec;
 use glam::*;
 
 trait Affine3AExt {
@@ -43,6 +44,7 @@ impl_glam!(bool, BVec2, BVec3, BVec4);
 
 #[cfg(test)]
 mod tests {
+    use alloc::vec::Vec;
     use glam::Vec2;
     fn bench_data() -> Vec<Vec2> {
         crate::random_data(1000)

@@ -29,7 +29,7 @@ macro_rules! impl_struct {
                     )+
                 }
 
-                fn reserve(&mut self, additional: std::num::NonZeroUsize) {
+                fn reserve(&mut self, additional: core::num::NonZeroUsize) {
                     $(
                         self.$f.reserve(additional);
                     )+
