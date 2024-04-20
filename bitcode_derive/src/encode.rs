@@ -1,6 +1,5 @@
 use crate::private;
 use crate::shared::{remove_lifetimes, replace_lifetimes, variant_index};
-use alloc::format;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use syn::{parse_quote, Generics, Path, Type};

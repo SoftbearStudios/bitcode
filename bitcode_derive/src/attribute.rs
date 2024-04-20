@@ -1,7 +1,6 @@
 use crate::{err, error};
-use alloc::format;
-use core::str::FromStr;
 use proc_macro2::TokenStream;
+use std::str::FromStr;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{parse2, Attribute, Expr, ExprLit, Lit, Meta, Path, Result, Token, Type};

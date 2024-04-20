@@ -1,7 +1,6 @@
 use crate::attribute::BitcodeAttrs;
 use crate::bound::FieldBounds;
 use crate::err;
-use alloc::format;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};
 use syn::visit_mut::VisitMut;
@@ -184,12 +183,12 @@ fn field_name(i: usize, field: &Field, real: bool) -> TokenStream {
 }
 
 pub fn remove_lifetimes(generics: &mut Generics) {
-    generics.params = core::mem::take(&mut generics.params)
+    generics.params = std::mem::take(&mut generics.params)
         .into_iter()
         .filter(|param| !matches!(param, GenericParam::Lifetime(_)))
         .collect();
     if let Some(where_clause) = &mut generics.where_clause {
-        where_clause.predicates = core::mem::take(&mut where_clause.predicates)
+        where_clause.predicates = std::mem::take(&mut where_clause.predicates)
             .into_iter()
             .filter(|predicate| !matches!(predicate, WherePredicate::Lifetime(_)))
             .collect()
