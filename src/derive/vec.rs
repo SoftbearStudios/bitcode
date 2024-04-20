@@ -365,28 +365,19 @@ impl<'a, T: Decode<'a>> Decoder<'a, VecDeque<T>> for VecDecoder<'a, T> {
 mod test {
     use alloc::collections::*;
     use alloc::vec::Vec;
-    #[cfg(feature = "std")]
-    use std::collections::*;
 
     fn bench_data<T: FromIterator<u8>>() -> T {
         (0..=255).collect()
     }
 
+    crate::bench_encode_decode!(
+        btree_set: BTreeSet<_>,
+        linked_list: LinkedList<_>,
+        vec: Vec<_>,
+        vec_deque: VecDeque<_>
+    );
     #[cfg(feature = "std")]
-    crate::bench_encode_decode!(
-        btree_set: BTreeSet<_>,
-        hash_set: HashSet<_>,
-        linked_list: LinkedList<_>,
-        vec: Vec<_>,
-        vec_deque: VecDeque<_>
-    );
-    #[cfg(not(feature = "std"))]
-    crate::bench_encode_decode!(
-        btree_set: BTreeSet<_>,
-        linked_list: LinkedList<_>,
-        vec: Vec<_>,
-        vec_deque: VecDeque<_>
-    );
+    crate::bench_encode_decode!(hash_set: std::collections::HashSet<_>);
 
     // BinaryHeap can't use bench_encode_decode because it doesn't implement PartialEq.
     #[bench]

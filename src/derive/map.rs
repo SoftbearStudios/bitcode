@@ -117,14 +117,12 @@ impl<'a, K: Decode<'a> + Eq + Hash, V: Decode<'a>, S: BuildHasher + Default>
 #[cfg(test)]
 mod test {
     use alloc::collections::BTreeMap;
-    #[cfg(feature = "std")]
-    use std::collections::HashMap;
 
     fn bench_data<T: FromIterator<(u8, u8)>>() -> T {
         (0..=255).map(|k| (k, 0)).collect()
     }
-    #[cfg(feature = "std")]
-    crate::bench_encode_decode!(btree_map: BTreeMap<_, _>, hash_map: HashMap<_, _>);
-    #[cfg(not(feature = "std"))]
+
     crate::bench_encode_decode!(btree_map: BTreeMap<_, _>);
+    #[cfg(feature = "std")]
+    crate::bench_encode_decode!(hash_map: std::collections::HashMap<_, _>);
 }
