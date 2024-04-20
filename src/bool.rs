@@ -1,7 +1,8 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::fast::{CowSlice, NextUnchecked, PushUnchecked, SliceImpl, Unaligned, VecImpl};
 use crate::pack::{pack_bools, unpack_bools};
-use std::num::NonZeroUsize;
+use alloc::vec::Vec;
+use core::num::NonZeroUsize;
 
 #[derive(Default)]
 pub struct BoolEncoder(VecImpl<bool>);
@@ -44,7 +45,7 @@ impl<'a> Decoder<'a, bool> for BoolDecoder<'a> {
     fn as_primitive(&mut self) -> Option<&mut SliceImpl<Unaligned<bool>>> {
         // Safety: `Unaligned<bool>` is equivalent to bool since it's a `#[repr(C, packed)]` wrapper
         // around bool and both have size/align of 1.
-        unsafe { Some(std::mem::transmute(self.0.mut_slice())) }
+        unsafe { Some(core::mem::transmute(self.0.mut_slice())) }
     }
 
     #[inline(always)]
@@ -55,6 +56,8 @@ impl<'a> Decoder<'a, bool> for BoolDecoder<'a> {
 
 #[cfg(test)]
 mod test {
+    use alloc::vec::Vec;
+
     fn bench_data() -> Vec<bool> {
         (0..=1000).map(|_| false).collect()
     }
@@ -63,6 +66,8 @@ mod test {
 
 #[cfg(test)]
 mod test2 {
+    use alloc::vec::Vec;
+
     fn bench_data() -> Vec<Vec<bool>> {
         crate::random_data::<u8>(125)
             .into_iter()

@@ -11,11 +11,17 @@ use crate::derive::{Decode, Encode};
 use crate::f32::{F32Decoder, F32Encoder};
 use crate::int::{CheckedIntDecoder, IntDecoder, IntEncoder};
 use crate::str::{StrDecoder, StrEncoder};
-use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
-use std::hash::{BuildHasher, Hash};
-use std::marker::PhantomData;
-use std::mem::MaybeUninit;
-use std::num::*;
+use alloc::collections::{BTreeMap, BTreeSet, BinaryHeap, LinkedList, VecDeque};
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::marker::PhantomData;
+use core::mem::MaybeUninit;
+use core::num::*;
+
+#[cfg(feature = "std")]
+use core::hash::{BuildHasher, Hash};
+#[cfg(feature = "std")]
+use std::collections::{HashMap, HashSet};
 
 macro_rules! impl_both {
     ($t:ty, $encoder:ident, $decoder:ident) => {
@@ -105,9 +111,9 @@ macro_rules! impl_smart_ptr {
         }
     }
 }
-impl_smart_ptr!(::std::boxed::Box);
-impl_smart_ptr!(::std::rc::Rc);
-impl_smart_ptr!(::std::sync::Arc);
+impl_smart_ptr!(::alloc::boxed::Box);
+impl_smart_ptr!(::alloc::rc::Rc);
+impl_smart_ptr!(::alloc::sync::Arc);
 
 impl<T: Encode, const N: usize> Encode for [T; N] {
     type Encoder = ArrayEncoder<T, N>;
@@ -144,9 +150,11 @@ impl<T: Encode> Encode for BTreeSet<T> {
 impl<'a, T: Decode<'a> + Ord> Decode<'a> for BTreeSet<T> {
     type Decoder = VecDecoder<'a, T>;
 }
+#[cfg(feature = "std")]
 impl<T: Encode, S> Encode for HashSet<T, S> {
     type Encoder = VecEncoder<T>;
 }
+#[cfg(feature = "std")]
 impl<'a, T: Decode<'a> + Eq + Hash, S: BuildHasher + Default> Decode<'a> for HashSet<T, S> {
     type Decoder = VecDecoder<'a, T>;
 }
@@ -157,19 +165,21 @@ impl<K: Encode, V: Encode> Encode for BTreeMap<K, V> {
 impl<'a, K: Decode<'a> + Ord, V: Decode<'a>> Decode<'a> for BTreeMap<K, V> {
     type Decoder = MapDecoder<'a, K, V>;
 }
+#[cfg(feature = "std")]
 impl<K: Encode, V: Encode, S> Encode for HashMap<K, V, S> {
     type Encoder = MapEncoder<K, V>;
 }
+#[cfg(feature = "std")]
 impl<'a, K: Decode<'a> + Eq + Hash, V: Decode<'a>, S: BuildHasher + Default> Decode<'a>
     for HashMap<K, V, S>
 {
     type Decoder = MapDecoder<'a, K, V>;
 }
 
-impl<T: Encode, E: Encode> Encode for std::result::Result<T, E> {
+impl<T: Encode, E: Encode> Encode for core::result::Result<T, E> {
     type Encoder = ResultEncoder<T, E>;
 }
-impl<'a, T: Decode<'a>, E: Decode<'a>> Decode<'a> for std::result::Result<T, E> {
+impl<'a, T: Decode<'a>, E: Decode<'a>> Decode<'a> for core::result::Result<T, E> {
     type Decoder = ResultDecoder<'a, T, E>;
 }
 impl<T> Encode for PhantomData<T> {
@@ -236,7 +246,7 @@ macro_rules! impl_tuples {
 
                 pub struct TupleDecoder<'a, $($name: Decode<'a>,)*>(
                     $($name::Decoder,)*
-                    std::marker::PhantomData<&'a ()>,
+                    core::marker::PhantomData<&'a ()>,
                 );
 
                 impl<'a, $($name: Decode<'a>,)*> Default for TupleDecoder<'a, $($name,)*> {
@@ -292,6 +302,9 @@ impl_tuples! {
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::String;
+    use alloc::vec::Vec;
+
     type Tuple = (u64, u32, u8, i32, u8, u16, i8, (u8, u8, u8, u8), i8);
     fn bench_data() -> Vec<(Tuple, Option<String>)> {
         crate::random_data(1000)

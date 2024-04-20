@@ -14,7 +14,7 @@ fn check_zst_len(len: usize) -> Result<()> {
 // Used by deserialize. Guards against Vec<()> with huge len taking forever.
 #[inline]
 pub fn guard_zst<T>(len: usize) -> Result<()> {
-    if std::mem::size_of::<T>() == 0 {
+    if core::mem::size_of::<T>() == 0 {
         check_zst_len(len)
     } else {
         Ok(())

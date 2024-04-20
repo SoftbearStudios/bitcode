@@ -35,6 +35,8 @@ jobs:
         run: cargo test
       - name: Test (all-features)
         run: cargo test --all-features
+      - name: Test (no_std)
+        run: cargo test --no-default-features --features derive,serde,glam,arrayvec
       - name: Install i686 and GCC multilib
         run: rustup target add i686-unknown-linux-gnu && sudo apt update && sudo apt install -y gcc-multilib
       - name: Test (32-bit all-features)

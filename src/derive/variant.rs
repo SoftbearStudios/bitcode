@@ -1,7 +1,8 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::fast::{CowSlice, NextUnchecked, PushUnchecked, VecImpl};
 use crate::pack::{pack_bytes_less_than, unpack_bytes_less_than};
-use std::num::NonZeroUsize;
+use alloc::vec::Vec;
+use core::num::NonZeroUsize;
 
 #[derive(Default)]
 pub struct VariantEncoder<const N: usize>(VecImpl<u8>);
@@ -35,7 +36,7 @@ impl<const N: usize, const C_STYLE: bool> Default for VariantDecoder<'_, N, C_ST
     fn default() -> Self {
         Self {
             variants: Default::default(),
-            histogram: std::array::from_fn(|_| 0),
+            histogram: core::array::from_fn(|_| 0),
         }
     }
 }
@@ -70,6 +71,7 @@ impl<'a, const N: usize, const C_STYLE: bool> Decoder<'a, u8> for VariantDecoder
 #[cfg(test)]
 mod tests {
     use crate::{decode, encode, Decode, Encode};
+    use alloc::vec::Vec;
 
     #[allow(unused)]
     #[test]

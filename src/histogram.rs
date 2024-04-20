@@ -57,13 +57,14 @@ fn histogram_parallel_u32(bytes: &[u8]) -> [u32; 256] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec::Vec;
     use rand::prelude::*;
     use rand_chacha::ChaCha20Rng;
     use test::{black_box, Bencher};
 
     fn bench_data(n: usize) -> Vec<u8> {
         let mut rng = ChaCha20Rng::from_seed(Default::default());
-        std::iter::repeat_with(|| rng.gen_range(0..2))
+        core::iter::repeat_with(|| rng.gen_range(0..2))
             .take(crate::limit_bench_miri(n))
             .collect()
     }

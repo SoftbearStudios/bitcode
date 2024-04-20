@@ -1,8 +1,9 @@
 use crate::fast::{SliceImpl, Unaligned, VecImpl};
-use std::mem::MaybeUninit;
-use std::num::NonZeroUsize;
+use alloc::vec::Vec;
+use core::mem::MaybeUninit;
+use core::num::NonZeroUsize;
 
-pub type Result<T> = std::result::Result<T, crate::Error>;
+pub type Result<T> = core::result::Result<T, crate::Error>;
 
 /// TODO pick different name because it aliases with [`crate::buffer::Buffer`].
 pub trait Buffer {
@@ -101,8 +102,8 @@ pub trait Decoder<'a, T>: View<'a> + Default + Send + Sync {
 macro_rules! __private_uninit_field {
     ($uninit:ident.$field:tt:$field_ty:ty) => {
         unsafe {
-            &mut *(std::ptr::addr_of_mut!((*$uninit.as_mut_ptr()).$field)
-                as *mut std::mem::MaybeUninit<$field_ty>)
+            &mut *(core::ptr::addr_of_mut!((*$uninit.as_mut_ptr()).$field)
+                as *mut core::mem::MaybeUninit<$field_ty>)
         }
     };
 }

@@ -3,7 +3,8 @@ use crate::error::{err, error};
 use crate::fast::{CowSlice, NextUnchecked, VecImpl};
 use crate::int::{IntDecoder, IntEncoder};
 use crate::pack::{pack_bytes, unpack_bytes};
-use std::num::NonZeroUsize;
+use alloc::vec::Vec;
+use core::num::NonZeroUsize;
 
 #[derive(Default)]
 pub struct LengthEncoder {
@@ -213,7 +214,7 @@ impl<'a> Decoder<'a, usize> for LengthDecoder<'a> {
         // Allows some checks in Vec::with_capacity to be removed if lto = true.
         // Safety: sum < HUGE_LEN is checked in populate so all elements have to be < HUGE_LEN.
         if length as u64 >= HUGE_LEN {
-            unsafe { std::hint::unreachable_unchecked() }
+            unsafe { core::hint::unreachable_unchecked() }
         }
         length
     }
@@ -223,7 +224,7 @@ impl<'a> Decoder<'a, usize> for LengthDecoder<'a> {
 mod tests {
     use super::{LengthDecoder, LengthEncoder};
     use crate::coder::{Buffer, Decoder, Encoder, View};
-    use std::num::NonZeroUsize;
+    use core::num::NonZeroUsize;
 
     #[test]
     fn test() {

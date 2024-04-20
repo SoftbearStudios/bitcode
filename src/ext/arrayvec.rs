@@ -4,7 +4,7 @@ use crate::derive::{Decode, Encode};
 use crate::error::err;
 use crate::str::{StrDecoder, StrEncoder};
 use arrayvec::{ArrayString, ArrayVec};
-use std::mem::MaybeUninit;
+use core::mem::MaybeUninit;
 
 // TODO optimize ArrayVec impls and make ArrayString use them.
 impl<const N: usize> Encoder<ArrayString<N>> for StrEncoder {
@@ -111,7 +111,7 @@ fn as_slice_assert_len<T, const N: usize>(t: &ArrayVec<T, N>) -> &[T] {
     let s = t.as_slice();
     // Safety: ArrayVec<N> has length <= N. TODO replace with LengthDecoder<N>.
     if s.len() > N {
-        unsafe { std::hint::unreachable_unchecked() };
+        unsafe { core::hint::unreachable_unchecked() };
     }
     s
 }
@@ -173,6 +173,7 @@ impl<'a, T: Decode<'a>, const N: usize> Decode<'a> for ArrayVec<T, N> {
 #[cfg(test)]
 mod tests {
     use crate::{decode, encode};
+    use alloc::vec::Vec;
     use arrayvec::{ArrayString, ArrayVec};
 
     // Smaller set of tests for ArrayString than ArrayVec they share VecEncoder/LengthDecoder.

@@ -1,7 +1,8 @@
 use crate::coder::{Buffer, Decoder, Encoder, View};
 use crate::consume::expect_eof;
 use crate::Error;
-use std::num::NonZeroUsize;
+use alloc::vec::Vec;
+use core::num::NonZeroUsize;
 
 mod array;
 mod duration;
@@ -108,6 +109,7 @@ impl crate::buffer::Buffer {
 #[cfg(test)]
 mod tests {
     use crate::{Decode, Encode};
+    use alloc::vec::Vec;
 
     #[test]
     fn decode() {
@@ -115,6 +117,7 @@ mod tests {
             ($v:expr, $t:ty) => {
                 let v = $v;
                 let encoded = super::encode::<$t>(&v);
+                #[cfg(feature = "std")]
                 println!("{:<24} {encoded:?}", stringify!($t));
                 assert_eq!(v, super::decode::<$t>(&encoded).unwrap());
             };

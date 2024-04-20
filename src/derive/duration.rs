@@ -1,8 +1,9 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::{Decode, Encode};
+use alloc::vec::Vec;
 use bytemuck::CheckedBitPattern;
-use std::num::NonZeroUsize;
-use std::time::Duration;
+use core::num::NonZeroUsize;
+use core::time::Duration;
 
 #[derive(Default)]
 pub struct DurationEncoder {
@@ -68,7 +69,7 @@ impl<'a> Decoder<'a, Duration> for DurationDecoder<'a> {
         // Safety: impl CheckedBitPattern for Nanoseconds guarantees this.
         unsafe {
             if !Nanoseconds::is_valid_bit_pattern(&subsec_nanos) {
-                std::hint::unreachable_unchecked();
+                core::hint::unreachable_unchecked();
             }
         }
         Duration::new(secs, subsec_nanos)
@@ -86,7 +87,8 @@ mod tests {
         assert!(crate::decode::<Duration>(&crate::encode(&(u64::MAX, 1_000_000_000))).is_err());
     }
 
-    use std::time::Duration;
+    use alloc::vec::Vec;
+    use core::time::Duration;
     fn bench_data() -> Vec<Duration> {
         crate::random_data(1000)
             .into_iter()

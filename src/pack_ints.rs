@@ -4,6 +4,7 @@ use crate::error::error;
 use crate::fast::CowSlice;
 use crate::pack::{invalid_packing, pack_bytes, unpack_bytes};
 use crate::Error;
+use alloc::vec::Vec;
 use bytemuck::Pod;
 
 /// Possible integer sizes in descending order.
@@ -58,7 +59,7 @@ fn usize_too_big() -> Error {
     error("encountered a isize/usize with more than 32 bits on a 32 bit platform")
 }
 
-pub trait Int: Copy + std::fmt::Debug + Default + Ord + Pod + Send + Sized + Sync {
+pub trait Int: Copy + core::fmt::Debug + Default + Ord + Pod + Send + Sized + Sync {
     // Unaligned native endian. TODO could be aligned on big endian since we always have to copy.
     type Une: Pod + Default + Send + Sync;
     type Int: SizedInt;
@@ -81,7 +82,7 @@ macro_rules! impl_usize_and_isize {
     ($($isize:ident => $i64:ident),+) => {
         $(
             impl Int for $isize {
-                type Une = [u8; std::mem::size_of::<Self>()];
+                type Une = [u8; core::mem::size_of::<Self>()];
                 type Int = $i64;
                 fn with_input(ints: &mut [Self], f: impl FnOnce(&mut [Self::Int])) {
                     if cfg!(target_pointer_width = "64") {
@@ -125,7 +126,7 @@ macro_rules! impl_int {
     ($($int:ident => $uint:ident),+) => {
         $(
             impl Int for $int {
-                type Une = [u8; std::mem::size_of::<Self>()];
+                type Une = [u8; core::mem::size_of::<Self>()];
                 type Int = Self;
                 fn with_input(ints: &mut [Self], f: impl FnOnce(&mut [Self::Int])) {
                     f(ints)
@@ -234,9 +235,10 @@ macro_rules! impl_smaller {
 
 // Scratch space to bridge gap between pack_ints and pack_bytes.
 // In theory, we could avoid this intermediate step, but it would result in a lot of generated code.
+#[cfg(feature = "std")]
 fn with_scratch<T>(f: impl FnOnce(&mut Vec<u8>) -> T) -> T {
     thread_local! {
-        static SCRATCH: std::cell::RefCell<Vec<u8>> = Default::default();
+        static SCRATCH: core::cell::RefCell<Vec<u8>> = const { core::cell::RefCell::new(Vec::new()) }
     }
     SCRATCH.with(|s| {
         let s = &mut s.borrow_mut();
@@ -244,6 +246,12 @@ fn with_scratch<T>(f: impl FnOnce(&mut Vec<u8>) -> T) -> T {
         f(s)
     })
 }
+// Resort to allocation.
+#[cfg(not(feature = "std"))]
+fn with_scratch<T>(f: impl FnOnce(&mut Vec<u8>) -> T) -> T {
+    f(&mut Vec::new())
+}
+
 macro_rules! impl_u8 {
     () => {
         fn pack8(v: &mut [Self], out: &mut Vec<u8>) {
@@ -255,7 +263,7 @@ macro_rules! impl_u8 {
         fn unpack8(input: &mut &[u8], length: usize, out: &mut CowSlice<Self::Une>) -> Result<()> {
             with_scratch(|allocation| {
                 // unpack_bytes might not result in a copy, but if it does we want to avoid an allocation.
-                let mut bytes = CowSlice::with_allocation(std::mem::take(allocation));
+                let mut bytes = CowSlice::with_allocation(core::mem::take(allocation));
                 unpack_bytes(input, length, &mut bytes)?;
                 // Safety: unpack_bytes ensures bytes has length of `length`.
                 let slice = unsafe { bytes.as_slice(length) };
@@ -331,14 +339,14 @@ pub fn minmax<T: SizedInt>(v: &[T]) -> (T, T) {
 
 fn skip_packing<T: SizedInt>(length: usize) -> bool {
     // Be careful using size_of::<T> since usize can be 4 or 8.
-    if std::mem::size_of::<T>() == 1 {
+    if core::mem::size_of::<T>() == 1 {
         return true; // u8s can't be packed by pack_ints (only pack_bytes).
     }
     if length == 0 {
         return true; // Can't pack 0 ints.
     }
     // Packing a single u16 is pointless (takes at least 2 bytes).
-    std::mem::size_of::<T>() == 2 && length == 1
+    core::mem::size_of::<T>() == 2 && length == 1
 }
 
 /// Like [`pack_bytes`] but for larger integers. Handles endian conversion.
@@ -351,7 +359,7 @@ fn pack_ints_sized<T: SizedInt>(ints: &mut [T], out: &mut Vec<u8>) {
     // Handle i8 right away since pack_bytes needs to know that it's signed.
     // If we didn't have this special case [0i8, -1, 0, -1, 0, -1] couldn't be packed.
     // Doesn't affect larger signed ints because they're made positive before pack_bytes::<u8> is called.
-    if std::mem::size_of::<T>() == 1 && T::MIN < T::default() {
+    if core::mem::size_of::<T>() == 1 && T::MIN < T::default() {
         let ints: &mut [i8] = bytemuck::must_cast_slice_mut(ints);
         pack_bytes(ints, out);
         return;
@@ -477,6 +485,8 @@ fn unpack_ints_sized_unsigned<'a, T: SizedUInt>(
 mod tests {
     use super::{usize_too_big, CowSlice, Int, Result};
     use crate::error::err;
+    use alloc::borrow::ToOwned;
+    use alloc::vec::Vec;
     use test::{black_box, Bencher};
 
     pub fn pack_ints<T: Int>(ints: &[T]) -> Vec<u8> {
@@ -512,7 +522,7 @@ mod tests {
             let b = unpack_ints::<usize>(&packed, a.len());
             if cfg!(target_pointer_width = "64") {
                 let b = b.unwrap();
-                assert_eq!(a, std::array::from_fn(|i| b[i] as u64));
+                assert_eq!(a, core::array::from_fn(|i| b[i] as u64));
             } else {
                 assert_eq!(b.unwrap_err(), usize_too_big());
             }
@@ -527,7 +537,7 @@ mod tests {
             let b = unpack_ints::<isize>(&packed, a.len());
             if cfg!(target_pointer_width = "64") {
                 let b = b.unwrap();
-                assert_eq!(a, std::array::from_fn(|i| b[i] as i64));
+                assert_eq!(a, core::array::from_fn(|i| b[i] as i64));
             } else {
                 assert_eq!(b.unwrap_err(), usize_too_big());
             }
@@ -566,10 +576,12 @@ mod tests {
         let out = pack_ints(&mut ints.to_owned());
         let unpacked = unpack_ints::<T>(&out, ints.len()).unwrap();
         assert_eq!(unpacked, ints);
-
-        let packing = out[0];
-        let size = 100.0 * out.len() as f32 / std::mem::size_of_val(ints) as f32;
-        println!("{packing} {size:>5.1}%");
+        #[cfg(feature = "std")]
+        {
+            let packing = out[0];
+            let size = 100.0 * out.len() as f32 / core::mem::size_of_val(ints) as f32;
+            println!("{packing} {size:>5.1}%");
+        }
         out
     }
 
@@ -594,15 +606,18 @@ mod tests {
                         let Ok(start) = T::try_from(max) else {
                             continue;
                         };
+                        #[cfg(feature = "std")]
                         let s = format!("{start} {increment}");
                         if increment == 1 {
-                           print!("{s:<19} mod 2 => ");
-                           test_inner::<T>(&std::array::from_fn::<_, 100, _>(|i| {
-                               start + (i as T % 2) * increment
-                           }));
+                            #[cfg(feature = "std")]
+                            print!("{s:<19} mod 2 => ");
+                            test_inner::<T>(&core::array::from_fn::<_, 100, _>(|i| {
+                                start + (i as T % 2) * increment
+                            }));
                         }
+                        #[cfg(feature = "std")]
                         print!("{s:<25} => ");
-                        test_inner::<T>(&std::array::from_fn::<_, 100, _>(|i| {
+                        test_inner::<T>(&core::array::from_fn::<_, 100, _>(|i| {
                             start + i as T * increment
                         }));
                     }
@@ -625,7 +640,7 @@ mod tests {
 
     fn bench_pack_ints<T: Int>(b: &mut Bencher, src: &[T]) {
         let mut ints = src.to_vec();
-        let mut out = Vec::with_capacity(std::mem::size_of_val(src) + 10);
+        let mut out = Vec::with_capacity(core::mem::size_of_val(src) + 10);
         let starting_cap = out.capacity();
         b.iter(|| {
             ints.copy_from_slice(&src);
@@ -679,7 +694,7 @@ mod tests {
                 fn [<bench_pack_ $name _no_pack>](b: &mut Bencher) {
                     let src = vec![$t::MIN; 1000];
                     let mut ints = src.clone();
-                    let mut out: Vec<u8> = Vec::with_capacity(std::mem::size_of_val(&ints) + 10);
+                    let mut out: Vec<u8> = Vec::with_capacity(core::mem::size_of_val(&ints) + 10);
                     b.iter(|| {
                         ints.copy_from_slice(&src);
                         let input = black_box(&mut ints);

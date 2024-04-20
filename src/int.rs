@@ -2,9 +2,10 @@ use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::error::err;
 use crate::fast::{CowSlice, NextUnchecked, PushUnchecked, SliceImpl, Unaligned, VecImpl};
 use crate::pack_ints::{pack_ints, unpack_ints, Int};
+use alloc::vec::Vec;
 use bytemuck::{CheckedBitPattern, NoUninit, Pod};
-use std::marker::PhantomData;
-use std::num::NonZeroUsize;
+use core::marker::PhantomData;
+use core::num::NonZeroUsize;
 
 #[derive(Default)]
 pub struct IntEncoder<T>(VecImpl<T>);
@@ -13,7 +14,7 @@ pub struct IntEncoder<T>(VecImpl<T>);
 impl<T: Int, P: NoUninit> Encoder<P> for IntEncoder<T> {
     #[inline(always)]
     fn as_primitive(&mut self) -> Option<&mut VecImpl<P>> {
-        use std::mem::*;
+        use core::mem::*;
         assert_eq!(align_of::<T>(), align_of::<P>());
         assert_eq!(size_of::<T>(), size_of::<P>());
         // Safety: size/align are equal, T: Int implies Pod, and caller isn't reading P which may be NonZero.
@@ -113,7 +114,7 @@ where
                 let p = p.cast::<Unaligned<C::Bits>>();
                 // Safety: `Unaligned<C::Bits>` and `Unaligned<C>` have the same layout and populate
                 // ensured C's bit pattern is valid.
-                unsafe { std::mem::transmute(p) }
+                unsafe { core::mem::transmute(p) }
             })
     }
 
@@ -122,14 +123,15 @@ where
         let v: I = self.0.decode();
         let v: C::Bits = bytemuck::must_cast(v);
         // Safety: C::Bits and C have the same layout and populate ensured C's bit pattern is valid.
-        unsafe { std::mem::transmute_copy(&v) }
+        unsafe { core::mem::transmute_copy(&v) }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{decode, encode};
-    use std::num::NonZeroU32;
+    use alloc::vec::Vec;
+    use core::num::NonZeroU32;
 
     #[test]
     fn non_zero_u32() {
@@ -151,6 +153,8 @@ mod tests {
 
 #[cfg(test)]
 mod test2 {
+    use alloc::vec::Vec;
+
     fn bench_data() -> Vec<Vec<u16>> {
         crate::random_data::<u8>(125)
             .into_iter()

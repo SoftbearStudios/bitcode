@@ -2,8 +2,9 @@ use crate::coder::{Buffer, Decoder, Encoder, View};
 use crate::derive::variant::{VariantDecoder, VariantEncoder};
 use crate::derive::{Decode, Encode};
 use crate::error::Error;
-use std::mem::MaybeUninit;
-use std::num::NonZeroUsize;
+use alloc::vec::Vec;
+use core::mem::MaybeUninit;
+use core::num::NonZeroUsize;
 
 pub struct ResultEncoder<T: Encode, E: Encode> {
     variants: VariantEncoder<2>,
@@ -91,6 +92,8 @@ impl<'a, T: Decode<'a>, E: Decode<'a>> Decoder<'a, Result<T, E>> for ResultDecod
 
 #[cfg(test)]
 mod tests {
+    use alloc::vec::Vec;
+
     fn bench_data() -> Vec<Result<u32, u8>> {
         crate::random_data::<(bool, u32, u8)>(1000)
             .into_iter()

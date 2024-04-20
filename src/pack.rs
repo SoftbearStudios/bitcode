@@ -3,6 +3,7 @@ use crate::consume::{consume_byte, consume_byte_arrays, consume_bytes};
 use crate::error::err;
 use crate::fast::CowSlice;
 use crate::pack_ints::SizedInt;
+use alloc::vec::Vec;
 
 /// Possible states per byte in descending order. Each packed byte will use `log2(states)` bits.
 #[repr(u8)]
@@ -68,7 +69,7 @@ pub fn unpack_bools(input: &mut &[u8], length: usize, out: &mut CowSlice<bool>) 
     let mut set_owned = out.set_owned();
     let out: &mut Vec<bool> = &mut set_owned;
     // Safety: u8 and bool have same size/align and `out` will only contain bytes that are 0 or 1.
-    let out: &mut Vec<u8> = unsafe { std::mem::transmute(out) };
+    let out: &mut Vec<u8> = unsafe { core::mem::transmute(out) };
     unpack_arithmetic::<2>(input, length, out)
 }
 
@@ -224,7 +225,7 @@ pub fn unpack_bytes_less_than<'a, const N: usize, const HISTOGRAM: usize>(
         if FACTOR > N && unpacked.iter().copied().max().unwrap_or(0) as usize >= N {
             return invalid_packing();
         }
-        Ok(std::array::from_fn(|_| unreachable!("HISTOGRAM not 0")))
+        Ok(core::array::from_fn(|_| unreachable!("HISTOGRAM not 0")))
     }
 
     /// Returns `Ok(histogram)` if buckets after `OUT` are 0.
@@ -295,7 +296,7 @@ pub fn unpack_bytes_less_than<'a, const N: usize, const HISTOGRAM: usize>(
                     let partial = partial_with_garbage << (divisor - partial_length);
                     one_count += partial.count_ones() as usize;
                 }
-                Ok(std::array::from_fn(|i| match i {
+                Ok(core::array::from_fn(|i| match i {
                     0 => length - one_count,
                     1 => one_count,
                     _ => unreachable!(),
@@ -353,7 +354,7 @@ fn unpack_histogram<const FACTOR: usize, const FACTOR_POW_DIVISOR: usize>(
 ) -> [usize; FACTOR] {
     let divisor = factor_to_divisor::<FACTOR>();
     assert_eq!(FACTOR.pow(divisor as u32), FACTOR_POW_DIVISOR);
-    std::array::from_fn(|i| {
+    core::array::from_fn(|i| {
         let mut sum = 0;
         for level in 0..divisor {
             let width = FACTOR.pow(level as u32);
@@ -408,7 +409,7 @@ fn pack_arithmetic<const FACTOR: usize>(bytes: &[u8], out: &mut Vec<u8>) {
                     // Could use on any pow2 FACTOR, but only 2 is faster (target-cpu=native).
                     let chunk = (bytes.as_ptr() as *const u8 as *const [u8; 8]).add(i);
                     let chunk = u64::from_le_bytes(*chunk);
-                    std::arch::x86_64::_pext_u64(chunk, 0x0101010101010101) as u8
+                    core::arch::x86_64::_pext_u64(chunk, 0x0101010101010101) as u8
                 }
             } else {
                 let mut acc = 0;
@@ -458,7 +459,7 @@ fn unpack_arithmetic<const FACTOR: usize>(
                 #[cfg(all(target_arch = "x86_64", target_feature = "bmi2"))]
                 {
                     // Could use on any pow2 FACTOR, but only 2 is faster (target-cpu=native).
-                    let chunk = std::arch::x86_64::_pdep_u64(packed as u64, 0x0101010101010101);
+                    let chunk = core::arch::x86_64::_pdep_u64(packed as u64, 0x0101010101010101);
                     *(unpacked.as_mut_ptr() as *mut [u8; 8]).add(i) = chunk.to_le_bytes();
                 }
             } else {
@@ -484,6 +485,8 @@ fn unpack_arithmetic<const FACTOR: usize>(
 #[cfg(test)]
 mod tests {
     use crate::error::err;
+    use alloc::borrow::ToOwned;
+    use alloc::vec::Vec;
     use paste::paste;
     use test::{black_box, Bencher};
 
@@ -684,6 +687,7 @@ mod tests {
                 .collect();
             let n = bytes.len(); // random_data shrinks n on miri.
 
+            #[cfg(feature = "std")]
             println!("n {n}, N {N}, FACTOR {FACTOR}");
             if N != FACTOR {
                 let mut bytes = bytes.clone();

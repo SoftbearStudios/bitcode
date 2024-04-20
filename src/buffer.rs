@@ -1,4 +1,6 @@
-use std::any::TypeId;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+use core::any::TypeId;
 
 /// A buffer for reusing allocations between calls to [`Buffer::encode`] and/or [`Buffer::decode`].
 ///
@@ -82,7 +84,7 @@ impl Registry {
 /// Ignores lifetimes in `T` when determining its [`TypeId`].
 /// https://github.com/rust-lang/rust/issues/41875#issuecomment-317292888
 fn non_static_type_id<T: ?Sized>() -> TypeId {
-    use std::marker::PhantomData;
+    use core::marker::PhantomData;
     trait NonStaticAny {
         fn get_type_id(&self) -> TypeId
         where
@@ -98,7 +100,7 @@ fn non_static_type_id<T: ?Sized>() -> TypeId {
     }
     let phantom_data = PhantomData::<T>;
     NonStaticAny::get_type_id(unsafe {
-        std::mem::transmute::<&dyn NonStaticAny, &(dyn NonStaticAny + 'static)>(&phantom_data)
+        core::mem::transmute::<&dyn NonStaticAny, &(dyn NonStaticAny + 'static)>(&phantom_data)
     })
 }
 
@@ -118,7 +120,7 @@ impl ErasedBox {
     /// Ignores lifetimes so drop may be called after `T`'s lifetime has expired.
     unsafe fn new<T: Send + Sync>(t: T) -> Self {
         let ptr = Box::into_raw(Box::new(t)) as *mut ();
-        let drop: unsafe fn(*mut ()) = std::mem::transmute(drop::<Box<T>> as fn(Box<T>));
+        let drop: unsafe fn(*mut ()) = core::mem::transmute(drop::<Box<T>> as fn(Box<T>));
         Self { ptr, drop }
     }
 }
@@ -188,7 +190,7 @@ mod tests {
 
     #[test]
     fn erased_box() {
-        use std::sync::Arc;
+        use alloc::sync::Arc;
         let rc = Arc::new(());
         struct TestDrop(Arc<()>);
         let b = unsafe { ErasedBox::new(TestDrop(Arc::clone(&rc))) };

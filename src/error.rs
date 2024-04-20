@@ -1,6 +1,7 @@
 #[cfg(debug_assertions)]
-use std::borrow::Cow;
-use std::fmt::{Debug, Display, Formatter};
+use alloc::borrow::Cow;
+use alloc::string::ToString;
+use core::fmt::{Debug, Display, Formatter};
 
 /// Short version of `Err(error("..."))`.
 pub fn err<T>(msg: &'static str) -> Result<T, Error> {
@@ -37,16 +38,18 @@ type ErrorImpl = ();
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Error(ErrorImpl);
 impl Debug for Error {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "Error({:?})", self.to_string())
     }
 }
 impl Display for Error {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         #[cfg(debug_assertions)]
         return f.write_str(&self.0);
         #[cfg(not(debug_assertions))]
         f.write_str("bitcode error")
     }
 }
+#[cfg(feature = "std")]
+// TODO expose to no_std when error_in_core stabilized (https://github.com/rust-lang/rust/issues/103765)
 impl std::error::Error for Error {}

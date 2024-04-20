@@ -1,8 +1,9 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::fast::{CowSlice, NextUnchecked, PushUnchecked, VecImpl};
 use crate::pack::{pack_bytes, unpack_bytes};
-use std::marker::PhantomData;
-use std::num::NonZeroUsize;
+use alloc::vec::Vec;
+use core::marker::PhantomData;
+use core::num::NonZeroUsize;
 
 #[derive(Default)]
 pub struct VariantEncoder {

@@ -2,10 +2,15 @@ use crate::coder::{Buffer, Decoder, Encoder, Result, View, MAX_VECTORED_CHUNK};
 use crate::derive::{Decode, Encode};
 use crate::fast::Unaligned;
 use crate::length::{LengthDecoder, LengthEncoder};
-use std::collections::{BTreeSet, BinaryHeap, HashSet, LinkedList, VecDeque};
-use std::hash::{BuildHasher, Hash};
-use std::mem::MaybeUninit;
-use std::num::NonZeroUsize;
+use alloc::collections::{BTreeSet, BinaryHeap, LinkedList, VecDeque};
+use alloc::vec::Vec;
+use core::mem::MaybeUninit;
+use core::num::NonZeroUsize;
+
+#[cfg(feature = "std")]
+use core::hash::{BuildHasher, Hash};
+#[cfg(feature = "std")]
+use std::collections::HashSet;
 
 pub struct VecEncoder<T: Encode> {
     // pub(crate) for arrayvec.rs
@@ -49,7 +54,7 @@ macro_rules! unsafe_wild_copy {
         debug_assert!($n != 0 && $n <= $N);
 
         let page_size = 4096;
-        let read_size = std::mem::size_of::<[$T; $N]>();
+        let read_size = core::mem::size_of::<[$T; $N]>();
         let within_page = $src as usize & (page_size - 1) < (page_size - read_size) && cfg!(all(
             // Miri doesn't like this.
             not(miri),
@@ -62,7 +67,7 @@ macro_rules! unsafe_wild_copy {
         ));
 
         if within_page {
-            *($dst as *mut std::mem::MaybeUninit<[$T; $N]>) = std::ptr::read($src as *const std::mem::MaybeUninit<[$T; $N]>);
+            *($dst as *mut core::mem::MaybeUninit<[$T; $N]>) = core::ptr::read($src as *const core::mem::MaybeUninit<[$T; $N]>);
         } else {
             #[cold]
             unsafe fn cold<T>(src: *const T, dst: *mut T, n: usize) {
@@ -101,8 +106,8 @@ impl<T: Encode> VecEncoder<T> {
                 },
             ) {
                 // Use fallback for impls that copy more than 64 bytes.
-                let size = std::mem::size_of::<T>();
-                self.vectored_impl = std::mem::transmute(match N {
+                let size = core::mem::size_of::<T>();
+                self.vectored_impl = core::mem::transmute(match N {
                     1 if size <= 32 => Self::encode_vectored_max_len::<I, 2>,
                     2 if size <= 16 => Self::encode_vectored_max_len::<I, 4>,
                     4 if size <= 8 => Self::encode_vectored_max_len::<I, 8>,
@@ -111,7 +116,7 @@ impl<T: Encode> VecEncoder<T> {
                     32 if size <= 1 => Self::encode_vectored_max_len::<I, 64>,
                     _ => Self::encode_vectored_fallback::<I>,
                 } as fn(&mut Self, I));
-                let f: fn(&mut Self, I) = std::mem::transmute(self.vectored_impl);
+                let f: fn(&mut Self, I) = core::mem::transmute(self.vectored_impl);
                 f(self, i);
                 return;
             }
@@ -176,7 +181,7 @@ impl<T: Encode> Encoder<[T]> for VecEncoder<T> {
                         // Use match to avoid "use of generic parameter from outer function".
                         // Start at the pointer size (assumed to be 8 bytes) to not be wasteful.
                         me.vectored_impl =
-                            std::mem::transmute(match (8 / std::mem::size_of::<T>()).max(1) {
+                            core::mem::transmute(match (8 / core::mem::size_of::<T>()).max(1) {
                                 1 => VecEncoder::encode_vectored_max_len::<I, 1>,
                                 2 => VecEncoder::encode_vectored_max_len::<I, 2>,
                                 4 => VecEncoder::encode_vectored_max_len::<I, 4>,
@@ -185,7 +190,7 @@ impl<T: Encode> Encoder<[T]> for VecEncoder<T> {
                             }
                                 as fn(&mut VecEncoder<T>, I));
                     }
-                    let f: fn(&mut VecEncoder<T>, I) = std::mem::transmute(me.vectored_impl);
+                    let f: fn(&mut VecEncoder<T>, I) = core::mem::transmute(me.vectored_impl);
                     f(me, i);
                 }
             }
@@ -325,11 +330,13 @@ impl<'a, T: Decode<'a> + Ord> Decoder<'a, BTreeSet<T>> for VecDecoder<'a, T> {
     decode_body!(BTreeSet<T>);
 }
 
+#[cfg(feature = "std")]
 impl<T: Encode, S> Encoder<HashSet<T, S>> for VecEncoder<T> {
     // Internal iteration is 1.6x faster. Interestingly this does not apply to HashMap<T, ()> which
     // I assume is due to HashSet::iter being implemented with HashMap::keys.
     encode_body_internal_iteration!(HashSet<T, S>);
 }
+#[cfg(feature = "std")]
 impl<'a, T: Decode<'a> + Eq + Hash, S: BuildHasher + Default> Decoder<'a, HashSet<T, S>>
     for VecDecoder<'a, T>
 {
@@ -356,17 +363,21 @@ impl<'a, T: Decode<'a>> Decoder<'a, VecDeque<T>> for VecDecoder<'a, T> {
 
 #[cfg(test)]
 mod test {
-    use std::collections::*;
+    use alloc::collections::*;
+    use alloc::vec::Vec;
+
     fn bench_data<T: FromIterator<u8>>() -> T {
         (0..=255).collect()
     }
+
     crate::bench_encode_decode!(
         btree_set: BTreeSet<_>,
-        hash_set: HashSet<_>,
         linked_list: LinkedList<_>,
         vec: Vec<_>,
         vec_deque: VecDeque<_>
     );
+    #[cfg(feature = "std")]
+    crate::bench_encode_decode!(hash_set: std::collections::HashSet<_>);
 
     // BinaryHeap can't use bench_encode_decode because it doesn't implement PartialEq.
     #[bench]

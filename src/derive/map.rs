@@ -1,9 +1,14 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::derive::{Decode, Encode};
 use crate::length::{LengthDecoder, LengthEncoder};
-use std::collections::{BTreeMap, HashMap};
-use std::hash::{BuildHasher, Hash};
-use std::num::NonZeroUsize;
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
+use core::num::NonZeroUsize;
+
+#[cfg(feature = "std")]
+use core::hash::{BuildHasher, Hash};
+#[cfg(feature = "std")]
+use std::collections::HashMap;
 
 pub struct MapEncoder<K: Encode, V: Encode> {
     lengths: LengthEncoder,
@@ -98,9 +103,11 @@ impl<'a, K: Decode<'a> + Ord, V: Decode<'a>> Decoder<'a, BTreeMap<K, V>> for Map
     decode_body!(BTreeMap<K, V>);
 }
 
+#[cfg(feature = "std")]
 impl<K: Encode, V: Encode, S> Encoder<HashMap<K, V, S>> for MapEncoder<K, V> {
     encode_body!(HashMap<K, V, S>);
 }
+#[cfg(feature = "std")]
 impl<'a, K: Decode<'a> + Eq + Hash, V: Decode<'a>, S: BuildHasher + Default>
     Decoder<'a, HashMap<K, V, S>> for MapDecoder<'a, K, V>
 {
@@ -109,9 +116,13 @@ impl<'a, K: Decode<'a> + Eq + Hash, V: Decode<'a>, S: BuildHasher + Default>
 
 #[cfg(test)]
 mod test {
-    use std::collections::{BTreeMap, HashMap};
+    use alloc::collections::BTreeMap;
+
     fn bench_data<T: FromIterator<(u8, u8)>>() -> T {
         (0..=255).map(|k| (k, 0)).collect()
     }
-    crate::bench_encode_decode!(btree_map: BTreeMap<_, _>, hash_map: HashMap<_, _>);
+
+    crate::bench_encode_decode!(btree_map: BTreeMap<_, _>);
+    #[cfg(feature = "std")]
+    crate::bench_encode_decode!(hash_map: std::collections::HashMap<_, _>);
 }
