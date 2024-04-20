@@ -41,7 +41,7 @@ std = [ "serde?/std", "glam?/std", "arrayvec?/std" ]
 default = [ "derive", "std" ]
 
 [package.metadata.docs.rs]
-features = [ "derive", "serde" ]
+features = [ "derive", "serde", "std" ]
 
 # TODO halfs speed of benches_borrowed::bench_bitcode_decode
 #[profile.bench]
