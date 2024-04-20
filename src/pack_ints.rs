@@ -246,7 +246,12 @@ fn with_scratch<T>(f: impl FnOnce(&mut Vec<u8>) -> T) -> T {
         f(s)
     })
 }
-#[cfg(feature = "std")]
+// Resort to allocation.
+#[cfg(not(feature = "std"))]
+fn with_scratch<T>(f: impl FnOnce(&mut Vec<u8>) -> T) -> T {
+    f(&mut Vec::new())
+}
+
 macro_rules! impl_u8 {
     () => {
         fn pack8(v: &mut [Self], out: &mut Vec<u8>) {
@@ -267,27 +272,6 @@ macro_rules! impl_u8 {
                 *allocation = bytes.into_allocation();
                 Ok(())
             })
-        }
-    };
-}
-#[cfg(not(feature = "std"))]
-macro_rules! impl_u8 {
-    () => {
-        fn pack8(v: &mut [Self], out: &mut Vec<u8>) {
-            // resort to allocation
-            let mut bytes: Vec<_> = v.iter().map(|&v| v as u8).collect();
-            pack_bytes(&mut bytes, out);
-        }
-        fn unpack8(input: &mut &[u8], length: usize, out: &mut CowSlice<Self::Une>) -> Result<()> {
-            // resort to allocation
-            let allocation: Vec<u8> = Vec::with_capacity(length);
-            let mut bytes = CowSlice::with_allocation(allocation);
-            unpack_bytes(input, length, &mut bytes)?;
-            // Safety: unpack_bytes ensures bytes has length of `length`.
-            let slice = unsafe { bytes.as_slice(length) };
-            out.set_owned()
-                .extend(slice.iter().map(|&v| (v as Self).to_ne_bytes()));
-            Ok(())
         }
     };
 }
