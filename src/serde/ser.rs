@@ -1,6 +1,6 @@
 use crate::bool::BoolEncoder;
 use crate::coder::{Buffer, Encoder, Result};
-use crate::error::{err, error, Error};
+use crate::error::{err, Error};
 use crate::f32::F32Encoder;
 use crate::int::IntEncoder;
 use crate::length::LengthEncoder;
@@ -206,7 +206,7 @@ macro_rules! specify {
                     index_alloc: &mut usize,
                 ) {
                     let &mut LazyEncoder::Unspecified { reserved } = me else {
-                        type_changed!();
+                        type_changed!()
                     };
                     *me = LazyEncoder::Specified {
                         specified: SpecifiedEncoder::$variant(Default::default()),
@@ -238,12 +238,18 @@ struct EncoderWrapper<'a> {
 
 impl<'a> EncoderWrapper<'a> {
     #[inline(always)]
+    fn variant_index_u8(variant_index: u32) -> Result<u8> {
+        if variant_index > u8::MAX as u32 {
+            err("enums with more than 256 variants are unsupported")
+        } else {
+            Ok(variant_index as u8)
+        }
+    }
+
+    #[inline(always)]
     fn serialize_enum(self, variant_index: u32) -> Result<EncoderWrapper<'a>> {
-        let variant_index = variant_index
-            .try_into()
-            .map_err(|_| error("enums with more than 256 variants are unsupported"))?;
         let b = specify!(self, Enum);
-        b.0.encode(&variant_index);
+        b.0.encode(&Self::variant_index_u8(variant_index)?);
         let lazy = get_mut_or_resize(&mut b.1, variant_index as usize);
         lazy.reserve_fast(1); // TODO use push instead.
         Ok(Self {
@@ -255,7 +261,8 @@ impl<'a> EncoderWrapper<'a> {
 
 macro_rules! impl_ser {
     ($name:ident, $t:ty, $variant:ident) => {
-        // TODO #[inline(always)] makes benchmark slower because collect_seq isn't inlined.
+        // #[inline(always)] seems to be slower than regular #[inline] in this case.
+        #[inline]
         fn $name(self, v: $t) -> Result<()> {
             specify!(self, $variant).encode(&v);
             Ok(())
@@ -300,8 +307,9 @@ impl<'a> Serializer for EncoderWrapper<'a> {
 
     #[inline(always)]
     fn serialize_none(self) -> Result<Self::Ok> {
-        self.serialize_enum(0)?;
-        Ok(())
+        // Faster than self.serialize_enum(0)? because it skips resizing vec and reserving nothing.
+        // TODO generates multiple copies of specify!(self, Enum) -> cold.
+        Ok(specify!(self, Enum).0.encode(&0))
     }
 
     #[inline(always)]
@@ -329,8 +337,10 @@ impl<'a> Serializer for EncoderWrapper<'a> {
         variant_index: u32,
         _variant: &'static str,
     ) -> Result<Self::Ok> {
-        self.serialize_enum(variant_index)?;
-        Ok(())
+        // Faster than self.serialize_enum(variant_index)? because it skips resizing vec and reserving nothing.
+        Ok(specify!(self, Enum)
+            .0
+            .encode(&Self::variant_index_u8(variant_index)?))
     }
 
     #[inline(always)]
@@ -389,7 +399,7 @@ impl<'a> Serializer for EncoderWrapper<'a> {
                 #[cold]
                 fn cold(me: &mut LazyEncoder, len: usize) {
                     let &mut LazyEncoder::Unspecified { reserved } = me else {
-                        type_changed!();
+                        type_changed!()
                     };
                     *me = LazyEncoder::Specified {
                         specified: SpecifiedEncoder::Tuple(default_box_slice(len)),
@@ -414,7 +424,7 @@ impl<'a> Serializer for EncoderWrapper<'a> {
             unsafe { core::hint::unreachable_unchecked() };
         };
         if encoders.len() != len {
-            type_changed!(); // Removes multiple bounds checks.
+            type_changed!() // Removes multiple bounds checks.
         }
         Ok(TupleSerializer {
             encoders,
@@ -483,6 +493,7 @@ macro_rules! ok_error_end {
     () => {
         type Ok = ();
         type Error = Error;
+        #[inline(always)]
         fn end(self) -> Result<Self::Ok> {
             Ok(())
         }

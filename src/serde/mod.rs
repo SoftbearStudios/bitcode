@@ -11,10 +11,17 @@ mod variant;
 pub use de::*;
 pub use ser::*;
 
-// Use macro instead of function because ! type isn't stable.
+// Saves code size over calling panic in type_changed macro directly.
+enum Never {}
+#[cold]
+#[inline(never)]
+fn panic_type_changed() -> Never {
+    panic!("type changed")
+}
 macro_rules! type_changed {
     () => {
-        panic!("type changed")
+        #[allow(unreachable_code)]
+        match super::panic_type_changed() {} // ! is unstable.
     };
 }
 use type_changed;

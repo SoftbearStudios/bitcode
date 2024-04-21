@@ -119,7 +119,7 @@ macro_rules! specify {
                 #[cold]
                 fn cold<'de>(decoder: &mut SerdeDecoder<'de>, input: &mut &'de [u8]) -> Result<()> {
                     let &mut SerdeDecoder::Unspecified { length } = decoder else {
-                            type_changed!();
+                            type_changed!()
                         };
                     *decoder = SerdeDecoder::$variant(Default::default());
                     decoder.populate(input, length)
@@ -325,7 +325,7 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
                     tuple_len: usize,
                 ) -> Result<()> {
                     let &mut SerdeDecoder::Unspecified { length } = decoder else {
-                        type_changed!();
+                        type_changed!()
                     };
                     *decoder = SerdeDecoder::Tuple(default_box_slice(tuple_len));
                     decoder.populate(input, length)
@@ -338,7 +338,7 @@ impl<'de> Deserializer<'de> for DecoderWrapper<'_, 'de> {
             unsafe { core::hint::unreachable_unchecked() };
         };
         if decoders.len() != tuple_len {
-            type_changed!(); // Removes multiple bounds checks.
+            type_changed!() // Removes multiple bounds checks.
         }
 
         struct Access<'a, 'de> {
