@@ -36,7 +36,7 @@ serde = { version = "1.0", features = [ "derive" ] }
 zstd = "0.13.0"
 
 [features]
-derive = [ "bitcode_derive" ]
+derive = [ "dep:bitcode_derive" ]
 std = [ "serde?/std", "glam?/std", "arrayvec?/std" ]
 default = [ "derive", "std" ]
 
