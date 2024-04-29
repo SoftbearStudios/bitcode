@@ -1,6 +1,5 @@
 #[cfg(debug_assertions)]
 use alloc::borrow::Cow;
-use alloc::string::ToString;
 use core::fmt::{Debug, Display, Formatter};
 
 /// Short version of `Err(error("..."))`.
@@ -39,7 +38,10 @@ type ErrorImpl = ();
 pub struct Error(ErrorImpl);
 impl Debug for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Error({:?})", self.to_string())
+        #[cfg(debug_assertions)]
+        return write!(f, "Error({:?})", self.0);
+        #[cfg(not(debug_assertions))]
+        f.write_str("Error(\"bitcode error\")")
     }
 }
 impl Display for Error {
