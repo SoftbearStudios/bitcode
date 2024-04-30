@@ -381,12 +381,6 @@ fn factor_to_divisor<const FACTOR: usize>() -> usize {
     }
 }
 
-const BMI2: bool = cfg!(all(
-    target_arch = "x86_64",
-    target_feature = "bmi2",
-    not(miri)
-));
-
 /// Packs multiple bytes into one. All the bytes must be < `FACTOR`.
 /// Factors 2,4,16 are bit packing. Factors 3,6 are arithmetic coding.
 fn pack_arithmetic<const FACTOR: usize>(bytes: &[u8], out: &mut Vec<u8>) {
@@ -401,16 +395,10 @@ fn pack_arithmetic<const FACTOR: usize>(bytes: &[u8], out: &mut Vec<u8>) {
 
     for i in 0..floor {
         unsafe {
-            packed.get_unchecked_mut(i).write(if FACTOR == 2 && BMI2 {
-                #[cfg(not(all(target_arch = "x86_64", target_feature = "bmi2")))]
-                unreachable!();
-                #[cfg(all(target_arch = "x86_64", target_feature = "bmi2"))]
-                {
-                    // Could use on any pow2 FACTOR, but only 2 is faster (target-cpu=native).
-                    let chunk = (bytes.as_ptr() as *const u8 as *const [u8; 8]).add(i);
-                    let chunk = u64::from_le_bytes(*chunk);
-                    core::arch::x86_64::_pext_u64(chunk, 0x0101010101010101) as u8
-                }
+            packed.get_unchecked_mut(i).write(if FACTOR == 2 {
+                let chunk = u64::from_le_bytes(*(bytes.as_ptr() as *const [u8; 8]).add(i));
+                // https://stackoverflow.com/a/51750902
+                (0x0102040810204080u64.wrapping_mul(chunk) >> 56) as u8
             } else {
                 let mut acc = 0;
                 for byte_index in 0..divisor {
@@ -453,15 +441,13 @@ fn unpack_arithmetic<const FACTOR: usize>(
     for i in 0..floor {
         unsafe {
             let mut packed = *packed.get_unchecked(i);
-            if FACTOR == 2 && BMI2 {
-                #[cfg(not(all(target_arch = "x86_64", target_feature = "bmi2")))]
-                unreachable!();
-                #[cfg(all(target_arch = "x86_64", target_feature = "bmi2"))]
-                {
-                    // Could use on any pow2 FACTOR, but only 2 is faster (target-cpu=native).
-                    let chunk = core::arch::x86_64::_pdep_u64(packed as u64, 0x0101010101010101);
-                    *(unpacked.as_mut_ptr() as *mut [u8; 8]).add(i) = chunk.to_le_bytes();
-                }
+            if FACTOR == 2 {
+                // https://stackoverflow.com/a/51750902
+                // Can't swap bytes of magic number to avoid swap bytes at runtime because of carries in multiply.
+                let chunk =
+                    ((0x8040201008040201u64.wrapping_mul(packed as u64) & 0x8080808080808080) >> 7)
+                        .swap_bytes();
+                *(unpacked.as_mut_ptr() as *mut [u8; 8]).add(i) = chunk.to_le_bytes();
             } else {
                 for byte in unpacked.get_unchecked_mut(i * divisor..i * divisor + divisor) {
                     byte.write(packed % FACTOR as u8);
