@@ -35,5 +35,5 @@ pub(crate) fn err<T>(spanned: &impl Spanned, s: &str) -> Result<T, Error> {
 }
 
 pub(crate) fn private(crate_name: &syn::Path) -> proc_macro2::TokenStream {
-    quote! { ::#crate_name::__private }
+    quote! { #crate_name::__private }
 }
