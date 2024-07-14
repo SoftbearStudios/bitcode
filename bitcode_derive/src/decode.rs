@@ -35,6 +35,7 @@ impl Item {
 impl crate::shared::Item for Item {
     fn field_impl(
         self,
+        crate_name: &Path,
         field_name: TokenStream,
         global_field_name: TokenStream,
         real_field_name: TokenStream,
@@ -43,7 +44,7 @@ impl crate::shared::Item for Item {
         match self {
             Self::Type => {
                 let de_type = replace_lifetimes(field_type, DE_LIFETIME);
-                let private = private();
+                let private = private(crate_name);
                 let de = de_lifetime();
                 quote! {
                     #global_field_name: <#de_type as #private::Decode<#de>>::Decoder,
@@ -61,7 +62,7 @@ impl crate::shared::Item for Item {
             },
             Self::DecodeInPlace => {
                 let de_type = replace_lifetimes(field_type, DE_LIFETIME);
-                let private = private();
+                let private = private(crate_name);
                 quote! {
                     self.#global_field_name.decode_in_place(#private::uninit_field!(out.#real_field_name: #de_type));
                 }
@@ -83,6 +84,7 @@ impl crate::shared::Item for Item {
 
     fn enum_impl(
         self,
+        crate_name: &Path,
         variant_count: usize,
         pattern: impl Fn(usize) -> TokenStream,
         inner: impl Fn(Self, usize) -> TokenStream,
@@ -97,7 +99,7 @@ impl crate::shared::Item for Item {
                 let inners: TokenStream = (0..variant_count).map(|i| inner(self, i)).collect();
                 let variants = decode_variants
                     .then(|| {
-                        let private = private();
+                        let private = private(crate_name);
                         let c_style = inners.is_empty();
                         quote! { variants: #private::VariantDecoder<#de, #variant_count, #c_style>, }
                     })
@@ -119,7 +121,7 @@ impl crate::shared::Item for Item {
             }
             Self::Populate => {
                 if never {
-                    let private = private();
+                    let private = private(crate_name);
                     return quote! {
                         if __length != 0 {
                             return #private::invalid_enum_variant();
@@ -220,14 +222,15 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
     type Item = Item;
     const ALL: [Self::Item; Item::COUNT] = Item::ALL;
 
-    fn bound(&self) -> Path {
-        let private = private();
+    fn bound(&self, crate_name: &Path) -> Path {
+        let private = private(crate_name);
         let de = de_lifetime();
         parse_quote!(#private::Decode<#de>)
     }
 
     fn derive_impl(
         &self,
+        crate_name: &Path,
         output: [TokenStream; Item::COUNT],
         ident: Ident,
         mut generics: Generics,
@@ -281,7 +284,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
 
         let decoder_ident = Ident::new(&format!("{ident}Decoder"), Span::call_site());
         let decoder_ty = quote! { #decoder_ident #decoder_generics };
-        let private = private();
+        let private = private(crate_name);
 
         quote! {
             const _: () = {

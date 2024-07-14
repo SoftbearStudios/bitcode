@@ -7,6 +7,7 @@ use syn::{parse2, Attribute, Expr, ExprLit, Lit, Meta, Path, Result, Token, Type
 
 enum BitcodeAttr {
     BoundType(Type),
+    CrateAlias(Path),
 }
 
 impl BitcodeAttr {
@@ -30,6 +31,26 @@ impl BitcodeAttr {
                 }
                 _ => err(&nested, "expected name value"),
             },
+            "crate" => match nested {
+                Meta::NameValue(name_value) => {
+                    let expr = &name_value.value;
+                    let str_lit = match expr {
+                        Expr::Lit(ExprLit {
+                            lit: Lit::Str(v), ..
+                        }) => v,
+                        _ => return err(&expr, "expected path string e.g. \"my_crate::bitcode\""),
+                    };
+
+                    let mut path = syn::parse_str::<Path>(&str_lit.value())
+                        .map_err(|e| error(str_lit, &e.to_string()))?;
+
+                    // ensure there's a leading `::`
+                    path.leading_colon = Some(Token![::](str_lit.span()));
+
+                    Ok(Self::CrateAlias(path))
+                }
+                _ => err(&nested, "expected name value"),
+            },
             _ => err(&nested, "unknown attribute"),
         }
     }
@@ -47,6 +68,14 @@ impl BitcodeAttr {
                     err(nested, "can only apply bound to fields")
                 }
             }
+            Self::CrateAlias(crate_name) => {
+                if let AttrType::Derive = attrs.attr_type {
+                    attrs.crate_name = crate_name;
+                    Ok(())
+                } else {
+                    err(nested, "can only apply crate rename to derives")
+                }
+            }
         }
     }
 }
@@ -54,6 +83,8 @@ impl BitcodeAttr {
 #[derive(Clone)]
 pub struct BitcodeAttrs {
     attr_type: AttrType,
+    /// The crate name to use for the generated code, defaults to "bitcode".
+    pub crate_name: Path,
 }
 
 #[derive(Clone)]
@@ -65,7 +96,10 @@ enum AttrType {
 
 impl BitcodeAttrs {
     fn new(attr_type: AttrType) -> Self {
-        Self { attr_type }
+        Self {
+            attr_type,
+            crate_name: syn::parse_str("bitcode").expect("invalid crate name"),
+        }
     }
 
     pub fn bound_type(&self) -> Option<Type> {
