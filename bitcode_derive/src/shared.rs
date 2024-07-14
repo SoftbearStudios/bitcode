@@ -17,6 +17,7 @@ pub fn variant_index(i: usize) -> VariantIndex {
 pub trait Item: Copy + Sized {
     fn field_impl(
         self,
+        crate_name: &Path,
         field_name: TokenStream,
         global_field_name: TokenStream,
         real_field_name: TokenStream,
@@ -32,12 +33,18 @@ pub trait Item: Copy + Sized {
 
     fn enum_impl(
         self,
+        crate_name: &Path,
         variant_count: usize,
         pattern: impl Fn(usize) -> TokenStream,
         inner: impl Fn(Self, usize) -> TokenStream,
     ) -> TokenStream;
 
-    fn field_impls(self, global_prefix: Option<&str>, fields: &Fields) -> TokenStream {
+    fn field_impls(
+        self,
+        crate_name: &Path,
+        global_prefix: Option<&str>,
+        fields: &Fields,
+    ) -> TokenStream {
         fields
             .iter()
             .enumerate()
@@ -52,7 +59,7 @@ pub trait Item: Copy + Sized {
                     })
                     .unwrap_or_else(|| name.clone());
 
-                self.field_impl(name, global_name, real_name, &field.ty)
+                self.field_impl(crate_name, name, global_name, real_name, &field.ty)
             })
             .collect()
     }
@@ -63,11 +70,12 @@ pub trait Derive<const ITEM_COUNT: usize> {
     const ALL: [Self::Item; ITEM_COUNT];
 
     /// `Encode` in `T: Encode`.
-    fn bound(&self) -> Path;
+    fn bound(&self, crate_name: &Path) -> Path;
 
     /// Generates the derive implementation.
     fn derive_impl(
         &self,
+        crate_name: &Path,
         output: [TokenStream; ITEM_COUNT],
         ident: Ident,
         generics: Generics,
@@ -75,6 +83,7 @@ pub trait Derive<const ITEM_COUNT: usize> {
 
     fn field_attrs(
         &self,
+        crate_name: &Path,
         fields: &Fields,
         attrs: &BitcodeAttrs,
         bounds: &mut FieldBounds,
@@ -83,7 +92,7 @@ pub trait Derive<const ITEM_COUNT: usize> {
             .iter()
             .map(|field| {
                 let field_attrs = BitcodeAttrs::parse_field(&field.attrs, attrs)?;
-                bounds.add_bound_type(field.clone(), &field_attrs, self.bound());
+                bounds.add_bound_type(field.clone(), &field_attrs, self.bound(crate_name));
                 Ok(field_attrs)
             })
             .collect()
@@ -98,12 +107,13 @@ pub trait Derive<const ITEM_COUNT: usize> {
         let output = match input.data {
             Data::Struct(DataStruct { ref fields, .. }) => {
                 // Only used for adding `bounds`. Would be used by `#[bitcode(with_serde)]`.
-                let field_attrs = self.field_attrs(fields, &attrs, &mut bounds)?;
+                let field_attrs =
+                    self.field_attrs(&attrs.crate_name, fields, &attrs, &mut bounds)?;
                 let _ = field_attrs;
 
                 let destructure_fields = &destructure_fields(fields);
                 Self::ALL.map(|item| {
-                    let field_impls = item.field_impls(None, fields);
+                    let field_impls = item.field_impls(&attrs.crate_name, None, fields);
                     item.struct_impl(&ident, destructure_fields, &field_impls)
                 })
             }
@@ -122,13 +132,14 @@ pub trait Derive<const ITEM_COUNT: usize> {
                     .iter()
                     .map(|variant| {
                         let attrs = BitcodeAttrs::parse_variant(&variant.attrs, &attrs)?;
-                        self.field_attrs(&variant.fields, &attrs, &mut bounds)
+                        self.field_attrs(&attrs.crate_name, &variant.fields, &attrs, &mut bounds)
                     })
                     .collect::<Result<Vec<_>>>()?;
                 let _ = variant_attrs;
 
                 Self::ALL.map(|item| {
                     item.enum_impl(
+                        &attrs.crate_name,
                         data_enum.variants.len(),
                         |i| {
                             let variant = &data_enum.variants[i];
@@ -141,14 +152,23 @@ pub trait Derive<const ITEM_COUNT: usize> {
                         |item, i| {
                             let variant = &data_enum.variants[i];
                             let global_prefix = format!("{}_", &variant.ident);
-                            item.field_impls(Some(&global_prefix), &variant.fields)
+                            item.field_impls(
+                                &attrs.crate_name,
+                                Some(&global_prefix),
+                                &variant.fields,
+                            )
                         },
                     )
                 })
             }
             Data::Union(_) => err(&ident, "unions are not supported")?,
         };
-        Ok(self.derive_impl(output, ident, bounds.added_to(input.generics)))
+        Ok(self.derive_impl(
+            &attrs.crate_name,
+            output,
+            ident,
+            bounds.added_to(input.generics),
+        ))
     }
 }
 

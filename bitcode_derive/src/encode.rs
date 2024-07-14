@@ -27,6 +27,7 @@ impl Item {
 impl crate::shared::Item for Item {
     fn field_impl(
         self,
+        crate_name: &Path,
         field_name: TokenStream,
         global_field_name: TokenStream,
         real_field_name: TokenStream,
@@ -35,7 +36,7 @@ impl crate::shared::Item for Item {
         match self {
             Self::Type => {
                 let static_type = replace_lifetimes(field_type, "static");
-                let private = private();
+                let private = private(crate_name);
                 quote! {
                     #global_field_name: <#static_type as #private::Encode>::Encoder,
                 }
@@ -99,6 +100,7 @@ impl crate::shared::Item for Item {
 
     fn enum_impl(
         self,
+        crate_name: &Path,
         variant_count: usize,
         pattern: impl Fn(usize) -> TokenStream,
         inner: impl Fn(Self, usize) -> TokenStream,
@@ -109,7 +111,7 @@ impl crate::shared::Item for Item {
             Self::Type => {
                 let variants = encode_variants
                     .then(|| {
-                        let private = private();
+                        let private = private(crate_name);
                         quote! { variants: #private::VariantEncoder<#variant_count>, }
                     })
                     .unwrap_or_default();
@@ -224,13 +226,14 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
     type Item = Item;
     const ALL: [Self::Item; Item::COUNT] = Item::ALL;
 
-    fn bound(&self) -> Path {
-        let private = private();
+    fn bound(&self, crate_name: &Path) -> Path {
+        let private = private(crate_name);
         parse_quote!(#private::Encode)
     }
 
     fn derive_impl(
         &self,
+        crate_name: &Path,
         output: [TokenStream; Item::COUNT],
         ident: Ident,
         mut generics: Generics,
@@ -248,7 +251,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
             output;
         let encoder_ident = Ident::new(&format!("{ident}Encoder"), Span::call_site());
         let encoder_ty = quote! { #encoder_ident #encoder_generics };
-        let private = private();
+        let private = private(crate_name);
 
         quote! {
             const _: () = {
