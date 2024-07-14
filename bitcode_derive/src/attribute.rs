@@ -41,11 +41,12 @@ impl BitcodeAttr {
                         _ => return err(&expr, "expected path string e.g. \"my_crate::bitcode\""),
                     };
 
-                    let mut path = syn::parse_str::<Path>(&str_lit.value())
+                    let path = syn::parse_str::<Path>(&str_lit.value())
                         .map_err(|e| error(str_lit, &e.to_string()))?;
 
-                    // ensure there's a leading `::`
-                    path.leading_colon = Some(Token![::](str_lit.span()));
+                    // previus: ensure there's a leading `::`
+                    // removed: https://github.com/SoftbearStudios/bitcode/pull/28#issuecomment-2227465515
+                    // path.leading_colon = Some(Token![::](str_lit.span()));
 
                     Ok(Self::CrateAlias(path))
                 }

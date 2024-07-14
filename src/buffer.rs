@@ -192,7 +192,7 @@ mod tests {
     fn erased_box() {
         use alloc::sync::Arc;
         let rc = Arc::new(());
-        struct TestDrop(Arc<()>);
+        struct TestDrop(#[allow(unused)] Arc<()>);
         let b = unsafe { ErasedBox::new(TestDrop(Arc::clone(&rc))) };
         assert_eq!(Arc::strong_count(&rc), 2);
         drop(b);
