@@ -206,7 +206,7 @@ macro_rules! impl_ipvx_addr {
 
 impl_ipvx_addr!(Ipv4Addr);
 impl_ipvx_addr!(Ipv6Addr);
-impl_convert!(core::net::IpAddr, std::result::Result<core::net::Ipv4Addr, core::net::Ipv6Addr>);
+impl_convert!(core::net::IpAddr, core::result::Result<core::net::Ipv4Addr, core::net::Ipv6Addr>);
 
 impl<T> Encode for PhantomData<T> {
     type Encoder = EmptyCoder;
