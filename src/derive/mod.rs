@@ -8,6 +8,9 @@ mod array;
 mod duration;
 mod empty;
 mod impls;
+// TODO: When ip_in_core has been stable (https://github.com/rust-lang/rust/issues/108443)
+// for long enough, remove feature check.
+#[cfg(feature = "std")]
 mod ip_addr;
 mod map;
 mod option;
