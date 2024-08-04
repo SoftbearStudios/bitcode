@@ -19,9 +19,7 @@ pub fn error(_msg: &'static str) -> Error {
 #[cfg(feature = "serde")]
 pub fn error_from_display(_t: impl Display) -> Error {
     #[cfg(debug_assertions)]
-    use alloc::string::ToString;
-    #[cfg(debug_assertions)]
-    return Error(Cow::Owned(_t.to_string()));
+    return Error(Cow::Owned(alloc::string::ToString::to_string(&_t)));
     #[cfg(not(debug_assertions))]
     Error(())
 }

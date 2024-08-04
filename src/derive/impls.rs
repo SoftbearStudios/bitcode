@@ -182,6 +182,36 @@ impl<T: Encode, E: Encode> Encode for core::result::Result<T, E> {
 impl<'a, T: Decode<'a>, E: Decode<'a>> Decode<'a> for core::result::Result<T, E> {
     type Decoder = ResultDecoder<'a, T, E>;
 }
+
+#[cfg(feature = "std")]
+macro_rules! impl_convert {
+    ($want: path, $have: ty) => {
+        impl Encode for $want {
+            type Encoder = super::ip_addr::ConvertIntoEncoder<$have>;
+        }
+        impl<'a> Decode<'a> for $want {
+            type Decoder = super::ip_addr::ConvertFromDecoder<'a, $have>;
+        }
+    };
+}
+
+#[cfg(feature = "std")]
+macro_rules! impl_ipvx_addr {
+    ($addr: ident) => {
+        impl_convert!(
+            std::net::$addr,
+            [u8; core::mem::size_of::<std::net::$addr>()]
+        );
+    };
+}
+
+#[cfg(feature = "std")]
+impl_ipvx_addr!(Ipv4Addr);
+#[cfg(feature = "std")]
+impl_ipvx_addr!(Ipv6Addr);
+#[cfg(feature = "std")]
+impl_convert!(std::net::IpAddr, core::result::Result<std::net::Ipv4Addr, std::net::Ipv6Addr>);
+
 impl<T> Encode for PhantomData<T> {
     type Encoder = EmptyCoder;
 }
