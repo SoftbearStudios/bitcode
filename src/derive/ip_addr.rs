@@ -5,14 +5,14 @@ use core::num::NonZeroUsize;
 
 macro_rules! ipvx_addr {
     ($addr: ident) => {
-        impl ConvertFrom<&core::net::$addr> for [u8; std::mem::size_of::<core::net::$addr>()] {
+        impl ConvertFrom<&core::net::$addr> for [u8; core::mem::size_of::<core::net::$addr>()] {
             fn convert_from(ip: &core::net::$addr) -> Self {
                 ip.octets()
             }
         }
 
-        impl ConvertFrom<[u8; std::mem::size_of::<core::net::$addr>()]> for core::net::$addr {
-            fn convert_from(octets: [u8; std::mem::size_of::<core::net::$addr>()]) -> Self {
+        impl ConvertFrom<[u8; core::mem::size_of::<core::net::$addr>()]> for core::net::$addr {
+            fn convert_from(octets: [u8; core::mem::size_of::<core::net::$addr>()]) -> Self {
                 Self::from(octets)
             }
         }
@@ -22,7 +22,7 @@ macro_rules! ipvx_addr {
 ipvx_addr!(Ipv4Addr);
 ipvx_addr!(Ipv6Addr);
 
-impl ConvertFrom<&IpAddr> for std::result::Result<Ipv4Addr, Ipv6Addr> {
+impl ConvertFrom<&IpAddr> for core::result::Result<Ipv4Addr, Ipv6Addr> {
     fn convert_from(value: &IpAddr) -> Self {
         match value {
             IpAddr::V4(v4) => Ok(*v4),
@@ -31,8 +31,8 @@ impl ConvertFrom<&IpAddr> for std::result::Result<Ipv4Addr, Ipv6Addr> {
     }
 }
 
-impl ConvertFrom<std::result::Result<Ipv4Addr, Ipv6Addr>> for IpAddr {
-    fn convert_from(value: std::result::Result<Ipv4Addr, Ipv6Addr>) -> Self {
+impl ConvertFrom<core::result::Result<Ipv4Addr, Ipv6Addr>> for IpAddr {
+    fn convert_from(value: core::result::Result<Ipv4Addr, Ipv6Addr>) -> Self {
         match value {
             Ok(v4) => Self::V4(v4),
             Err(v6) => Self::V6(v6),
