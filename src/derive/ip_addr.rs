@@ -70,7 +70,7 @@ impl<T: Encode> Buffer for ConvertIntoEncoder<T> {
     }
 }
 
-/// Decodes a `T` and then converts it with [`ConvertFrom`]. For `T` -> `Box<T>` and `Vec<T>` -> `Box<[T]>`.
+/// Decodes a `T` and then converts it with [`ConvertFrom`].
 pub struct ConvertFromDecoder<'a, T: Decode<'a>>(T::Decoder);
 
 // Can't derive since it would bound T: Default.
