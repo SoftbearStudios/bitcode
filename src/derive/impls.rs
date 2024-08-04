@@ -1,3 +1,4 @@
+use super::ip_addr::{ConvertFromDecoder, ConvertIntoEncoder};
 use crate::bool::{BoolDecoder, BoolEncoder};
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::derive::array::{ArrayDecoder, ArrayEncoder};
@@ -182,6 +183,31 @@ impl<T: Encode, E: Encode> Encode for core::result::Result<T, E> {
 impl<'a, T: Decode<'a>, E: Decode<'a>> Decode<'a> for core::result::Result<T, E> {
     type Decoder = ResultDecoder<'a, T, E>;
 }
+
+macro_rules! impl_convert {
+    ($want: path, $have: ty) => {
+        impl Encode for $want {
+            type Encoder = ConvertIntoEncoder<$have>;
+        }
+        impl<'a> Decode<'a> for $want {
+            type Decoder = ConvertFromDecoder<'a, $have>;
+        }
+    };
+}
+
+macro_rules! impl_ipvx_addr {
+    ($addr: ident) => {
+        impl_convert!(
+            core::net::$addr,
+            [u8; core::mem::size_of::<core::net::$addr>()]
+        );
+    };
+}
+
+impl_ipvx_addr!(Ipv4Addr);
+impl_ipvx_addr!(Ipv6Addr);
+impl_convert!(core::net::IpAddr, std::result::Result<core::net::Ipv4Addr, core::net::Ipv6Addr>);
+
 impl<T> Encode for PhantomData<T> {
     type Encoder = EmptyCoder;
 }

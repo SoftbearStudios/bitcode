@@ -8,6 +8,7 @@ mod array;
 mod duration;
 mod empty;
 mod impls;
+mod ip_addr;
 mod map;
 mod option;
 mod result;
