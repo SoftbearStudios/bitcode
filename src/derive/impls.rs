@@ -211,6 +211,8 @@ impl_ipvx_addr!(Ipv4Addr);
 impl_ipvx_addr!(Ipv6Addr);
 #[cfg(feature = "std")]
 impl_convert!(std::net::IpAddr, core::result::Result<std::net::Ipv4Addr, std::net::Ipv6Addr>);
+#[cfg(feature = "std")]
+impl_convert!(std::net::SocketAddrV4, (std::net::Ipv4Addr, u16));
 
 impl<T> Encode for PhantomData<T> {
     type Encoder = EmptyCoder;

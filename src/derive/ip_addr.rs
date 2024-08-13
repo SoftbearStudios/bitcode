@@ -1,5 +1,6 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::derive::{Decode, Encode};
+use core::net::SocketAddrV4;
 use core::num::NonZeroUsize;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -37,6 +38,18 @@ impl ConvertFrom<std::result::Result<Ipv4Addr, Ipv6Addr>> for IpAddr {
             Ok(v4) => Self::V4(v4),
             Err(v6) => Self::V6(v6),
         }
+    }
+}
+
+impl ConvertFrom<&SocketAddrV4> for (Ipv4Addr, u16) {
+    fn convert_from(value: &SocketAddrV4) -> Self {
+        (*value.ip(), value.port())
+    }
+}
+
+impl ConvertFrom<(Ipv4Addr, u16)> for SocketAddrV4 {
+    fn convert_from((ip, port): (Ipv4Addr, u16)) -> Self {
+        Self::new(ip, port)
     }
 }
 
