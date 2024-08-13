@@ -1,8 +1,7 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::derive::{Decode, Encode};
-use core::net::SocketAddrV4;
 use core::num::NonZeroUsize;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4};
 
 macro_rules! ipvx_addr {
     ($addr: ident) => {
