@@ -210,9 +210,19 @@ impl_ipvx_addr!(Ipv4Addr);
 #[cfg(feature = "std")]
 impl_ipvx_addr!(Ipv6Addr);
 #[cfg(feature = "std")]
-impl_convert!(std::net::IpAddr, core::result::Result<std::net::Ipv4Addr, std::net::Ipv6Addr>);
+impl_convert!(std::net::IpAddr, super::ip_addr::IpAddrConversion);
 #[cfg(feature = "std")]
-impl_convert!(std::net::SocketAddrV4, (std::net::Ipv4Addr, u16));
+impl_convert!(
+    std::net::SocketAddrV4,
+    super::ip_addr::SocketAddrV4Conversion
+);
+#[cfg(feature = "std")]
+impl_convert!(
+    std::net::SocketAddrV6,
+    super::ip_addr::SocketAddrV6Conversion
+);
+#[cfg(feature = "std")]
+impl_convert!(std::net::SocketAddr, super::ip_addr::SocketAddrConversion);
 
 impl<T> Encode for PhantomData<T> {
     type Encoder = EmptyCoder;
