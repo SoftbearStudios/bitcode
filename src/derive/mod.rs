@@ -138,6 +138,11 @@ mod tests {
         test!([0, 1, 2], [u8; 3]);
         test!([0, -1, 0, -1, 0, -1, 0], [i8; 7]);
         test!([], [u8; 0]);
+        #[cfg(feature = "uuid")]
+        test!(
+            uuid::uuid!("d1660702-561b-48e7-add0-c222143ca13c"),
+            uuid::Uuid
+        );
     }
 
     #[derive(Encode, Decode)]
