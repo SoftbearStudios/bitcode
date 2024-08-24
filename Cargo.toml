@@ -19,6 +19,7 @@ bitcode_derive = { version = "0.6.3", path = "./bitcode_derive", optional = true
 bytemuck = { version = "1.14", features = [ "min_const_generics", "must_cast" ] }
 glam = { version = ">=0.21", default-features = false, optional = true }
 serde = { version = "1.0", default-features = false, features = [ "alloc" ], optional = true }
+uuid = { version = "1.10", default-features = false, optional = true }
 
 [dev-dependencies]
 arrayvec = { version = "0.7", features = [ "serde" ] }
@@ -39,6 +40,7 @@ zstd = "0.13.0"
 derive = [ "dep:bitcode_derive" ]
 std = [ "serde?/std", "glam?/std", "arrayvec?/std" ]
 default = [ "derive", "std" ]
+uuid = [ "dep:uuid" ]
 
 [package.metadata.docs.rs]
 features = [ "derive", "serde", "std" ]
