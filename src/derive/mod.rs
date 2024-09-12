@@ -5,6 +5,7 @@ use alloc::vec::Vec;
 use core::num::NonZeroUsize;
 
 mod array;
+mod convert_from;
 mod duration;
 mod empty;
 mod impls;
@@ -139,10 +140,7 @@ mod tests {
         test!([0, -1, 0, -1, 0, -1, 0], [i8; 7]);
         test!([], [u8; 0]);
         #[cfg(feature = "uuid")]
-        test!(
-            uuid::uuid!("d1660702-561b-48e7-add0-c222143ca13c"),
-            uuid::Uuid
-        );
+        test!(uuid::Uuid::new_v4(), uuid::Uuid);
     }
 
     #[derive(Encode, Decode)]

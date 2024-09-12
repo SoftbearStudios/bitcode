@@ -187,10 +187,10 @@ impl<'a, T: Decode<'a>, E: Decode<'a>> Decode<'a> for core::result::Result<T, E>
 macro_rules! impl_convert {
     ($want: path, $have: ty) => {
         impl Encode for $want {
-            type Encoder = super::ip_addr::ConvertIntoEncoder<$have>;
+            type Encoder = super::convert_from::ConvertIntoEncoder<$have>;
         }
         impl<'a> Decode<'a> for $want {
-            type Decoder = super::ip_addr::ConvertFromDecoder<'a, $have>;
+            type Decoder = super::convert_from::ConvertFromDecoder<'a, $have>;
         }
     };
 }
@@ -220,6 +220,9 @@ impl_convert!(
 );
 #[cfg(feature = "std")]
 impl_convert!(std::net::SocketAddr, super::ip_addr::SocketAddrConversion);
+
+#[cfg(feature = "uuid")]
+impl_convert!(uuid::Uuid, u128);
 
 impl<T> Encode for PhantomData<T> {
     type Encoder = EmptyCoder;
