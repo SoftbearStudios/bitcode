@@ -197,18 +197,18 @@ macro_rules! impl_convert {
 
 #[cfg(feature = "std")]
 macro_rules! impl_ipvx_addr {
-    ($addr: ident) => {
+    ($addr: ident, $repr: ident) => {
         impl_convert!(
             std::net::$addr,
-            [u8; core::mem::size_of::<std::net::$addr>()]
+            $repr
         );
     };
 }
 
 #[cfg(feature = "std")]
-impl_ipvx_addr!(Ipv4Addr);
+impl_ipvx_addr!(Ipv4Addr, u32);
 #[cfg(feature = "std")]
-impl_ipvx_addr!(Ipv6Addr);
+impl_ipvx_addr!(Ipv6Addr, u128);
 #[cfg(feature = "std")]
 impl_convert!(std::net::IpAddr, super::ip_addr::IpAddrConversion);
 #[cfg(feature = "std")]

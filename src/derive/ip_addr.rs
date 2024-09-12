@@ -4,23 +4,23 @@ use core::num::NonZeroUsize;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 
 macro_rules! ipvx_addr {
-    ($addr: ident) => {
-        impl ConvertFrom<&$addr> for [u8; std::mem::size_of::<$addr>()] {
+    ($addr: ident, $repr: ident) => {
+        impl ConvertFrom<&$addr> for $repr {
             fn convert_from(ip: &$addr) -> Self {
-                ip.octets()
+                (*ip).into()
             }
         }
 
-        impl ConvertFrom<[u8; std::mem::size_of::<$addr>()]> for $addr {
-            fn convert_from(octets: [u8; std::mem::size_of::<$addr>()]) -> Self {
-                Self::from(octets)
+        impl ConvertFrom<$repr> for $addr {
+            fn convert_from(bits: $repr) -> Self {
+                Self::from(bits)
             }
         }
     };
 }
 
-ipvx_addr!(Ipv4Addr);
-ipvx_addr!(Ipv6Addr);
+ipvx_addr!(Ipv4Addr, u32);
+ipvx_addr!(Ipv6Addr, u128);
 
 pub(crate) type IpAddrConversion = std::result::Result<Ipv4Addr, Ipv6Addr>;
 
