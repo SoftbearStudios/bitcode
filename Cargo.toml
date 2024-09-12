@@ -46,3 +46,6 @@ features = [ "derive", "serde", "std" ]
 # TODO halfs speed of benches_borrowed::bench_bitcode_decode
 #[profile.bench]
 #lto = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }

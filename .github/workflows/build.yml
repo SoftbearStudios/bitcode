@@ -11,9 +11,7 @@ env:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -49,3 +47,18 @@ jobs:
         run: rustup target add mips64-unknown-linux-gnuabi64 && cargo miri setup --target mips64-unknown-linux-gnuabi64
       - name: Test (miri big-endian)
         run: cargo miri test --target mips64-unknown-linux-gnuabi64
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+      - name: Install cargo-fuzz
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: cargo-fuzz
+          locked: false
+      - name: Fuzz
+        run: RUST_BACKTRACE=1 cargo fuzz run fuzz -- -max_total_time=900
