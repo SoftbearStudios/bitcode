@@ -198,10 +198,7 @@ macro_rules! impl_convert {
 #[cfg(feature = "std")]
 macro_rules! impl_ipvx_addr {
     ($addr: ident, $repr: ident) => {
-        impl_convert!(
-            std::net::$addr,
-            $repr
-        );
+        impl_convert!(std::net::$addr, $repr);
     };
 }
 
