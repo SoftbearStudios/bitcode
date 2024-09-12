@@ -61,4 +61,4 @@ jobs:
           crate: cargo-fuzz
           locked: false
       - name: Fuzz
-        run: RUST_BACKTRACE=1 cargo fuzz run fuzz -- -max_total_time=60
+        run: RUST_BACKTRACE=1 cargo fuzz run fuzz -- -max_total_time=900
