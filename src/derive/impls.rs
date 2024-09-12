@@ -182,6 +182,45 @@ impl<T: Encode, E: Encode> Encode for core::result::Result<T, E> {
 impl<'a, T: Decode<'a>, E: Decode<'a>> Decode<'a> for core::result::Result<T, E> {
     type Decoder = ResultDecoder<'a, T, E>;
 }
+
+#[cfg(feature = "std")]
+macro_rules! impl_convert {
+    ($want: path, $have: ty) => {
+        impl Encode for $want {
+            type Encoder = super::ip_addr::ConvertIntoEncoder<$have>;
+        }
+        impl<'a> Decode<'a> for $want {
+            type Decoder = super::ip_addr::ConvertFromDecoder<'a, $have>;
+        }
+    };
+}
+
+#[cfg(feature = "std")]
+macro_rules! impl_ipvx_addr {
+    ($addr: ident, $repr: ident) => {
+        impl_convert!(std::net::$addr, $repr);
+    };
+}
+
+#[cfg(feature = "std")]
+impl_ipvx_addr!(Ipv4Addr, u32);
+#[cfg(feature = "std")]
+impl_ipvx_addr!(Ipv6Addr, u128);
+#[cfg(feature = "std")]
+impl_convert!(std::net::IpAddr, super::ip_addr::IpAddrConversion);
+#[cfg(feature = "std")]
+impl_convert!(
+    std::net::SocketAddrV4,
+    super::ip_addr::SocketAddrV4Conversion
+);
+#[cfg(feature = "std")]
+impl_convert!(
+    std::net::SocketAddrV6,
+    super::ip_addr::SocketAddrV6Conversion
+);
+#[cfg(feature = "std")]
+impl_convert!(std::net::SocketAddr, super::ip_addr::SocketAddrConversion);
+
 impl<T> Encode for PhantomData<T> {
     type Encoder = EmptyCoder;
 }

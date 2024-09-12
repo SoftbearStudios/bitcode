@@ -62,6 +62,17 @@ If you have multiple values of the same type:
 - Validation is performed up front on typed vectors before deserialization
 - Code is designed to be auto-vectorized by LLVM
 
+## `serde`
+A `serde` integration is gated behind the `"serde"` feature flag. It is slower, produces
+slightly larger output, and (by extension) is not compatible with the native
+`bitcode::{Encode, Decode}`. Note that:
+- the `serde` version does not support types like
+`serde_json::Value`, which internally serialize different types (numbers, arrays, etc.)
+without a normal enum discriminant.
+- the `serde` version omits
+the `flowinfo` and `scope_id` fields of `std::net::SocketAddrV6`, but native `bitcode`
+keeps them.
+
 ## `#![no_std]`
 All `std`-only functionality is gated behind the (default) `"std"` feature.
 

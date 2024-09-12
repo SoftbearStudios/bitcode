@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::Debug;
 use std::num::NonZeroU32;
 use std::time::Duration;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddr, SocketAddrV6};
 
 #[inline(never)]
 fn test_derive<T: Debug + PartialEq + Encode + DecodeOwned>(data: &[u8]) {
@@ -209,5 +210,11 @@ fuzz_target!(|data: &[u8]| {
         ArrayVec<u8, 5>,
         ArrayVec<u8, 70>,
         Duration,
+        Ipv4Addr,
+        Ipv6Addr,
+        IpAddr,
+        SocketAddrV4,
+        SocketAddrV6,
+        SocketAddr,
     );
 });
