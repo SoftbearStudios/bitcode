@@ -5,6 +5,7 @@ use alloc::vec::Vec;
 use core::num::NonZeroUsize;
 
 mod array;
+mod convert_from;
 mod duration;
 mod empty;
 mod impls;
@@ -16,6 +17,8 @@ mod map;
 mod option;
 mod result;
 mod smart_ptr;
+#[cfg(feature = "uuid")]
+mod uuid;
 mod variant;
 pub(crate) mod vec;
 
@@ -136,6 +139,8 @@ mod tests {
         test!([0, 1, 2], [u8; 3]);
         test!([0, -1, 0, -1, 0, -1, 0], [i8; 7]);
         test!([], [u8; 0]);
+        #[cfg(feature = "uuid")]
+        test!(uuid::Uuid::new_v4(), uuid::Uuid);
     }
 
     #[derive(Encode, Decode)]
