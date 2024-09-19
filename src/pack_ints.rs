@@ -592,6 +592,7 @@ mod tests {
             fn $name() {
                 type T = $t;
                 for increment in [0, 1, u8::MAX as u128 + 1, u16::MAX as u128 + 1, u32::MAX as u128 + 1, u64::MAX as u128 + 1] {
+                    #[allow(irrefutable_let_patterns)]
                     let Ok(increment) = T::try_from(increment) else {
                         continue;
                     };
@@ -603,6 +604,7 @@ mod tests {
                         if max == T::MAX as i128 {
                             continue;
                         }
+                        #[allow(irrefutable_let_patterns)]
                         let Ok(start) = T::try_from(max) else {
                             continue;
                         };

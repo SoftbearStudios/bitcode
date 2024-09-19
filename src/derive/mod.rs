@@ -5,6 +5,7 @@ use alloc::vec::Vec;
 use core::num::NonZeroUsize;
 
 mod array;
+mod convert;
 mod duration;
 mod empty;
 mod impls;
