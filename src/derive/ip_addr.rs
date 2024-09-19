@@ -1,5 +1,5 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use super::convert::ConvertFrom;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 
 macro_rules! ipvx_addr {
     ($addr: ident, $repr: ident) => {
