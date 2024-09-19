@@ -24,7 +24,7 @@ impl<D, T: Encode + for<'a> ConvertFrom<&'a D>> Encoder<D> for ConvertIntoEncode
 }
 
 impl<T: Encode> Buffer for ConvertIntoEncoder<T> {
-    fn collect_into(&mut self, out: &mut Vec<u8>) {
+    fn collect_into(&mut self, out: &mut alloc::vec::Vec<u8>) {
         self.0.collect_into(out);
     }
     fn reserve(&mut self, additional: NonZeroUsize) {
