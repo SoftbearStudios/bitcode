@@ -1,10 +1,9 @@
 use crate::{
-    convert::{self, ConvertFrom},
+    convert::{self, impl_convert, ConvertFrom},
     Decode, Encode,
 };
 use bytemuck::CheckedBitPattern;
 use rust_decimal::Decimal;
-
 type DecimalConversion = (u32, u32, u32, Flags);
 
 impl ConvertFrom<&Decimal> for DecimalConversion {
@@ -31,13 +30,7 @@ impl ConvertFrom<DecimalConversion> for Decimal {
     }
 }
 
-impl Encode for Decimal {
-    type Encoder = convert::ConvertIntoEncoder<DecimalConversion>;
-}
-
-impl<'a> Decode<'a> for Decimal {
-    type Decoder = convert::ConvertFromDecoder<'a, DecimalConversion>;
-}
+impl_convert!(Decimal, DecimalConversion);
 
 impl ConvertFrom<&Flags> for u8 {
     fn convert_from(flags: &Flags) -> Self {
