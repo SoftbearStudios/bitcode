@@ -1,4 +1,5 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
+use crate::datetime::Nanoseconds;
 use crate::{Decode, Encode};
 use alloc::vec::Vec;
 use bytemuck::CheckedBitPattern;
@@ -30,22 +31,6 @@ impl Buffer for DurationEncoder {
 }
 impl Encode for Duration {
     type Encoder = DurationEncoder;
-}
-
-/// A u32 guaranteed to be < 1 billion. Prevents Duration::new from panicking.
-#[derive(Copy, Clone)]
-#[repr(transparent)]
-struct Nanoseconds(u32);
-// Safety: u32 and Nanoseconds have the same layout since Nanoseconds is #[repr(transparent)].
-unsafe impl CheckedBitPattern for Nanoseconds {
-    type Bits = u32;
-    #[inline(always)]
-    fn is_valid_bit_pattern(bits: &Self::Bits) -> bool {
-        *bits < 1_000_000_000
-    }
-}
-impl<'a> Decode<'a> for Nanoseconds {
-    type Decoder = crate::int::CheckedIntDecoder<'a, Nanoseconds, u32>;
 }
 
 #[derive(Default)]
@@ -95,5 +80,5 @@ mod tests {
             .map(|(s, n): (_, u32)| Duration::new(s, n % 1_000_000_000))
             .collect()
     }
-    crate::bench_encode_decode!(duration_vec: Vec<_>);
+    crate::bench_encode_decode!(duration_vec: Vec<Duration>);
 }
