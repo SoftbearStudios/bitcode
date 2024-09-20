@@ -22,7 +22,7 @@ jobs:
           # `i686-unknown-linux-gnu` so we just need to check this page for a
           # compatible nightly:
           # https://rust-lang.github.io/rustup-components-history/mips64-unknown-linux-gnuabi64.html
-          toolchain: nightly-2023-04-25
+          toolchain: nightly-2024-09-17
           override: true
           components: rustfmt, miri
       - name: Lint

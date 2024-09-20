@@ -2,6 +2,21 @@ use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::derive::{Decode, Encode};
 use core::num::NonZeroUsize;
 
+#[allow(unused)]
+macro_rules! impl_convert {
+    ($want: path, $have: ty) => {
+        impl Encode for $want {
+            type Encoder = crate::derive::convert::ConvertIntoEncoder<$have>;
+        }
+        impl<'a> Decode<'a> for $want {
+            type Decoder = crate::derive::convert::ConvertFromDecoder<'a, $have>;
+        }
+    };
+}
+
+#[allow(unused)]
+pub(crate) use impl_convert;
+
 // Like [`From`] but we can implement it ourselves.
 pub(crate) trait ConvertFrom<T>: Sized {
     fn convert_from(value: T) -> Self;
