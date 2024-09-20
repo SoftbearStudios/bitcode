@@ -111,6 +111,7 @@ struct DecoderWrapper<'a, 'de> {
 
 macro_rules! specify {
     ($self:ident, $variant:ident) => {{
+        #[rustfmt::skip]
         match &mut $self.decoder {
             // Check if it's already the correct decoder. This results in 1 branch in the hot path.
             SerdeDecoder::$variant(_) => (),

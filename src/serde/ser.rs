@@ -194,7 +194,6 @@ impl LazyEncoder {
 macro_rules! specify {
     ($wrapper:ident, $variant:ident) => {{
         let lazy = &mut *$wrapper.lazy;
-        #[rustfmt::skip]
         match lazy {
             // Check if it's already the correct encoder. This results in 1 branch in the hot path.
             LazyEncoder::Specified { specified: SpecifiedEncoder::$variant(_), .. } => (),
