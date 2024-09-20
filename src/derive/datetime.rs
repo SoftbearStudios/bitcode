@@ -1,6 +1,9 @@
 use bytemuck::CheckedBitPattern;
 
-use super::Decode;
+use super::{
+    convert::{ConvertFrom, ConvertIntoEncoder},
+    Decode, Encode,
+};
 
 /// A u8 guaranteed to be < 24.
 #[derive(Copy, Clone)]
@@ -13,6 +16,14 @@ unsafe impl CheckedBitPattern for Hour {
     fn is_valid_bit_pattern(bits: &Self::Bits) -> bool {
         *bits < 24
     }
+}
+impl ConvertFrom<&Hour> for u8 {
+    fn convert_from(value: &Hour) -> Self {
+        value.0
+    }
+}
+impl Encode for Hour {
+    type Encoder = ConvertIntoEncoder<u8>;
 }
 impl<'a> Decode<'a> for Hour {
     type Decoder = crate::int::CheckedIntDecoder<'a, Hour, u8>;
@@ -30,6 +41,14 @@ unsafe impl CheckedBitPattern for Minute {
         *bits < 60
     }
 }
+impl ConvertFrom<&Minute> for u8 {
+    fn convert_from(value: &Minute) -> Self {
+        value.0
+    }
+}
+impl Encode for Minute {
+    type Encoder = ConvertIntoEncoder<u8>;
+}
 impl<'a> Decode<'a> for Minute {
     type Decoder = crate::int::CheckedIntDecoder<'a, Minute, u8>;
 }
@@ -46,6 +65,14 @@ unsafe impl CheckedBitPattern for Second {
         *bits < 60
     }
 }
+impl ConvertFrom<&Second> for u8 {
+    fn convert_from(value: &Second) -> Self {
+        value.0
+    }
+}
+impl Encode for Second {
+    type Encoder = ConvertIntoEncoder<u8>;
+}
 impl<'a> Decode<'a> for Second {
     type Decoder = crate::int::CheckedIntDecoder<'a, Second, u8>;
 }
@@ -61,6 +88,14 @@ unsafe impl CheckedBitPattern for Nanoseconds {
     fn is_valid_bit_pattern(bits: &Self::Bits) -> bool {
         *bits < 1_000_000_000
     }
+}
+impl ConvertFrom<&Nanoseconds> for u32 {
+    fn convert_from(value: &Nanoseconds) -> Self {
+        value.0
+    }
+}
+impl Encode for Nanoseconds {
+    type Encoder = ConvertIntoEncoder<u32>;
 }
 impl<'a> Decode<'a> for Nanoseconds {
     type Decoder = crate::int::CheckedIntDecoder<'a, Nanoseconds, u32>;
