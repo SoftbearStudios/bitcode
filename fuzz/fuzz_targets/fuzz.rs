@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::Debug;
 use std::num::NonZeroU32;
 use std::time::Duration;
+use rust_decimal::Decimal;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddr, SocketAddrV6};
 
 #[inline(never)]
@@ -209,6 +210,7 @@ fuzz_target!(|data: &[u8]| {
         ArrayString<70>,
         ArrayVec<u8, 5>,
         ArrayVec<u8, 70>,
+        Decimal,
         Duration,
         Ipv4Addr,
         Ipv6Addr,
