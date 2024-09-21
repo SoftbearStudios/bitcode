@@ -100,3 +100,5 @@ impl Encode for Nanoseconds {
 impl<'a> Decode<'a> for Nanoseconds {
     type Decoder = crate::int::CheckedIntDecoder<'a, Nanoseconds, u32>;
 }
+
+pub type TimeConversion = (Hour, Minute, Second, Nanoseconds);

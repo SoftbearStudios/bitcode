@@ -213,16 +213,6 @@ impl<'a, T> Decode<'a> for PhantomData<T> {
     type Decoder = EmptyCoder;
 }
 
-#[cfg(feature = "time")]
-mod with_time {
-    use crate::convert::impl_convert;
-    use crate::datetime::{Hour, Minute, Nanoseconds, Second};
-    use crate::derive::{Decode, Encode};
-    use time::Time;
-
-    impl_convert!(Time, (Hour, Minute, Second, Nanoseconds));
-}
-
 macro_rules! impl_tuples {
     ($(($($n:tt $name:ident)*))+) => {
         $(
