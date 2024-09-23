@@ -20,13 +20,7 @@ impl ConvertFrom<&Decimal> for DecimalConversion {
 
 impl ConvertFrom<DecimalConversion> for Decimal {
     fn convert_from(value: DecimalConversion) -> Self {
-        let mut ret = Self::from_parts(
-            value.0,
-            value.1,
-            value.2,
-            false,
-            value.3.scale(),
-        );
+        let mut ret = Self::from_parts(value.0, value.1, value.2, false, value.3.scale());
         ret.set_sign_negative(value.3.negative());
         ret
     }
@@ -94,7 +88,7 @@ mod tests {
             Decimal::from(1) / Decimal::from(2),
             Decimal::from(1),
             Decimal::from(999999999999999999u64),
-            Decimal::from_str("3.100").unwrap()
+            Decimal::from_str("3.100").unwrap(),
         ];
         for v in vs {
             let d = decode::<Decimal>(&encode(&v)).unwrap();
