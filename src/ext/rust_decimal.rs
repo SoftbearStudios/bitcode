@@ -20,7 +20,16 @@ impl ConvertFrom<&Decimal> for DecimalConversion {
 
 impl ConvertFrom<DecimalConversion> for Decimal {
     fn convert_from(value: DecimalConversion) -> Self {
-        let mut ret = Self::from_parts(value.0, value.1, value.2, false, value.3.scale());
+        let scale = value.3.scale();
+        // Should make Decimal::from_parts faster, once it can be inlined,
+        // since it can skip division.
+        // Safety: impl CheckedBitPattern for Flags guarantees this.
+        unsafe {
+            if scale > 28 {
+                core::hint::unreachable_unchecked();
+            }
+        }
+        let mut ret = Self::from_parts(value.0, value.1, value.2, false, scale);
         ret.set_sign_negative(value.3.negative());
         ret
     }
