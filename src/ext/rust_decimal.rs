@@ -83,6 +83,7 @@ impl<'a> Decode<'a> for Flags {
 mod tests {
     use crate::{decode, encode};
     use rust_decimal::Decimal;
+    use std::str::FromStr;
 
     #[test]
     fn rust_decimal() {
@@ -93,11 +94,13 @@ mod tests {
             Decimal::from(1) / Decimal::from(2),
             Decimal::from(1),
             Decimal::from(999999999999999999u64),
+            Decimal::from_str("3.100").unwrap()
         ];
         for v in vs {
             let d = decode::<Decimal>(&encode(&v)).unwrap();
             assert_eq!(d, v);
             assert_eq!(d.is_sign_negative(), v.is_sign_negative());
+            assert_eq!(d.scale(), v.scale());
         }
     }
 }
