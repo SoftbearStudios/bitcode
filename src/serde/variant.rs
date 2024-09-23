@@ -10,7 +10,7 @@ pub struct VariantEncoder {
     data: VecImpl<u8>,
 }
 
-impl Encoder for VariantEncoder {
+impl Encoder<u8> for VariantEncoder {
     #[inline(always)]
     fn encode(&mut self, v: &u8) {
         unsafe { self.data.push_unchecked(*v) };
