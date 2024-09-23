@@ -6,13 +6,13 @@ use core::marker::PhantomData;
 use core::num::NonZeroUsize;
 
 #[derive(Default)]
-pub struct VariantEncoder<Index = u8> {
-    data: VecImpl<Index>,
+pub struct VariantEncoder {
+    data: VecImpl<u8>,
 }
 
-impl<Index> Encoder<Index> for VariantEncoder<Index> {
+impl<Index> Encoder for VariantEncoder {
     #[inline(always)]
-    fn encode(&mut self, v: &Index) {
+    fn encode(&mut self, v: &u8) {
         unsafe { self.data.push_unchecked(*v) };
     }
 }
