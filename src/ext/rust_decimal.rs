@@ -20,13 +20,15 @@ impl ConvertFrom<&Decimal> for DecimalConversion {
 
 impl ConvertFrom<DecimalConversion> for Decimal {
     fn convert_from(value: DecimalConversion) -> Self {
-        Self::from_parts(
+        let mut ret = Self::from_parts(
             value.0,
             value.1,
             value.2,
-            value.3.negative(),
+            false,
             value.3.scale(),
-        )
+        );
+        ret.set_sign_negative(value.3.negative());
+        ret
     }
 }
 
@@ -86,13 +88,16 @@ mod tests {
     fn rust_decimal() {
         let vs = [
             Decimal::from(0),
+            Decimal::from_f64_retain(-0f64).unwrap(),
             Decimal::from(-1),
             Decimal::from(1) / Decimal::from(2),
             Decimal::from(1),
             Decimal::from(999999999999999999u64),
         ];
         for v in vs {
-            assert_eq!(decode::<Decimal>(&encode(&v)).unwrap(), v);
+            let d = decode::<Decimal>(&encode(&v)).unwrap();
+            assert_eq!(d, v);
+            assert_eq!(d.is_sign_negative(), v.is_sign_negative());
         }
     }
 }
