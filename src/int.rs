@@ -127,6 +127,38 @@ where
     }
 }
 
+#[allow(unused)]
+macro_rules! ranged_int {
+    ($type: ident, $int: ty, $lower: expr, $upper: expr) => {
+        #[doc = concat!("A ", stringify!($int), " which takes value from ", stringify!($lower), " to ", stringify!($upper))]
+        #[derive(Copy, Clone)]
+        #[repr(transparent)]
+        pub struct $type(pub $int);
+        // Safety: They have the same layout because of #[repr(transparent)].
+        unsafe impl CheckedBitPattern for $type {
+            type Bits = $int;
+            #[inline(always)]
+            fn is_valid_bit_pattern(bits: &Self::Bits) -> bool {
+                ($lower..=$upper).contains(bits)
+            }
+        }
+        impl ConvertFrom<&$type> for $int {
+            fn convert_from(value: &$type) -> Self {
+                value.0
+            }
+        }
+        impl Encode for $type {
+            type Encoder = ConvertIntoEncoder<$int>;
+        }
+        impl<'a> Decode<'a> for $type {
+            type Decoder = crate::int::CheckedIntDecoder<'a, $type, $int>;
+        }
+    };
+}
+
+#[allow(unused)]
+pub(crate) use ranged_int;
+
 #[cfg(test)]
 mod tests {
     use crate::{decode, encode};

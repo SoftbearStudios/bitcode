@@ -1,5 +1,5 @@
 use crate::convert::ConvertFrom;
-use crate::datetime::{Hour, Minute, Nanoseconds, Second, TimeConversion};
+use crate::datetime::{Hour, Minute, Nanosecond, Second, TimeConversion};
 use time::Time;
 
 impl ConvertFrom<&Time> for TimeConversion {
@@ -9,14 +9,14 @@ impl ConvertFrom<&Time> for TimeConversion {
             Hour(hour),
             Minute(minute),
             Second(second),
-            Nanoseconds(nanosecond),
+            Nanosecond(nanosecond),
         )
     }
 }
 
 impl ConvertFrom<TimeConversion> for Time {
-    fn convert_from(value: (Hour, Minute, Second, Nanoseconds)) -> Self {
-        let (Hour(hour), Minute(minute), Second(second), Nanoseconds(nanosecond)) = value;
+    fn convert_from(value: (Hour, Minute, Second, Nanosecond)) -> Self {
+        let (Hour(hour), Minute(minute), Second(second), Nanosecond(nanosecond)) = value;
         // Safety: should not fail because all input values are validated with CheckedBitPattern.
         unsafe { Time::from_hms_nano(hour, minute, second, nanosecond).unwrap_unchecked() }
     }
