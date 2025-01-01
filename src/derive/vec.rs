@@ -53,28 +53,33 @@ macro_rules! unsafe_wild_copy {
     ([$T:ident; $N:ident], $src:ident, $dst:ident, $n:ident) => {
         debug_assert!($n != 0 && $n <= $N);
 
-        let page_size = 4096;
-        let read_size = core::mem::size_of::<[$T; $N]>();
-        let within_page = $src as usize & (page_size - 1) < (page_size - read_size) && cfg!(all(
-            // Miri doesn't like this.
-            not(miri),
-            // cargo fuzz's memory sanitizer complains about buffer overrun.
-            // Without nightly we can't detect memory sanitizers, so we check debug_assertions.
-            not(debug_assertions),
-            // x86/x86_64/aarch64 all have min page size of 4096, so reading past the end of a non-empty
-            // buffer won't page fault.
-            any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")
-        ));
+        // Note: Neither Miri nor the fuzzer's memory sanitizer like this feature. We prevent
+        // the latter from seeing it with `not(debug_assertions)`.
+        #[cfg(all(feature = "unsound", not(debug_assertions)))]
+        {
+            let page_size = 4096;
+            let read_size = core::mem::size_of::<[$T; $N]>();
+            let within_page = $src as usize & (page_size - 1) < (page_size - read_size) && cfg!(any(
+                // x86/x86_64/aarch64 all have min page size of 4096, so reading past the end of a non-empty
+                // buffer won't page fault.
+                target_arch = "x86",
+                target_arch = "x86_64",
+                target_arch = "aarch64",
+            ));
 
-        if within_page {
-            *($dst as *mut core::mem::MaybeUninit<[$T; $N]>) = core::ptr::read($src as *const core::mem::MaybeUninit<[$T; $N]>);
-        } else {
-            #[cold]
-            unsafe fn cold<T>(src: *const T, dst: *mut T, n: usize) {
-                src.copy_to_nonoverlapping(dst, n);
+            if within_page {
+                *($dst as *mut core::mem::MaybeUninit<[$T; $N]>) = core::ptr::read($src as *const core::mem::MaybeUninit<[$T; $N]>);
+            } else {
+                #[cold]
+                unsafe fn cold<T>(src: *const T, dst: *mut T, n: usize) {
+                    src.copy_to_nonoverlapping(dst, n);
+                }
+                cold($src, $dst, $n);
             }
-            cold($src, $dst, $n);
         }
+
+        #[cfg(any(not(feature = "unsound"), debug_assertions))]
+        $src.copy_to_nonoverlapping($dst, $n);
     }
 }
 pub(crate) use unsafe_wild_copy;

@@ -6,7 +6,7 @@ members = [
 [package]
 name = "bitcode"
 authors = [ "Cai Bear", "Finn Bear" ]
-version = "0.6.3"
+version = "0.6.4"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/SoftbearStudios/bitcode"
@@ -38,6 +38,7 @@ zstd = "0.13.0"
 [features]
 derive = [ "dep:bitcode_derive" ]
 std = [ "serde?/std", "glam?/std", "arrayvec?/std" ]
+unsound = [] # use benign undefined behavior for more performance. Miri will detect this. See GitHub Wiki "Security".
 default = [ "derive", "std" ]
 
 [package.metadata.docs.rs]
