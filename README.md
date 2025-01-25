@@ -17,7 +17,6 @@ See [rust_serialization_benchmark](https://github.com/djkoloski/rust_serializati
 
 ## Example
 ```rust
-# extern crate alloc;
 use bitcode::{Encode, Decode};
 
 #[derive(Encode, Decode, PartialEq, Debug)]

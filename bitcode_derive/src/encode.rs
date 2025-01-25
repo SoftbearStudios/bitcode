@@ -253,12 +253,6 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
         let encoder_ty = quote! { #encoder_ident #encoder_generics };
         let private = private(crate_name);
 
-        #[cfg(feature = "std")]
-        let vec_crate = Ident::new("std", Span::call_site());
-
-        #[cfg(not(feature = "std"))]
-        let vec_crate = Ident::new("alloc", Span::call_site());
-
         quote! {
             const _: () = {
                 impl #impl_generics #private::Encode for #input_ty #where_clause {
@@ -297,7 +291,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
                 }
 
                 impl #encoder_impl_generics #private::Buffer for #encoder_ty #encoder_where_clause {
-                    fn collect_into(&mut self, out: &mut #vec_crate::vec::Vec<u8>) {
+                    fn collect_into(&mut self, out: &mut #private::Vec<u8>) {
                         #collect_into_body
                     }
 
