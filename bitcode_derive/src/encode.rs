@@ -291,7 +291,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
                 }
 
                 impl #encoder_impl_generics #private::Buffer for #encoder_ty #encoder_where_clause {
-                    fn collect_into(&mut self, out: &mut Vec<u8>) {
+                    fn collect_into(&mut self, out: &mut #private::Vec<u8>) {
                         #collect_into_body
                     }
 
