@@ -36,8 +36,25 @@ mod inner {
         })?;
         Ok(lazy.collect(index_alloc))
     }
+
+    /// Serializes a `T:` [`Serialize`] into an existing [`Vec<u8>`].
+    ///
+    /// **Warning:** The format is incompatible with [`decode`][`crate::decode`] and subject to
+    /// change between major versions.
+    pub fn serialize_into<T: Serialize + ?Sized>(t: &T, out: &mut Vec<u8>) -> Result<(), Error> {
+        let mut lazy = LazyEncoder::Unspecified {
+            reserved: NonZeroUsize::new(1),
+        };
+        let mut index_alloc = 0;
+        t.serialize(EncoderWrapper {
+            lazy: &mut lazy,
+            index_alloc: &mut index_alloc,
+        })?;
+        lazy.collect_into(index_alloc, out);
+        Ok(())
+    }
 }
-pub use inner::serialize;
+pub use inner::{serialize, serialize_into};
 
 enum SpecifiedEncoder {
     Bool(BoolEncoder),
@@ -114,6 +131,13 @@ impl Default for LazyEncoder {
 impl LazyEncoder {
     /// Analogous [`Buffer::collect`], but requires `index_alloc` from serialization.
     fn collect(&mut self, index_alloc: usize) -> Vec<u8> {
+        let mut bytes = vec![];
+        self.collect_into(index_alloc, &mut bytes);
+        bytes
+    }
+
+    /// Analogous [`Buffer::collect_into`], but requires `index_alloc` from serialization.
+    fn collect_into(&mut self, index_alloc: usize, bytes: &mut Vec<u8>) {
         // If we just wrote out the buffers in field order we wouldn't be able to deserialize them
         // since we might learn their types from serde in a different order.
         //
@@ -125,11 +149,10 @@ impl LazyEncoder {
         let mut buffers = default_box_slice(index_alloc);
         self.reorder(&mut buffers);
 
-        let mut bytes = vec![];
-        for buffer in Vec::from(buffers).into_iter().flatten() {
-            buffer.collect_into(&mut bytes);
+        bytes.clear();
+        for buffer in buffers.iter_mut().flatten() {
+            buffer.collect_into(bytes);
         }
-        bytes
     }
 
     fn reorder<'a>(&'a mut self, buffers: &mut [Option<&'a mut dyn Buffer>]) {
