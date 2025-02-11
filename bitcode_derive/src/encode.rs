@@ -53,7 +53,7 @@ impl crate::shared::Item for Item {
                     // does not exist. Instead we replace this with <T<'static> as Encode>::Encoder and transmute it to
                     // T<'a>. No encoder actually encodes T<'static> any differently from T<'a> so this is sound.
                     quote! {
-                        unsafe { core::mem::transmute::<&#underscore_type, &#static_type>(#field_name) }
+                        unsafe { ::core::mem::transmute::<&#underscore_type, &#static_type>(#field_name) }
                     }
                 } else {
                     quote! { #field_name }
@@ -159,7 +159,7 @@ impl crate::shared::Item for Item {
                             .then(|| {
                                 let reserve = inner(Self::Reserve, i);
                                 quote! {
-                                    let __additional = core::num::NonZeroUsize::MIN;
+                                    let __additional = ::core::num::NonZeroUsize::MIN;
                                     #reserve
                                 }
                             })
@@ -265,7 +265,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
                 }
 
                 // Avoids bounding #impl_generics: Default.
-                impl #encoder_impl_generics core::default::Default for #encoder_ty #encoder_where_clause {
+                impl #encoder_impl_generics ::core::default::Default for #encoder_ty #encoder_where_clause {
                     fn default() -> Self {
                         Self {
                             #default_body
@@ -295,7 +295,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
                         #collect_into_body
                     }
 
-                    fn reserve(&mut self, __additional: core::num::NonZeroUsize) {
+                    fn reserve(&mut self, __additional: ::core::num::NonZeroUsize) {
                         #reserve_body
                     }
                 }
