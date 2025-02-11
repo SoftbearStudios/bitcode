@@ -165,7 +165,7 @@ impl crate::shared::Item for Item {
                 if never {
                     return quote! {
                         // Safety: View::populate will error on length != 0 so decode won't be called.
-                        unsafe { core::hint::unreachable_unchecked() }
+                        unsafe { ::core::hint::unreachable_unchecked() }
                     };
                 }
                 let pattern = |i: usize| {
@@ -197,7 +197,7 @@ impl crate::shared::Item for Item {
                             match self.variants.decode() {
                                 #variants
                                 // Safety: VariantDecoder<N, _>::decode outputs numbers less than N.
-                                _ => unsafe { core::hint::unreachable_unchecked() }
+                                _ => unsafe { ::core::hint::unreachable_unchecked() }
                             }
                         }
                     })
@@ -276,7 +276,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
 
         let [mut type_body, mut default_body, populate_body, decode_in_place_body] = output;
         if type_body.is_empty() {
-            type_body = quote! { __spooky: core::marker::PhantomData<&#de ()>, };
+            type_body = quote! { __spooky: ::core::marker::PhantomData<&#de ()>, };
         }
         if default_body.is_empty() {
             default_body = quote! { __spooky: Default::default(), };
@@ -298,7 +298,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
                 }
 
                 // Avoids bounding #impl_generics: Default.
-                impl #decoder_impl_generics core::default::Default for #decoder_ty #decoder_where_clause {
+                impl #decoder_impl_generics ::core::default::Default for #decoder_ty #decoder_where_clause {
                     fn default() -> Self {
                         Self {
                             #default_body
@@ -315,7 +315,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
 
                 impl #impl_generics #private::Decoder<#de, #input_ty> for #decoder_ty #where_clause {
                     #[cfg_attr(not(debug_assertions), inline(always))]
-                    fn decode_in_place(&mut self, out: &mut core::mem::MaybeUninit<#input_ty>) {
+                    fn decode_in_place(&mut self, out: &mut ::core::mem::MaybeUninit<#input_ty>) {
                         #decode_in_place_body
                     }
                 }
