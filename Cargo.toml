@@ -38,6 +38,7 @@ zstd = "0.13.0"
 [features]
 derive = [ "dep:bitcode_derive" ]
 std = [ "serde?/std", "glam?/std", "arrayvec?/std" ]
+unsound = [] # use benign undefined behavior for more performance. Miri will detect this. See GitHub Wiki "Security".
 default = [ "derive", "std" ]
 
 [package.metadata.docs.rs]
