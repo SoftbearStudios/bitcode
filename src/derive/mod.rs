@@ -5,6 +5,7 @@ use alloc::vec::Vec;
 use core::num::NonZeroUsize;
 
 mod array;
+mod atomic;
 pub(crate) mod convert;
 mod duration;
 mod empty;
