@@ -8,6 +8,7 @@ name = "bitcode"
 authors = [ "Cai Bear", "Finn Bear" ]
 version = "0.6.5"
 edition = "2021"
+rust-version = "1.70"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/SoftbearStudios/bitcode"
 description = "bitcode is a bitwise binary serializer"

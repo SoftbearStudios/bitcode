@@ -47,6 +47,20 @@ jobs:
         run: rustup target add mips64-unknown-linux-gnuabi64 && cargo miri setup --target mips64-unknown-linux-gnuabi64
       - name: Test (miri big-endian)
         run: cargo miri test --target mips64-unknown-linux-gnuabi64
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+      - name: Install cargo-msrv
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: cargo-msrv
+          locked: false
+      - name: Verify MSRV
+        run: cargo msrv verify --ignore-lockfile
   fuzz:
     runs-on: ubuntu-latest
     steps:
