@@ -7,9 +7,9 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Debug;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::num::NonZeroU32;
 use std::time::Duration;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddr, SocketAddrV6};
 
 #[inline(never)]
 fn test_derive<T: Debug + PartialEq + Encode + DecodeOwned>(data: &[u8]) {
@@ -216,5 +216,6 @@ fuzz_target!(|data: &[u8]| {
         SocketAddrV4,
         SocketAddrV6,
         SocketAddr,
+        time::Time,
     );
 });
