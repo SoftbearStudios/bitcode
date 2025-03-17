@@ -24,6 +24,8 @@ macro_rules! atomic_impl {
         impl super::convert::ConvertFrom<&$atomic> for $repr {
             #[inline(always)]
             fn convert_from(atomic: &$atomic) -> Self {
+                // `Relaxed` matches `Debug` and `serde::Serialize`. It is your responsiblity to avoid
+                // race conditions, such as by excluding or fencing operations from other threads.
                 atomic.load(Relaxed)
             }
         }
@@ -65,7 +67,6 @@ mod tests {
     use crate::{decode, encode};
     use core::sync::atomic::*;
 
-    #[allow(unused)]
     #[test]
     fn test_atomic() {
         macro_rules! atomic_test {
