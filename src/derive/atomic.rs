@@ -22,12 +22,14 @@ macro_rules! atomic_impl {
         $(
         #[cfg(target_has_atomic = $size)]
         impl super::convert::ConvertFrom<&$atomic> for $repr {
+            #[inline(always)]
             fn convert_from(atomic: &$atomic) -> Self {
                 atomic.load(Relaxed)
             }
         }
         #[cfg(target_has_atomic = $size)]
         impl super::convert::ConvertFrom<$repr> for $atomic {
+            #[inline(always)]
             fn convert_from(bits: $repr) -> Self {
                 Self::from(bits)
             }
