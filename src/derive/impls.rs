@@ -109,6 +109,7 @@ macro_rules! impl_smart_ptr {
 }
 impl_smart_ptr!(::alloc::boxed::Box);
 impl_smart_ptr!(::alloc::rc::Rc);
+#[cfg(target_has_atomic = "ptr")]
 impl_smart_ptr!(::alloc::sync::Arc);
 
 impl<T: Encode, const N: usize> Encode for [T; N] {
