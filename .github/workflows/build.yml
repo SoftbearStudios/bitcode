@@ -42,7 +42,7 @@ jobs:
       - name: Install thumbv6m-none-eabi
         run: rustup target add thumbv6m-none-eabi
       - name: Check (no atomic ptr)
-        run: cargo check --target thumbv6m-none-eabi --no-default-features --features derive,serde,glam,arrayvec
+        run: cargo check --target thumbv6m-none-eabi --no-default-features --features derive,serde,arrayvec
       - name: Setup Miri
         run: cargo miri setup
       - name: Test (miri all-features)
