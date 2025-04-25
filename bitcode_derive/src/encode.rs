@@ -3,6 +3,7 @@ use crate::shared::{remove_lifetimes, replace_lifetimes, variant_index};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use syn::{parse_quote, Generics, Path, Type};
+use crate::attribute::BitcodeAttrs;
 
 #[derive(Copy, Clone)]
 pub enum Item {
@@ -32,8 +33,13 @@ impl crate::shared::Item for Item {
         global_field_name: TokenStream,
         real_field_name: TokenStream,
         field_type: &Type,
-    ) -> TokenStream {
-        match self {
+        field_attrs: &BitcodeAttrs,
+    ) -> Option<TokenStream> {
+        if field_attrs.do_skip {
+            return None;
+        }
+
+        Some(match self {
             Self::Type => {
                 let static_type = replace_lifetimes(field_type, "static");
                 let private = private(crate_name);
@@ -78,7 +84,7 @@ impl crate::shared::Item for Item {
             Self::Reserve => quote! {
                 self.#global_field_name.reserve(__additional);
             },
-        }
+        })
     }
 
     fn struct_impl(

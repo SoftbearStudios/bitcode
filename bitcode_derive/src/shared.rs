@@ -22,7 +22,8 @@ pub trait Item: Copy + Sized {
         global_field_name: TokenStream,
         real_field_name: TokenStream,
         field_type: &Type,
-    ) -> TokenStream;
+        field_attrs: &BitcodeAttrs,
+    ) -> Option<TokenStream>;
 
     fn struct_impl(
         self,
@@ -44,11 +45,13 @@ pub trait Item: Copy + Sized {
         crate_name: &Path,
         global_prefix: Option<&str>,
         fields: &Fields,
+        attrs: &Vec<BitcodeAttrs>,
     ) -> TokenStream {
         fields
             .iter()
             .enumerate()
-            .map(move |(i, field)| {
+            .filter_map(move |(i, field)| {
+                let attrs = &attrs[i];
                 let name = field_name(i, field, false);
                 let real_name = field_name(i, field, true);
                 let global_name = global_prefix
@@ -59,7 +62,7 @@ pub trait Item: Copy + Sized {
                     })
                     .unwrap_or_else(|| name.clone());
 
-                self.field_impl(crate_name, name, global_name, real_name, &field.ty)
+                self.field_impl(crate_name, name, global_name, real_name, &field.ty, attrs)
             })
             .collect()
     }
@@ -106,14 +109,13 @@ pub trait Derive<const ITEM_COUNT: usize> {
 
         let output = match input.data {
             Data::Struct(DataStruct { ref fields, .. }) => {
-                // Only used for adding `bounds`. Would be used by `#[bitcode(with_serde)]`.
+                // Used for adding `bounds` and skipping fields. Would be used by `#[bitcode(with_serde)]`.
                 let field_attrs =
                     self.field_attrs(&attrs.crate_name, fields, &attrs, &mut bounds)?;
-                let _ = field_attrs;
 
                 let destructure_fields = &destructure_fields(fields);
                 Self::ALL.map(|item| {
-                    let field_impls = item.field_impls(&attrs.crate_name, None, fields);
+                    let field_impls = item.field_impls(&attrs.crate_name, None, fields, &field_attrs);
                     item.struct_impl(&ident, destructure_fields, &field_impls)
                 })
             }
@@ -126,7 +128,7 @@ pub trait Derive<const ITEM_COUNT: usize> {
                     );
                 }
 
-                // Only used for adding `bounds`. Would be used by `#[bitcode(with_serde)]`.
+                // Used for adding `bounds` and skipping fields. Would be used by `#[bitcode(with_serde)]`.
                 let variant_attrs = data_enum
                     .variants
                     .iter()
@@ -135,7 +137,6 @@ pub trait Derive<const ITEM_COUNT: usize> {
                         self.field_attrs(&attrs.crate_name, &variant.fields, &attrs, &mut bounds)
                     })
                     .collect::<Result<Vec<_>>>()?;
-                let _ = variant_attrs;
 
                 Self::ALL.map(|item| {
                     item.enum_impl(
@@ -151,11 +152,13 @@ pub trait Derive<const ITEM_COUNT: usize> {
                         },
                         |item, i| {
                             let variant = &data_enum.variants[i];
+                            let variant_attrs = &variant_attrs[i];
                             let global_prefix = format!("{}_", &variant.ident);
                             item.field_impls(
                                 &attrs.crate_name,
                                 Some(&global_prefix),
                                 &variant.fields,
+                                variant_attrs,
                             )
                         },
                     )
