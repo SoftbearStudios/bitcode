@@ -44,35 +44,23 @@ impl crate::shared::Item for Item {
         field_attrs: &BitcodeAttrs,
     ) -> Option<TokenStream> {
         match self {
-            Self::Type => {
-                if field_attrs.do_skip {
-                    None
-                } else {
-                    let de_type = replace_lifetimes(field_type, DE_LIFETIME);
-                    let private = private(crate_name);
-                    let de = de_lifetime();
-                    Some(quote! {
-                        #global_field_name: <#de_type as #private::Decode<#de>>::Decoder,
-                    })
-                }
+            Self::Type if !field_attrs.do_skip => {
+                let de_type = replace_lifetimes(field_type, DE_LIFETIME);
+                let private = private(crate_name);
+                let de = de_lifetime();
+                Some(quote! {
+                    #global_field_name: <#de_type as #private::Decode<#de>>::Decoder,
+                })
             }
-            Self::Default => {
-                if field_attrs.do_skip {
-                    None
-                } else {
-                    Some(quote! {
-                        #global_field_name: Default::default(),
-                    })
-                }
+            Self::Default if !field_attrs.do_skip => {
+                Some(quote! {
+                    #global_field_name: Default::default(),
+                })
             },
-            Self::Populate => {
-                if field_attrs.do_skip {
-                    None
-                } else {
-                    Some(quote! {
-                        self.#global_field_name.populate(input, __length)?;
-                    })
-                }
+            Self::Populate if !field_attrs.do_skip => {
+                Some(quote! {
+                    self.#global_field_name.populate(input, __length)?;
+                })
             },
             // Only used by enum variants.
             Self::Decode => Some(
@@ -100,6 +88,7 @@ impl crate::shared::Item for Item {
                     }}
                 }
             }),
+            _ => None,
         }
     }
 
