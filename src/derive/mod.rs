@@ -129,7 +129,7 @@ mod tests {
                 assert_eq!(v, super::decode::<$t>(&encoded).unwrap());
             };
         }
-        
+
         macro_rules! test_skip {
             ($a:expr, $b:expr, $t:ty) => {
                 let v = $a;
@@ -149,16 +149,38 @@ mod tests {
         test!([0, 1, 2], [u8; 3]);
         test!([0, -1, 0, -1, 0, -1, 0], [i8; 7]);
         test!([], [u8; 0]);
-        test_skip!(SkipStruct { a: 231, b: 9696 }, SkipStruct { a: 231, b: 0 }, SkipStruct);
-        test_skip!(SkipTuple(true, 23, 231, 42, -13), SkipTuple(true, 0, 231, 0, -13), SkipTuple);
+        test_skip!(
+            SkipStruct { a: 231, b: 9696 },
+            SkipStruct { a: 231, b: 0 },
+            SkipStruct
+        );
+        test_skip!(
+            SkipTuple(true, 23, 231, 42, -13),
+            SkipTuple(true, 0, 231, 0, -13),
+            SkipTuple
+        );
         test_skip!(
             SkipEnumTuple::B(true, -23, 231, 'b', -42),
             SkipEnumTuple::B(true, 0, 231, 0 as char, -42),
-            SkipEnumTuple);
+            SkipEnumTuple
+        );
         test_skip!(
-            SkipEnumStruct::A { a: 1, b: 2, c: 3, d: 4, e: 5 },
-            SkipEnumStruct::A { a: 1, b: 0, c: 3, d: 0, e: 5 },
-            SkipEnumStruct);
+            SkipEnumStruct::A {
+                a: 1,
+                b: 2,
+                c: 3,
+                d: 4,
+                e: 5
+            },
+            SkipEnumStruct::A {
+                a: 1,
+                b: 0,
+                c: 3,
+                d: 0,
+                e: 5
+            },
+            SkipEnumStruct
+        );
     }
 
     #[derive(Encode, Decode)]
@@ -220,15 +242,13 @@ mod tests {
     }
 
     #[derive(Encode, Decode, Debug, PartialEq)]
-    #[allow(dead_code)]
     struct SkipStruct {
         pub a: u32,
         #[bitcode(skip)]
         pub b: u32,
     }
-    
+
     #[derive(Encode, Decode, Debug, PartialEq)]
-    #[allow(dead_code)]
     struct SkipTuple(bool, #[bitcode(skip)] u32, u8, #[bitcode(skip)] u8, i32);
 
     #[derive(Encode, Decode, Debug, PartialEq)]
@@ -238,7 +258,6 @@ mod tests {
     }
 
     #[derive(Encode, Decode, Debug, PartialEq)]
-    #[allow(dead_code)]
     enum SkipEnumStruct {
         A {
             a: u8,

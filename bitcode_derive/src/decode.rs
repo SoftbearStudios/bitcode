@@ -1,3 +1,4 @@
+use crate::attribute::BitcodeAttrs;
 use crate::private;
 use crate::shared::{remove_lifetimes, replace_lifetimes, variant_index};
 use proc_macro2::{Ident, Span, TokenStream};
@@ -6,7 +7,6 @@ use syn::{
     parse_quote, GenericParam, Generics, Lifetime, LifetimeParam, Path, PredicateLifetime, Type,
     WherePredicate,
 };
-use crate::attribute::BitcodeAttrs;
 
 const DE_LIFETIME: &str = "__de";
 fn de_lifetime() -> Lifetime {
@@ -52,28 +52,22 @@ impl crate::shared::Item for Item {
                     #global_field_name: <#de_type as #private::Decode<#de>>::Decoder,
                 })
             }
-            Self::Default if !field_attrs.do_skip => {
-                Some(quote! {
-                    #global_field_name: Default::default(),
-                })
-            },
-            Self::Populate if !field_attrs.do_skip => {
-                Some(quote! {
-                    self.#global_field_name.populate(input, __length)?;
-                })
-            },
+            Self::Default if !field_attrs.do_skip => Some(quote! {
+                #global_field_name: Default::default(),
+            }),
+            Self::Populate if !field_attrs.do_skip => Some(quote! {
+                self.#global_field_name.populate(input, __length)?;
+            }),
             // Only used by enum variants.
-            Self::Decode => Some(
-                if field_attrs.do_skip {
-                    quote! {
-                        let #field_name = ::core::default::Default::default();
-                    }
-                } else {
-                    quote! {
-                        let #field_name = self.#global_field_name.decode();
-                    }
+            Self::Decode => Some(if field_attrs.do_skip {
+                quote! {
+                    let #field_name = ::core::default::Default::default();
                 }
-            ),
+            } else {
+                quote! {
+                    let #field_name = self.#global_field_name.decode();
+                }
+            }),
             Self::DecodeInPlace => Some({
                 let de_type = replace_lifetimes(field_type, DE_LIFETIME);
                 let private = private(crate_name);

@@ -1,9 +1,9 @@
+use crate::attribute::BitcodeAttrs;
 use crate::private;
 use crate::shared::{remove_lifetimes, replace_lifetimes, variant_index};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use syn::{parse_quote, Generics, Path, Type};
-use crate::attribute::BitcodeAttrs;
 
 #[derive(Copy, Clone)]
 pub enum Item {
@@ -96,6 +96,7 @@ impl crate::shared::Item for Item {
         match self {
             Self::Encode => {
                 quote! {
+                    #[allow(unused_variables)]
                     let #ident #destructure_fields = v;
                     #do_fields
                 }

@@ -115,7 +115,8 @@ pub trait Derive<const ITEM_COUNT: usize> {
 
                 let destructure_fields = &destructure_fields(fields);
                 Self::ALL.map(|item| {
-                    let field_impls = item.field_impls(&attrs.crate_name, None, fields, &field_attrs);
+                    let field_impls =
+                        item.field_impls(&attrs.crate_name, None, fields, &field_attrs);
                     item.struct_impl(&ident, destructure_fields, &field_impls)
                 })
             }
@@ -147,6 +148,7 @@ pub trait Derive<const ITEM_COUNT: usize> {
                             let variant_name = &variant.ident;
                             let destructure_fields = destructure_fields(&variant.fields);
                             quote! {
+                                #[allow(unused_variables)]
                                 #ident::#variant_name #destructure_fields
                             }
                         },
