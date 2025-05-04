@@ -167,14 +167,14 @@ mod tests {
         test_skip!(
             SkipEnumStruct::A {
                 a: 1,
-                b: 2,
+                b: Skipped(2),
                 c: 3,
                 d: 4,
                 e: 5
             },
             SkipEnumStruct::A {
                 a: 1,
-                b: 0,
+                b: Skipped(0),
                 c: 3,
                 d: 0,
                 e: 5
@@ -257,12 +257,15 @@ mod tests {
         B(bool, #[bitcode(skip)] i8, u8, #[bitcode(skip)] char, i32),
     }
 
+    #[derive(Default, Debug, PartialEq)]
+    struct Skipped(u32);
+
     #[derive(Encode, Decode, Debug, PartialEq)]
     enum SkipEnumStruct {
         A {
             a: u8,
             #[bitcode(skip)]
-            b: u8,
+            b: Skipped,
             c: u8,
             #[bitcode(skip)]
             d: u8,
