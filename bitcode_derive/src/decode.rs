@@ -1,3 +1,4 @@
+use crate::attribute::BitcodeAttrs;
 use crate::private;
 use crate::shared::{remove_lifetimes, replace_lifetimes, variant_index};
 use proc_macro2::{Ident, Span, TokenStream};
@@ -40,33 +41,48 @@ impl crate::shared::Item for Item {
         global_field_name: TokenStream,
         real_field_name: TokenStream,
         field_type: &Type,
-    ) -> TokenStream {
+        field_attrs: &BitcodeAttrs,
+    ) -> Option<TokenStream> {
         match self {
-            Self::Type => {
+            Self::Type if !field_attrs.do_skip => {
                 let de_type = replace_lifetimes(field_type, DE_LIFETIME);
                 let private = private(crate_name);
                 let de = de_lifetime();
-                quote! {
+                Some(quote! {
                     #global_field_name: <#de_type as #private::Decode<#de>>::Decoder,
-                }
+                })
             }
-            Self::Default => quote! {
+            Self::Default if !field_attrs.do_skip => Some(quote! {
                 #global_field_name: Default::default(),
-            },
-            Self::Populate => quote! {
+            }),
+            Self::Populate if !field_attrs.do_skip => Some(quote! {
                 self.#global_field_name.populate(input, __length)?;
-            },
+            }),
             // Only used by enum variants.
-            Self::Decode => quote! {
-                let #field_name = self.#global_field_name.decode();
-            },
-            Self::DecodeInPlace => {
+            Self::Decode => Some(if field_attrs.do_skip {
+                quote! {
+                    let #field_name = ::core::default::Default::default();
+                }
+            } else {
+                quote! {
+                    let #field_name = self.#global_field_name.decode();
+                }
+            }),
+            Self::DecodeInPlace => Some({
                 let de_type = replace_lifetimes(field_type, DE_LIFETIME);
                 let private = private(crate_name);
-                quote! {
-                    self.#global_field_name.decode_in_place(#private::uninit_field!(out.#real_field_name: #de_type));
+                if !field_attrs.do_skip {
+                    quote! {
+                        self.#global_field_name.decode_in_place(#private::uninit_field!(out.#real_field_name: #de_type));
+                    }
+                } else {
+                    quote! {{
+                        let f = #private::uninit_field!(out.#real_field_name: #de_type);
+                        f.write(::core::default::Default::default());
+                    }}
                 }
-            }
+            }),
+            _ => None,
         }
     }
 
