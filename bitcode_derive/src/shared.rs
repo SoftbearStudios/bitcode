@@ -23,7 +23,7 @@ pub trait Item: Copy + Sized {
         real_field_name: TokenStream,
         field_type: &Type,
         field_attrs: &BitcodeAttrs,
-    ) -> Option<TokenStream>;
+    ) -> TokenStream;
 
     fn struct_impl(
         self,
@@ -50,7 +50,7 @@ pub trait Item: Copy + Sized {
         fields
             .iter()
             .enumerate()
-            .filter_map(move |(i, field)| {
+            .map(move |(i, field)| {
                 let attrs = &attrs[i];
                 let name = field_name(i, field, false);
                 let real_name = field_name(i, field, true);

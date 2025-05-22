@@ -42,7 +42,7 @@ impl crate::shared::Item for Item {
         real_field_name: TokenStream,
         field_type: &Type,
         field_attrs: &BitcodeAttrs,
-    ) -> Option<TokenStream> {
+    ) -> TokenStream {
         match self {
             Self::Type => {
                 let mut de_type = replace_lifetimes(field_type, DE_LIFETIME).to_token_stream();
@@ -51,27 +51,29 @@ impl crate::shared::Item for Item {
                 }
                 let private = private(crate_name);
                 let de = de_lifetime();
-                Some(quote! {
+                quote! {
                     #global_field_name: <#de_type as #private::Decode<#de>>::Decoder,
-                })
+                }
             }
-            Self::Default => Some(quote! {
+            Self::Default => quote! {
                 #global_field_name: Default::default(),
-            }),
-            Self::Populate => Some(quote! {
+            },
+            Self::Populate => quote! {
                 self.#global_field_name.populate(input, __length)?;
-            }),
+            },
             // Only used by enum variants.
-            Self::Decode => Some(if !field_attrs.do_skip {
-                quote! {
-                    let #field_name = self.#global_field_name.decode();
+            Self::Decode => {
+                if !field_attrs.do_skip {
+                    quote! {
+                        let #field_name = self.#global_field_name.decode();
+                    }
+                } else {
+                    quote! {
+                        let #field_name = Default::default();
+                    }
                 }
-            } else {
-                quote! {
-                    let #field_name = Default::default();
-                }
-            }),
-            Self::DecodeInPlace => Some({
+            }
+            Self::DecodeInPlace => {
                 let de_type = replace_lifetimes(field_type, DE_LIFETIME);
                 let private = private(crate_name);
                 if !field_attrs.do_skip {
@@ -84,7 +86,7 @@ impl crate::shared::Item for Item {
                         f.write(::core::default::Default::default());
                     }}
                 }
-            }),
+            }
         }
     }
 
