@@ -153,9 +153,13 @@ mod tests {
             };
         }
 
-        let skipped_string = "I'm skipped!".to_string();
-        let lifetime = LifetimeSkipped(&skipped_string);
-        test_skip!(lifetime, LifetimeSkipped(""), LifetimeSkipped);
+        #[cfg(feature = "std")]
+        {
+            let skipped_string = String::from("I'm skipped!");
+            let lifetime = LifetimeSkipped(&skipped_string);
+            test_skip!(lifetime, LifetimeSkipped(""), LifetimeSkipped);
+        }
+
         test_skip!(
             SkipStruct { a: 231, b: 9696 },
             SkipStruct { a: 231, b: 0 },
