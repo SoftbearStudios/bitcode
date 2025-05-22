@@ -15,6 +15,11 @@ impl FieldBounds {
         field_attrs: &BitcodeAttrs,
         bound: syn::Path,
     ) {
+        if field_attrs.do_skip {
+            // prevent generating bounds for skipped generic types
+            return;
+        }
+
         let bounds = self.bounds.entry(bound).or_default();
         if let Some(bound_type) = field_attrs.bound_type() {
             bounds.1.push(bound_type);
