@@ -130,6 +130,19 @@ mod tests {
             };
         }
 
+        test!(("abc", "123"), (&str, &str));
+        test!(Vec::<Option<i16>>::new(), Vec<Option<i16>>);
+        test!(vec![None, Some(1), None], Vec<Option<i16>>);
+        test!((0, 1), (usize, isize));
+        test!(vec![true; 255], Vec<bool>);
+        test!([0, 1], [u8; 2]);
+        test!([0, 1, 2], [u8; 3]);
+        test!([0, -1, 0, -1, 0, -1, 0], [i8; 7]);
+        test!([], [u8; 0]);
+    }
+
+    #[test]
+    fn decode_skipped() {
         macro_rules! test_skip {
             ($a:expr, $b:expr, $t:ty) => {
                 let v = $a;
@@ -140,15 +153,9 @@ mod tests {
             };
         }
 
-        test!(("abc", "123"), (&str, &str));
-        test!(Vec::<Option<i16>>::new(), Vec<Option<i16>>);
-        test!(vec![None, Some(1), None], Vec<Option<i16>>);
-        test!((0, 1), (usize, isize));
-        test!(vec![true; 255], Vec<bool>);
-        test!([0, 1], [u8; 2]);
-        test!([0, 1, 2], [u8; 3]);
-        test!([0, -1, 0, -1, 0, -1, 0], [i8; 7]);
-        test!([], [u8; 0]);
+        let skipped_string = "I'm skipped!".to_string();
+        let lifetime = LifetimeSkipped(&skipped_string);
+        test_skip!(lifetime, LifetimeSkipped(""), LifetimeSkipped);
         test_skip!(
             SkipStruct { a: 231, b: 9696 },
             SkipStruct { a: 231, b: 0 },
@@ -160,8 +167,8 @@ mod tests {
             SkipTuple
         );
         test_skip!(
-            SkipEnumTuple::B(true, -23, 231, 'b', -42),
-            SkipEnumTuple::B(true, 0, 231, 0 as char, -42),
+            SkipEnumTuple::B(true, 23, 231, 42, -42),
+            SkipEnumTuple::B(true, 0, 231, 0, -42),
             SkipEnumTuple
         );
         test_skip!(
@@ -180,6 +187,30 @@ mod tests {
                 e: 5
             },
             SkipEnumStruct
+        );
+        test_skip!(
+            SkipGeneric {
+                present: 42u8,
+                skipped: Skipped(231),
+            },
+            SkipGeneric {
+                present: 42u8,
+                skipped: Skipped(0),
+            },
+            SkipGeneric<u8, Skipped>
+        );
+        test_skip!(
+            PartialSkipGeneric {
+                present: 42u8,
+                also_present: 231i32,
+                skipped: 77i32,
+            },
+            PartialSkipGeneric {
+                present: 42u8,
+                also_present: 231i32,
+                skipped: 0i32,
+            },
+            PartialSkipGeneric<u8, i32>
         );
     }
 
@@ -214,6 +245,9 @@ mod tests {
 
     #[derive(Encode, Decode)]
     struct Lifetime<'a>(&'a str);
+
+    #[derive(Encode, Decode, Debug, PartialEq)]
+    struct LifetimeSkipped<'a>(#[bitcode(skip)] &'a str);
 
     #[derive(Encode, Decode)]
     struct LifetimeWhere<'a, 'b>(&'a str, &'b str)
@@ -254,7 +288,7 @@ mod tests {
     #[derive(Encode, Decode, Debug, PartialEq)]
     enum SkipEnumTuple {
         A(u8, u32),
-        B(bool, #[bitcode(skip)] i8, u8, #[bitcode(skip)] char, i32),
+        B(bool, #[bitcode(skip)] u32, u8, #[bitcode(skip)] u8, i32),
     }
 
     #[derive(Default, Debug, PartialEq)]
@@ -272,5 +306,20 @@ mod tests {
             e: u8,
         },
         B,
+    }
+
+    #[derive(Encode, Decode, Debug, PartialEq)]
+    struct SkipGeneric<A, B: Default> {
+        present: A,
+        #[bitcode(skip)]
+        skipped: B,
+    }
+
+    #[derive(Encode, Decode, Debug, PartialEq)]
+    struct PartialSkipGeneric<A, B: Default> {
+        present: A,
+        also_present: B,
+        #[bitcode(skip)]
+        skipped: B,
     }
 }

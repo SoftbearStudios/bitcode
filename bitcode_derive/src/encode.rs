@@ -2,7 +2,7 @@ use crate::attribute::BitcodeAttrs;
 use crate::private;
 use crate::shared::{remove_lifetimes, replace_lifetimes, variant_index};
 use proc_macro2::{Ident, Span, TokenStream};
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::{parse_quote, Generics, Path, Type};
 
 #[derive(Copy, Clone)]
@@ -35,13 +35,12 @@ impl crate::shared::Item for Item {
         field_type: &Type,
         field_attrs: &BitcodeAttrs,
     ) -> Option<TokenStream> {
-        if field_attrs.do_skip {
-            return None;
-        }
-
         Some(match self {
             Self::Type => {
-                let static_type = replace_lifetimes(field_type, "static");
+                let mut static_type = replace_lifetimes(field_type, "static").to_token_stream();
+                if field_attrs.do_skip {
+                    static_type = quote! { ::core::marker::PhantomData<#static_type> };
+                }
                 let private = private(crate_name);
                 quote! {
                     #global_field_name: <#static_type as #private::Encode>::Encoder,
@@ -52,7 +51,9 @@ impl crate::shared::Item for Item {
             },
             Self::Encode | Self::EncodeVectored => {
                 let static_type = replace_lifetimes(field_type, "static");
-                let value = if &static_type != field_type {
+                let value = if field_attrs.do_skip {
+                    quote! { &::core::marker::PhantomData::<#static_type> }
+                } else if &static_type != field_type {
                     let underscore_type = replace_lifetimes(field_type, "_");
 
                     // HACK: Since encoders don't have lifetimes we can't reference <T<'a> as Encode>::Encoder since 'a
@@ -68,6 +69,7 @@ impl crate::shared::Item for Item {
                 if matches!(self, Self::EncodeVectored) {
                     quote! {
                         self.#global_field_name.encode_vectored(i.clone().map(|me| {
+                            #[allow(unused_variables)]
                             let #field_name = &me.#real_field_name;
                             #value
                         }));

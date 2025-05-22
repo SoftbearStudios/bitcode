@@ -2,7 +2,7 @@ use crate::attribute::BitcodeAttrs;
 use crate::private;
 use crate::shared::{remove_lifetimes, replace_lifetimes, variant_index};
 use proc_macro2::{Ident, Span, TokenStream};
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::{
     parse_quote, GenericParam, Generics, Lifetime, LifetimeParam, Path, PredicateLifetime, Type,
     WherePredicate,
@@ -44,28 +44,31 @@ impl crate::shared::Item for Item {
         field_attrs: &BitcodeAttrs,
     ) -> Option<TokenStream> {
         match self {
-            Self::Type if !field_attrs.do_skip => {
-                let de_type = replace_lifetimes(field_type, DE_LIFETIME);
+            Self::Type => {
+                let mut de_type = replace_lifetimes(field_type, DE_LIFETIME).to_token_stream();
+                if field_attrs.do_skip {
+                    de_type = quote! { ::core::marker::PhantomData<#de_type> };
+                }
                 let private = private(crate_name);
                 let de = de_lifetime();
                 Some(quote! {
                     #global_field_name: <#de_type as #private::Decode<#de>>::Decoder,
                 })
             }
-            Self::Default if !field_attrs.do_skip => Some(quote! {
+            Self::Default => Some(quote! {
                 #global_field_name: Default::default(),
             }),
-            Self::Populate if !field_attrs.do_skip => Some(quote! {
+            Self::Populate => Some(quote! {
                 self.#global_field_name.populate(input, __length)?;
             }),
             // Only used by enum variants.
-            Self::Decode => Some(if field_attrs.do_skip {
+            Self::Decode => Some(if !field_attrs.do_skip {
                 quote! {
-                    let #field_name = ::core::default::Default::default();
+                    let #field_name = self.#global_field_name.decode();
                 }
             } else {
                 quote! {
-                    let #field_name = self.#global_field_name.decode();
+                    let #field_name = Default::default();
                 }
             }),
             Self::DecodeInPlace => Some({
@@ -82,7 +85,6 @@ impl crate::shared::Item for Item {
                     }}
                 }
             }),
-            _ => None,
         }
     }
 
