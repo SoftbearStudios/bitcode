@@ -237,6 +237,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
         output: [TokenStream; Item::COUNT],
         ident: Ident,
         mut generics: Generics,
+        _any_static_borrow: bool,
     ) -> TokenStream {
         let input_generics = generics.clone();
         let (impl_generics, input_generics, where_clause) = input_generics.split_for_impl();

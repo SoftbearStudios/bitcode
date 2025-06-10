@@ -234,6 +234,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
         output: [TokenStream; Item::COUNT],
         ident: Ident,
         mut generics: Generics,
+        any_static_borrow: bool,
     ) -> TokenStream {
         let input_generics = generics.clone();
         let (_, input_generics, _) = input_generics.split_for_impl();
@@ -254,6 +255,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
                         None
                     }
                 })
+                .chain(any_static_borrow.then(|| Lifetime::new("'static", Span::call_site())))
                 .collect(),
         });
 
