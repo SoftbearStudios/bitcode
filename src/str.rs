@@ -206,8 +206,9 @@ mod tests {
     }
     crate::bench_encode_decode!(str_tuple: (&str, &str, &str, &str, &str, &str, &str));
 
+    // Don't do this in miri since it leaks memory.
     #[test]
-    #[cfg(feature = "derive")]
+    #[cfg(all(feature = "derive", not(miri)))]
     fn decode_static_from_static_buffer() {
         #[derive(crate::Encode, crate::Decode)]
         struct Test {
