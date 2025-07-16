@@ -6,7 +6,7 @@ use quote::{quote, ToTokens};
 use syn::visit_mut::VisitMut;
 use syn::{
     Data, DataStruct, DeriveInput, Field, Fields, GenericParam, Generics, Index, Lifetime, Path,
-    Result, Type, WherePredicate,
+    PredicateType, Result, Type, TypeParamBound, WherePredicate,
 };
 
 type VariantIndex = u8;
@@ -22,6 +22,7 @@ pub trait Item: Copy + Sized {
         global_field_name: TokenStream,
         real_field_name: TokenStream,
         field_type: &Type,
+        field_attrs: &BitcodeAttrs,
     ) -> TokenStream;
 
     fn struct_impl(
@@ -44,6 +45,7 @@ pub trait Item: Copy + Sized {
         crate_name: &Path,
         global_prefix: Option<&str>,
         fields: &Fields,
+        attrs: &[BitcodeAttrs],
     ) -> TokenStream {
         fields
             .iter()
@@ -58,8 +60,9 @@ pub trait Item: Copy + Sized {
                         quote! { #ident }
                     })
                     .unwrap_or_else(|| name.clone());
+                let attrs = &attrs[i];
 
-                self.field_impl(crate_name, name, global_name, real_name, &field.ty)
+                self.field_impl(crate_name, name, global_name, real_name, &field.ty, attrs)
             })
             .collect()
     }
@@ -71,6 +74,8 @@ pub trait Derive<const ITEM_COUNT: usize> {
 
     /// `Encode` in `T: Encode`.
     fn bound(&self, crate_name: &Path) -> Path;
+    /// Bound for skipped fields, e.g. `Default`
+    fn skip_bound(&self) -> Option<Path>;
 
     /// Generates the derive implementation.
     fn derive_impl(
@@ -92,7 +97,14 @@ pub trait Derive<const ITEM_COUNT: usize> {
             .iter()
             .map(|field| {
                 let field_attrs = BitcodeAttrs::parse_field(&field.attrs, attrs)?;
-                bounds.add_bound_type(field.clone(), &field_attrs, self.bound(crate_name));
+                let bound = if field_attrs.skip {
+                    self.skip_bound()
+                } else {
+                    Some(self.bound(crate_name))
+                };
+                if let Some(bound) = bound {
+                    bounds.add_bound_type(field.clone(), &field_attrs, bound);
+                }
                 Ok(field_attrs)
             })
             .collect()
@@ -109,11 +121,11 @@ pub trait Derive<const ITEM_COUNT: usize> {
                 // Only used for adding `bounds`. Would be used by `#[bitcode(with_serde)]`.
                 let field_attrs =
                     self.field_attrs(&attrs.crate_name, fields, &attrs, &mut bounds)?;
-                let _ = field_attrs;
 
                 let destructure_fields = &destructure_fields(fields);
                 Self::ALL.map(|item| {
-                    let field_impls = item.field_impls(&attrs.crate_name, None, fields);
+                    let field_impls =
+                        item.field_impls(&attrs.crate_name, None, fields, &field_attrs);
                     item.struct_impl(&ident, destructure_fields, &field_impls)
                 })
             }
@@ -135,7 +147,6 @@ pub trait Derive<const ITEM_COUNT: usize> {
                         self.field_attrs(&attrs.crate_name, &variant.fields, &attrs, &mut bounds)
                     })
                     .collect::<Result<Vec<_>>>()?;
-                let _ = variant_attrs;
 
                 Self::ALL.map(|item| {
                     item.enum_impl(
@@ -156,6 +167,7 @@ pub trait Derive<const ITEM_COUNT: usize> {
                                 &attrs.crate_name,
                                 Some(&global_prefix),
                                 &variant.fields,
+                                &variant_attrs[i],
                             )
                         },
                     )
@@ -213,6 +225,56 @@ pub fn remove_lifetimes(generics: &mut Generics) {
             .filter(|predicate| !matches!(predicate, WherePredicate::Lifetime(_)))
             .collect()
     }
+}
+
+/// `exempt_bound` is the bound that makes a type parameter exempt from removal.
+pub fn remove_unbounded_types(generics: &mut Generics, exempt_bound: &Path) {
+    generics.params = std::mem::take(&mut generics.params)
+        .into_iter()
+        .filter(|param| {
+            if let GenericParam::Type(ty) = param {
+                let keep = generics
+                    .make_where_clause()
+                    .predicates
+                    .iter()
+                    .any(|w| match w {
+                        WherePredicate::Type(PredicateType {
+                            bounded_ty: Type::Path(p),
+                            bounds,
+                            ..
+                        }) => {
+                            p.path.is_ident(&ty.ident)
+                                && bounds.iter().any(|b| match b {
+                                    TypeParamBound::Trait(t) => &t.path == exempt_bound,
+                                    _ => false,
+                                })
+                        }
+                        _ => false,
+                    });
+                if !keep {
+                    if let Some(where_clause) = &mut generics.where_clause {
+                        where_clause.predicates = std::mem::take(&mut where_clause.predicates)
+                            .into_iter()
+                            .filter(|predicate| {
+                                if let WherePredicate::Type(predicate) = predicate {
+                                    if let Type::Path(path) = &predicate.bounded_ty {
+                                        !path.path.is_ident(&ty.ident)
+                                    } else {
+                                        true
+                                    }
+                                } else {
+                                    true
+                                }
+                            })
+                            .collect()
+                    }
+                }
+                keep
+            } else {
+                true
+            }
+        })
+        .collect();
 }
 
 #[must_use]

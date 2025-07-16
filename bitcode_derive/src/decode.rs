@@ -1,5 +1,6 @@
+use crate::attribute::BitcodeAttrs;
 use crate::private;
-use crate::shared::{remove_lifetimes, replace_lifetimes, variant_index};
+use crate::shared::{remove_lifetimes, remove_unbounded_types, replace_lifetimes, variant_index};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use syn::{
@@ -40,31 +41,68 @@ impl crate::shared::Item for Item {
         global_field_name: TokenStream,
         real_field_name: TokenStream,
         field_type: &Type,
+        field_attrs: &BitcodeAttrs,
     ) -> TokenStream {
         match self {
             Self::Type => {
-                let de_type = replace_lifetimes(field_type, DE_LIFETIME);
-                let private = private(crate_name);
-                let de = de_lifetime();
-                quote! {
-                    #global_field_name: <#de_type as #private::Decode<#de>>::Decoder,
+                if field_attrs.skip {
+                    quote! {}
+                } else {
+                    let de_type = replace_lifetimes(field_type, DE_LIFETIME);
+                    let private = private(crate_name);
+                    let de = de_lifetime();
+                    quote! {
+                        #global_field_name: <#de_type as #private::Decode<#de>>::Decoder,
+                    }
                 }
             }
-            Self::Default => quote! {
-                #global_field_name: Default::default(),
-            },
-            Self::Populate => quote! {
-                self.#global_field_name.populate(input, __length)?;
-            },
+            Self::Default => {
+                if field_attrs.skip {
+                    quote! {}
+                } else {
+                    quote! {
+                        #global_field_name: Default::default(),
+                    }
+                }
+            }
+            Self::Populate => {
+                if field_attrs.skip {
+                    quote! {}
+                } else {
+                    quote! {
+                        self.#global_field_name.populate(input, __length)?;
+                    }
+                }
+            }
             // Only used by enum variants.
-            Self::Decode => quote! {
-                let #field_name = self.#global_field_name.decode();
-            },
+            Self::Decode => {
+                let source = if field_attrs.skip {
+                    quote! {
+                        Default::default()
+                    }
+                } else {
+                    quote! {
+                        self.#global_field_name.decode()
+                    }
+                };
+                quote! {
+                    let #field_name = #source;
+                }
+            }
             Self::DecodeInPlace => {
                 let de_type = replace_lifetimes(field_type, DE_LIFETIME);
                 let private = private(crate_name);
-                quote! {
-                    self.#global_field_name.decode_in_place(#private::uninit_field!(out.#real_field_name: #de_type));
+                let target = quote! {
+                    #private::uninit_field!(out.#real_field_name: #de_type)
+                };
+                if field_attrs.skip {
+                    quote! {{
+                        (#target).write(::core::default::Default::default());
+                    }}
+                } else {
+                    quote! {
+                        self.#global_field_name.decode_in_place(#target);
+                    }
                 }
             }
         }
@@ -228,6 +266,10 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
         parse_quote!(#private::Decode<#de>)
     }
 
+    fn skip_bound(&self) -> Option<Path> {
+        Some(parse_quote!(Default))
+    }
+
     fn derive_impl(
         &self,
         crate_name: &Path,
@@ -270,6 +312,9 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
 
         // Decoder can't contain any lifetimes from input (which would limit reuse of decoder).
         remove_lifetimes(&mut generics);
+        // Decoder must avoid decoders type parameters that only appear in skipped fields (no `Decode` bound).
+        remove_unbounded_types(&mut generics, &self.bound(crate_name));
+
         generics.params.push(de_param); // Re-add de_param since remove_lifetimes removed it.
         let (decoder_impl_generics, decoder_generics, decoder_where_clause) =
             generics.split_for_impl();

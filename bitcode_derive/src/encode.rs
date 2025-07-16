@@ -1,5 +1,6 @@
+use crate::attribute::BitcodeAttrs;
 use crate::private;
-use crate::shared::{remove_lifetimes, replace_lifetimes, variant_index};
+use crate::shared::{remove_lifetimes, remove_unbounded_types, replace_lifetimes, variant_index};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use syn::{parse_quote, Generics, Path, Type};
@@ -32,7 +33,22 @@ impl crate::shared::Item for Item {
         global_field_name: TokenStream,
         real_field_name: TokenStream,
         field_type: &Type,
+        field_attrs: &BitcodeAttrs,
     ) -> TokenStream {
+        if field_attrs.skip {
+            // Encoder never stores or does anything with skipped fields,
+            // but suppress unused variable warnings for them.
+            return match self {
+                Self::Encode => {
+                    quote! {
+                        let _ = #field_name;
+                    }
+                }
+                _ => {
+                    quote! {}
+                }
+            };
+        }
         match self {
             Self::Type => {
                 let static_type = replace_lifetimes(field_type, "static");
@@ -231,6 +247,10 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
         parse_quote!(#private::Encode)
     }
 
+    fn skip_bound(&self) -> Option<Path> {
+        None
+    }
+
     fn derive_impl(
         &self,
         crate_name: &Path,
@@ -244,6 +264,9 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
 
         // Encoder can't contain any lifetimes from input (which would limit reuse of encoder).
         remove_lifetimes(&mut generics);
+        // Encoder must avoid decoders type parameters that only appear in skipped fields (no `Encode` bound).
+        remove_unbounded_types(&mut generics, &self.bound(crate_name));
+
         let (encoder_impl_generics, encoder_generics, encoder_where_clause) =
             generics.split_for_impl();
 
