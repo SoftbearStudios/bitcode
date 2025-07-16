@@ -201,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn decode_skipped() {
+    fn skipped_fields() {
         macro_rules! test_skip {
             ($a:expr, $b:expr, $t:ty) => {
                 let v = $a;
@@ -279,6 +279,17 @@ mod tests {
             skipped: A,
         }
 
+        #[derive(Default, Debug, PartialEq)]
+        struct Indirect<A> {
+            field: A,
+        }
+
+        #[derive(Encode, Decode, Debug, PartialEq)]
+        struct SkipIndirectGeneric<A> {
+            #[bitcode(skip)]
+            skipped: Indirect<A>,
+        }
+
         test_skip!(
             SkipStruct { a: 231, b: 9696 },
             SkipStruct { a: 231, b: 0 },
@@ -354,6 +365,26 @@ mod tests {
             },
             SkipAllGeneric<i32>
         }
+        test_skip! {
+            SkipIndirectGeneric {
+                skipped: Indirect{ field: 42i32 },
+            },
+            SkipIndirectGeneric {
+                skipped: Indirect{ field: i32 },
+            },
+            SkipIndirectGeneric<i32>
+        }
         assert_eq!(bitcode::encode(&SkipAllGeneric { skipped: 42u8 }).len(), 0);
+    }
+
+    #[test]
+    fn skipped_fields_regression() {
+        #[derive(Encode, Decode, Default, Debug, PartialEq)]
+        struct Indirect<A>(A);
+        #[derive(Encode, Decode, Debug, PartialEq)]
+        struct SkipGeneric<A> {
+            #[bitcode(bound_type = "Indirect<A>")]
+            present: Indirect<A>,
+        }
     }
 }
