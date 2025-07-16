@@ -81,7 +81,7 @@ impl BitcodeAttr {
             }
             Self::Skip => {
                 if let AttrType::Field { .. } = &attrs.attr_type {
-                    attrs.do_skip = true;
+                    attrs.skip = true;
                     Ok(())
                 } else {
                     err(nested, "can only apply skip to fields")
@@ -97,7 +97,7 @@ pub struct BitcodeAttrs {
     /// The crate name to use for the generated code, defaults to "bitcode".
     pub crate_name: Path,
     /// Whether to skip this field during (de)serialisation.
-    pub do_skip: bool,
+    pub skip: bool,
 }
 
 #[derive(Clone)]
@@ -112,7 +112,7 @@ impl BitcodeAttrs {
         Self {
             attr_type,
             crate_name: syn::parse_str("bitcode").expect("invalid crate name"),
-            do_skip: false,
+            skip: false,
         }
     }
 

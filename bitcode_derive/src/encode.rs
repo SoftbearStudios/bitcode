@@ -38,7 +38,7 @@ impl crate::shared::Item for Item {
         match self {
             Self::Type => {
                 let mut static_type = replace_lifetimes(field_type, "static").to_token_stream();
-                if field_attrs.do_skip {
+                if field_attrs.skip {
                     static_type = quote! { ::core::marker::PhantomData<#static_type> };
                 }
                 let private = private(crate_name);
@@ -51,8 +51,13 @@ impl crate::shared::Item for Item {
             },
             Self::Encode | Self::EncodeVectored => {
                 let static_type = replace_lifetimes(field_type, "static");
-                let value = if field_attrs.do_skip {
-                    quote! { &::core::marker::PhantomData::<#static_type> }
+                let value = if field_attrs.skip {
+                    quote! {
+                        {
+                            let _ = #field_name;
+                            &::core::marker::PhantomData::<#static_type>
+                        }
+                    }
                 } else if &static_type != field_type {
                     let underscore_type = replace_lifetimes(field_type, "_");
 
@@ -69,7 +74,6 @@ impl crate::shared::Item for Item {
                 if matches!(self, Self::EncodeVectored) {
                     quote! {
                         self.#global_field_name.encode_vectored(i.clone().map(|me| {
-                            #[allow(unused_variables)]
                             let #field_name = &me.#real_field_name;
                             #value
                         }));
@@ -98,7 +102,6 @@ impl crate::shared::Item for Item {
         match self {
             Self::Encode => {
                 quote! {
-                    #[allow(unused_variables)]
                     let #ident #destructure_fields = v;
                     #do_fields
                 }
@@ -238,6 +241,10 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
     fn bound(&self, crate_name: &Path) -> Path {
         let private = private(crate_name);
         parse_quote!(#private::Encode)
+    }
+
+    fn skip_bound(&self) -> Option<Path> {
+        None
     }
 
     fn derive_impl(

@@ -75,6 +75,9 @@ pub trait Derive<const ITEM_COUNT: usize> {
     /// `Encode` in `T: Encode`.
     fn bound(&self, crate_name: &Path) -> Path;
 
+    /// Bound for skipped fields, e.g. `Default`
+    fn skip_bound(&self) -> Option<Path>;
+
     /// Generates the derive implementation.
     fn derive_impl(
         &self,
@@ -95,7 +98,14 @@ pub trait Derive<const ITEM_COUNT: usize> {
             .iter()
             .map(|field| {
                 let field_attrs = BitcodeAttrs::parse_field(&field.attrs, attrs)?;
-                bounds.add_bound_type(field.clone(), &field_attrs, self.bound(crate_name));
+                let bound = if field_attrs.skip {
+                    self.skip_bound()
+                } else {
+                    Some(self.bound(crate_name))
+                };
+                if let Some(bound) = bound {
+                    bounds.add_bound_type(field.clone(), &field_attrs, bound);
+                }
                 Ok(field_attrs)
             })
             .collect()
@@ -148,7 +158,6 @@ pub trait Derive<const ITEM_COUNT: usize> {
                             let variant_name = &variant.ident;
                             let destructure_fields = destructure_fields(&variant.fields);
                             quote! {
-                                #[allow(unused_variables)]
                                 #ident::#variant_name #destructure_fields
                             }
                         },
