@@ -382,7 +382,7 @@ mod tests {
     #[test]
     fn skipped_fields_regression() {
         #[derive(Encode, Decode, Default, Debug, PartialEq)]
-        struct Indirect<A>(A);
+        pub struct Indirect<A>(A);
         #[derive(Encode, Decode, Debug, PartialEq)]
         struct SkipGeneric<A> {
             #[bitcode(bound_type = "Indirect<A>")]
