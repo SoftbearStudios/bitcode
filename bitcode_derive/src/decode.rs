@@ -63,28 +63,33 @@ impl crate::shared::Item for Item {
             },
             // Only used by enum variants.
             Self::Decode => {
-                if !field_attrs.skip {
+                let value = if field_attrs.skip {
                     quote! {
-                        let #field_name = self.#global_field_name.decode();
+                        Default::default()
                     }
                 } else {
                     quote! {
-                        let #field_name = Default::default();
+                        self.#global_field_name.decode()
                     }
+                };
+                quote! {
+                    let #field_name = #value;
                 }
             }
             Self::DecodeInPlace => {
                 let de_type = replace_lifetimes(field_type, DE_LIFETIME);
                 let private = private(crate_name);
-                if !field_attrs.skip {
-                    quote! {
-                        self.#global_field_name.decode_in_place(#private::uninit_field!(out.#real_field_name: #de_type));
-                    }
-                } else {
+                let target = quote! {
+                    #private::uninit_field!(out.#real_field_name: #de_type)
+                };
+                if field_attrs.skip {
                     quote! {{
-                        let f = #private::uninit_field!(out.#real_field_name: #de_type);
-                        f.write(::core::default::Default::default());
+                        (#target).write(Default::default());
                     }}
+                } else {
+                    quote! {
+                        self.#global_field_name.decode_in_place(#target);
+                    }
                 }
             }
         }
