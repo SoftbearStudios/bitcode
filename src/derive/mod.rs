@@ -212,15 +212,12 @@ mod tests {
             };
         }
 
-        #[cfg(feature = "std")]
-        {
-            #[derive(Encode, Decode, Debug, PartialEq)]
-            struct LifetimeSkipped<'a>(#[bitcode(skip)] &'a str);
+        #[derive(Encode, Decode, Debug, PartialEq)]
+        struct LifetimeSkipped<'a>(#[bitcode(skip)] &'a str);
 
-            let skipped_string = String::from("I'm skipped!");
-            let lifetime = LifetimeSkipped(&skipped_string);
-            test_skip!(lifetime, LifetimeSkipped(""), LifetimeSkipped);
-        }
+        let skipped_string = alloc::string::String::from("I'm skipped!");
+        let lifetime = LifetimeSkipped(&skipped_string);
+        test_skip!(lifetime, LifetimeSkipped(""), LifetimeSkipped);
 
         #[derive(Encode, Decode, Debug, PartialEq)]
         struct SkipStruct {
