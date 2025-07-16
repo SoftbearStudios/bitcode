@@ -270,6 +270,18 @@ mod tests {
             skipped: B,
         }
 
+        #[derive(Encode, Decode, Debug, PartialEq)]
+        struct SkipAll {
+            #[bitcode(skip)]
+            skipped: u8,
+        }
+
+        #[derive(Encode, Decode, Debug, PartialEq)]
+        struct SkipAllGeneric<A> {
+            #[bitcode(skip)]
+            skipped: A,
+        }
+
         test_skip!(
             SkipStruct { a: 231, b: 9696 },
             SkipStruct { a: 231, b: 0 },
@@ -302,6 +314,16 @@ mod tests {
             },
             SkipEnumStruct
         );
+        test_skip! {
+            SkipAll {
+                skipped: 42u8,
+            },
+            SkipAll {
+                skipped: 0u8,
+            },
+            SkipAll
+        }
+        assert_eq!(bitcode::encode(&SkipAll { skipped: 42u8 }).len(), 0);
         test_skip!(
             SkipGeneric {
                 present: 42u8,
@@ -326,5 +348,15 @@ mod tests {
             },
             PartialSkipGeneric<u8, i32>
         );
+        test_skip! {
+            SkipAllGeneric {
+                skipped: 42i32,
+            },
+            SkipAllGeneric {
+                skipped: 0i32,
+            },
+            SkipAllGeneric<i32>
+        }
+        assert_eq!(bitcode::encode(&SkipAllGeneric { skipped: 42u8 }).len(), 0);
     }
 }
