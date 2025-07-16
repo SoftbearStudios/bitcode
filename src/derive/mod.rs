@@ -174,9 +174,6 @@ mod tests {
     #[derive(Encode, Decode)]
     struct Lifetime<'a>(&'a str);
 
-    #[derive(Encode, Decode, Debug, PartialEq)]
-    struct LifetimeSkipped<'a>(#[bitcode(skip)] &'a str);
-
     #[derive(Encode, Decode)]
     struct LifetimeWhere<'a, 'b>(&'a str, &'b str)
     where
