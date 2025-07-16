@@ -85,6 +85,7 @@ pub trait Derive<const ITEM_COUNT: usize> {
         output: [TokenStream; ITEM_COUNT],
         ident: Ident,
         generics: Generics,
+        any_static_borrow: bool,
     ) -> TokenStream;
 
     fn field_attrs(
@@ -177,11 +178,13 @@ pub trait Derive<const ITEM_COUNT: usize> {
             }
             Data::Union(_) => err(&ident, "unions are not supported")?,
         };
+        let (generics, any_static_borrow) = bounds.added_to(input.generics);
         Ok(self.derive_impl(
             &attrs.crate_name,
             output,
             ident,
-            bounds.added_to(input.generics),
+            generics,
+            any_static_borrow,
         ))
     }
 }
