@@ -1,7 +1,8 @@
+use crate::attribute::BitcodeAttrs;
 use crate::private;
 use crate::shared::{remove_lifetimes, replace_lifetimes, variant_index};
 use proc_macro2::{Ident, Span, TokenStream};
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::{
     parse_quote, GenericParam, Generics, Lifetime, LifetimeParam, Path, PredicateLifetime, Type,
     WherePredicate,
@@ -40,10 +41,14 @@ impl crate::shared::Item for Item {
         global_field_name: TokenStream,
         real_field_name: TokenStream,
         field_type: &Type,
+        field_attrs: &BitcodeAttrs,
     ) -> TokenStream {
         match self {
             Self::Type => {
-                let de_type = replace_lifetimes(field_type, DE_LIFETIME);
+                let mut de_type = replace_lifetimes(field_type, DE_LIFETIME).to_token_stream();
+                if field_attrs.skip {
+                    de_type = quote! { ::core::marker::PhantomData<#de_type> };
+                }
                 let private = private(crate_name);
                 let de = de_lifetime();
                 quote! {
@@ -57,14 +62,34 @@ impl crate::shared::Item for Item {
                 self.#global_field_name.populate(input, __length)?;
             },
             // Only used by enum variants.
-            Self::Decode => quote! {
-                let #field_name = self.#global_field_name.decode();
-            },
+            Self::Decode => {
+                let value = if field_attrs.skip {
+                    quote! {
+                        Default::default()
+                    }
+                } else {
+                    quote! {
+                        self.#global_field_name.decode()
+                    }
+                };
+                quote! {
+                    let #field_name = #value;
+                }
+            }
             Self::DecodeInPlace => {
                 let de_type = replace_lifetimes(field_type, DE_LIFETIME);
                 let private = private(crate_name);
-                quote! {
-                    self.#global_field_name.decode_in_place(#private::uninit_field!(out.#real_field_name: #de_type));
+                let target = quote! {
+                    #private::uninit_field!(out.#real_field_name: #de_type)
+                };
+                if field_attrs.skip {
+                    quote! {{
+                        (#target).write(Default::default());
+                    }}
+                } else {
+                    quote! {
+                        self.#global_field_name.decode_in_place(#target);
+                    }
                 }
             }
         }
@@ -226,6 +251,10 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
         let private = private(crate_name);
         let de = de_lifetime();
         parse_quote!(#private::Decode<#de>)
+    }
+
+    fn skip_bound(&self) -> Option<Path> {
+        Some(parse_quote!(Default))
     }
 
     fn derive_impl(
