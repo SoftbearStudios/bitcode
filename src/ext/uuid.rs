@@ -1,6 +1,6 @@
-use uuid::Uuid;
-use crate::derive::convert::ConvertFrom;
 use crate::convert::impl_convert;
+use crate::derive::convert::ConvertFrom;
+use uuid::Uuid;
 
 type UuidConversion = [u8; 16];
 
@@ -21,11 +21,22 @@ impl_convert!(uuid::Uuid, UuidConversion);
 #[cfg(test)]
 mod tests {
     use alloc::vec::Vec;
+    use std::str::FromStr;
     use uuid::Uuid;
 
     #[test]
     fn test() {
         assert!(crate::decode::<Uuid>(&crate::encode(&Uuid::new_v4())).is_ok());
+    }
+
+    // By running this test on architectures with different endianness,
+    // we ensure our implementation is endianness-invariant.
+    #[test]
+    fn consistency() {
+        assert_eq!(
+            crate::encode(&Uuid::from_str("a1a2a3a4-b1b2-c1c2-d1d2-d3d4d5d6d7d8").unwrap()),
+            [0, 161, 162, 163, 164, 177, 178, 193, 194, 209, 210, 211, 212, 213, 214, 215, 216]
+        )
     }
 
     fn bench_data() -> Vec<Uuid> {
