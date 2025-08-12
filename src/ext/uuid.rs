@@ -16,7 +16,7 @@ impl ConvertFrom<UuidConversion> for Uuid {
     }
 }
 
-impl_convert!(uuid::Uuid, UuidConversion);
+impl_convert!(Uuid, UuidConversion);
 
 #[cfg(test)]
 mod tests {
