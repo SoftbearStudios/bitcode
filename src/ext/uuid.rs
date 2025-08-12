@@ -2,19 +2,21 @@ use uuid::Uuid;
 use crate::derive::convert::ConvertFrom;
 use crate::convert::impl_convert;
 
-impl ConvertFrom<&Uuid> for u128 {
+type UuidConversion = [u8; 16];
+
+impl ConvertFrom<&Uuid> for UuidConversion {
     fn convert_from(value: &Uuid) -> Self {
-        value.as_u128()
+        value.into_bytes()
     }
 }
 
-impl ConvertFrom<u128> for Uuid {
-    fn convert_from(value: u128) -> Self {
-        Uuid::from_u128(value)
+impl ConvertFrom<UuidConversion> for Uuid {
+    fn convert_from(value: UuidConversion) -> Self {
+        Uuid::from_bytes(value)
     }
 }
 
-impl_convert!(uuid::Uuid, u128);
+impl_convert!(uuid::Uuid, UuidConversion);
 
 #[cfg(test)]
 mod tests {
@@ -29,7 +31,7 @@ mod tests {
     fn bench_data() -> Vec<Uuid> {
         crate::random_data(1000)
             .into_iter()
-            .map(|n: u128| Uuid::from_u128(n))
+            .map(|n: super::UuidConversion| Uuid::from_bytes(n))
             .collect()
     }
     crate::bench_encode_decode!(uuid_vec: Vec<Uuid>);
