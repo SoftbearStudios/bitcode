@@ -32,7 +32,6 @@ paste = "1.0.14"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 serde = { version = "1.0", features = [ "derive" ] }
-uuid = { version = "1.10", features = [ "v4" ] }
 
 # zstd doesn't compile with miri big-endian.
 [target.'cfg(not(miri))'.dev-dependencies]
