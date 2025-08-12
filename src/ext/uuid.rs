@@ -20,7 +20,7 @@ impl_convert!(Uuid, UuidConversion);
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
+    use core::str::FromStr;
     use uuid::Uuid;
 
     #[test]
