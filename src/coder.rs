@@ -102,8 +102,8 @@ pub trait Decoder<'a, T>: View<'a> + Default + Send + Sync {
 macro_rules! __private_uninit_field {
     ($uninit:ident.$field:tt:$field_ty:ty) => {
         unsafe {
-            &mut *(core::ptr::addr_of_mut!((*$uninit.as_mut_ptr()).$field)
-                as *mut core::mem::MaybeUninit<$field_ty>)
+            &mut *(::core::ptr::addr_of_mut!((*$uninit.as_mut_ptr()).$field)
+                as *mut ::core::mem::MaybeUninit<$field_ty>)
         }
     };
 }

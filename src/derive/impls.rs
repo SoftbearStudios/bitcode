@@ -18,11 +18,6 @@ use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::num::*;
 
-#[cfg(feature = "std")]
-use core::hash::{BuildHasher, Hash};
-#[cfg(feature = "std")]
-use std::collections::{HashMap, HashSet};
-
 macro_rules! impl_both {
     ($t:ty, $encoder:ident, $decoder:ident) => {
         impl Encode for $t {
@@ -33,6 +28,7 @@ macro_rules! impl_both {
         }
     };
 }
+pub(crate) use impl_both;
 impl_both!(bool, BoolEncoder, BoolDecoder);
 impl_both!(f32, F32Encoder, F32Decoder);
 impl_both!(String, StrEncoder, StrDecoder);
@@ -113,6 +109,7 @@ macro_rules! impl_smart_ptr {
 }
 impl_smart_ptr!(::alloc::boxed::Box);
 impl_smart_ptr!(::alloc::rc::Rc);
+#[cfg(target_has_atomic = "ptr")]
 impl_smart_ptr!(::alloc::sync::Arc);
 
 impl<T: Encode, const N: usize> Encode for [T; N] {
@@ -150,29 +147,11 @@ impl<T: Encode> Encode for BTreeSet<T> {
 impl<'a, T: Decode<'a> + Ord> Decode<'a> for BTreeSet<T> {
     type Decoder = VecDecoder<'a, T>;
 }
-#[cfg(feature = "std")]
-impl<T: Encode, S> Encode for HashSet<T, S> {
-    type Encoder = VecEncoder<T>;
-}
-#[cfg(feature = "std")]
-impl<'a, T: Decode<'a> + Eq + Hash, S: BuildHasher + Default> Decode<'a> for HashSet<T, S> {
-    type Decoder = VecDecoder<'a, T>;
-}
 
 impl<K: Encode, V: Encode> Encode for BTreeMap<K, V> {
     type Encoder = MapEncoder<K, V>;
 }
 impl<'a, K: Decode<'a> + Ord, V: Decode<'a>> Decode<'a> for BTreeMap<K, V> {
-    type Decoder = MapDecoder<'a, K, V>;
-}
-#[cfg(feature = "std")]
-impl<K: Encode, V: Encode, S> Encode for HashMap<K, V, S> {
-    type Encoder = MapEncoder<K, V>;
-}
-#[cfg(feature = "std")]
-impl<'a, K: Decode<'a> + Eq + Hash, V: Decode<'a>, S: BuildHasher + Default> Decode<'a>
-    for HashMap<K, V, S>
-{
     type Decoder = MapDecoder<'a, K, V>;
 }
 
@@ -184,42 +163,49 @@ impl<'a, T: Decode<'a>, E: Decode<'a>> Decode<'a> for core::result::Result<T, E>
 }
 
 #[cfg(feature = "std")]
-macro_rules! impl_convert {
-    ($want: path, $have: ty) => {
-        impl Encode for $want {
-            type Encoder = super::convert_from::ConvertIntoEncoder<$have>;
-        }
-        impl<'a> Decode<'a> for $want {
-            type Decoder = super::convert_from::ConvertFromDecoder<'a, $have>;
-        }
-    };
-}
+mod with_std {
+    use super::*;
+    use crate::derive::convert::impl_convert;
+    use core::hash::{BuildHasher, Hash};
+    use std::collections::{HashMap, HashSet};
 
-#[cfg(feature = "std")]
-macro_rules! impl_ipvx_addr {
-    ($addr: ident, $repr: ident) => {
-        impl_convert!(std::net::$addr, $repr);
-    };
-}
+    impl<T: Encode, S> Encode for HashSet<T, S> {
+        type Encoder = VecEncoder<T>;
+    }
+    impl<'a, T: Decode<'a> + Eq + Hash, S: BuildHasher + Default> Decode<'a> for HashSet<T, S> {
+        type Decoder = VecDecoder<'a, T>;
+    }
+    impl<K: Encode, V: Encode, S> Encode for HashMap<K, V, S> {
+        type Encoder = MapEncoder<K, V>;
+    }
+    impl<'a, K: Decode<'a> + Eq + Hash, V: Decode<'a>, S: BuildHasher + Default> Decode<'a>
+        for HashMap<K, V, S>
+    {
+        type Decoder = MapDecoder<'a, K, V>;
+    }
 
-#[cfg(feature = "std")]
-impl_ipvx_addr!(Ipv4Addr, u32);
-#[cfg(feature = "std")]
-impl_ipvx_addr!(Ipv6Addr, u128);
-#[cfg(feature = "std")]
-impl_convert!(std::net::IpAddr, super::ip_addr::IpAddrConversion);
-#[cfg(feature = "std")]
-impl_convert!(
-    std::net::SocketAddrV4,
-    super::ip_addr::SocketAddrV4Conversion
-);
-#[cfg(feature = "std")]
-impl_convert!(
-    std::net::SocketAddrV6,
-    super::ip_addr::SocketAddrV6Conversion
-);
-#[cfg(feature = "std")]
-impl_convert!(std::net::SocketAddr, super::ip_addr::SocketAddrConversion);
+    macro_rules! impl_ipvx_addr {
+        ($addr: ident, $repr: ident) => {
+            impl_convert!(std::net::$addr, $repr);
+        };
+    }
+
+    impl_ipvx_addr!(Ipv4Addr, u32);
+    impl_ipvx_addr!(Ipv6Addr, u128);
+    impl_convert!(std::net::IpAddr, crate::derive::ip_addr::IpAddrConversion);
+    impl_convert!(
+        std::net::SocketAddrV4,
+        crate::derive::ip_addr::SocketAddrV4Conversion
+    );
+    impl_convert!(
+        std::net::SocketAddrV6,
+        crate::derive::ip_addr::SocketAddrV6Conversion
+    );
+    impl_convert!(
+        std::net::SocketAddr,
+        crate::derive::ip_addr::SocketAddrConversion
+    );
+}
 
 #[cfg(feature = "uuid")]
 impl_convert!(uuid::Uuid, u128);

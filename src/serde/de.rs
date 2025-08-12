@@ -117,21 +117,23 @@ macro_rules! specify {
             _ => {
                 // Either create the correct decoder if unspecified or diverge via panic/error.
                 #[cold]
+                #[rustfmt::skip]
                 fn cold<'de>(decoder: &mut SerdeDecoder<'de>, input: &mut &'de [u8]) -> Result<()> {
                     let &mut SerdeDecoder::Unspecified { length } = decoder else {
-                            type_changed!()
-                        };
+                        type_changed!()
+                    };
                     *decoder = SerdeDecoder::$variant(Default::default());
                     decoder.populate(input, length)
                 }
                 cold(&mut *$self.decoder, &mut *$self.input)?;
             }
         }
+        #[rustfmt::skip]
         let SerdeDecoder::$variant(d) = &mut *$self.decoder else {
-                // Safety: `cold` gets called when decoder isn't the correct decoder. `cold` either
-                // errors or sets lazy to the correct decoder.
-                unsafe { core::hint::unreachable_unchecked() };
-            };
+            // Safety: `cold` gets called when decoder isn't the correct decoder. `cold` either
+            // errors or sets lazy to the correct decoder.
+            unsafe { core::hint::unreachable_unchecked() };
+        };
         d
     }};
 }

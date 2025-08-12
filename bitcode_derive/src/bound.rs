@@ -23,11 +23,18 @@ impl FieldBounds {
         }
     }
 
-    pub fn added_to(self, mut generics: syn::Generics) -> syn::Generics {
+    pub fn added_to(self, mut generics: syn::Generics) -> (syn::Generics, bool) {
+        let mut any_static_borrow = false;
         for (bound, (fields, extra_bound_types)) in self.bounds {
-            generics = with_bound(&fields, extra_bound_types, &generics, &bound);
+            generics = with_bound(
+                &fields,
+                extra_bound_types,
+                &generics,
+                &bound,
+                &mut any_static_borrow,
+            );
         }
-        generics
+        (generics, any_static_borrow)
     }
 }
 
@@ -37,6 +44,7 @@ fn with_bound(
     extra_bound_types: Vec<syn::Type>,
     generics: &syn::Generics,
     bound: &syn::Path,
+    any_static_borrow: &mut bool,
 ) -> syn::Generics {
     struct FindTyParams<'ast> {
         // Set of all generic type parameters on the current struct (A, B, C in
@@ -51,6 +59,8 @@ fn with_bound(
         // Fields whose type is an associated type of one of the generic type
         // parameters.
         associated_type_usage: Vec<&'ast syn::TypePath>,
+
+        any_static_borrow: bool,
     }
 
     impl<'ast> FindTyParams<'ast> {
@@ -110,7 +120,17 @@ fn with_bound(
                     self.visit_path(&ty.path);
                 }
                 syn::Type::Ptr(ty) => self.visit_type(&ty.elem),
-                syn::Type::Reference(ty) => self.visit_type(&ty.elem),
+                syn::Type::Reference(ty) => {
+                    if ty
+                        .lifetime
+                        .as_ref()
+                        .map(|l| l.to_string() == "'static")
+                        .unwrap_or(false)
+                    {
+                        self.any_static_borrow = true;
+                    }
+                    self.visit_type(&ty.elem)
+                }
                 syn::Type::Slice(ty) => self.visit_type(&ty.elem),
                 syn::Type::TraitObject(ty) => {
                     for bound in &ty.bounds {
@@ -189,6 +209,7 @@ fn with_bound(
         all_type_params,
         relevant_type_params: HashSet::new(),
         associated_type_usage: Vec::new(),
+        any_static_borrow: false,
     };
     for field in fields {
         visitor.visit_field(field)
@@ -230,6 +251,7 @@ fn with_bound(
         .make_where_clause()
         .predicates
         .extend(new_predicates);
+    *any_static_borrow |= visitor.any_static_borrow;
     generics
 }
 
