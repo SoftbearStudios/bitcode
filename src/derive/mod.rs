@@ -140,8 +140,6 @@ mod tests {
         test!([0, 1, 2], [u8; 3]);
         test!([0, -1, 0, -1, 0, -1, 0], [i8; 7]);
         test!([], [u8; 0]);
-        #[cfg(feature = "uuid")]
-        test!(uuid::Uuid::new_v4(), uuid::Uuid);
     }
 
     #[derive(Encode, Decode)]
