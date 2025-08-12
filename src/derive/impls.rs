@@ -29,6 +29,7 @@ macro_rules! impl_both {
     };
 }
 pub(crate) use impl_both;
+
 impl_both!(bool, BoolEncoder, BoolDecoder);
 impl_both!(f32, F32Encoder, F32Decoder);
 impl_both!(String, StrEncoder, StrDecoder);
@@ -206,9 +207,6 @@ mod with_std {
         crate::derive::ip_addr::SocketAddrConversion
     );
 }
-
-#[cfg(feature = "uuid")]
-impl_convert!(uuid::Uuid, u128);
 
 impl<T> Encode for PhantomData<T> {
     type Encoder = EmptyCoder;

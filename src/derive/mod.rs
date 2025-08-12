@@ -18,8 +18,6 @@ mod map;
 mod option;
 mod result;
 mod smart_ptr;
-#[cfg(feature = "uuid")]
-mod uuid;
 mod variant;
 pub(crate) mod vec;
 

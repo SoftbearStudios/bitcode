@@ -42,7 +42,6 @@ zstd = "0.13.0"
 derive = [ "dep:bitcode_derive" ]
 std = [ "serde?/std", "glam?/std", "arrayvec?/std" ]
 default = [ "derive", "std" ]
-uuid = [ "dep:uuid" ]
 
 [package.metadata.docs.rs]
 features = [ "derive", "serde", "std" ]

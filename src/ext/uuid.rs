@@ -1,6 +1,6 @@
 use uuid::Uuid;
-
-use super::convert_from::ConvertFrom;
+use crate::derive::convert::ConvertFrom;
+use crate::convert::impl_convert;
 
 impl ConvertFrom<&Uuid> for u128 {
     fn convert_from(value: &Uuid) -> Self {
@@ -13,6 +13,8 @@ impl ConvertFrom<u128> for Uuid {
         Uuid::from_u128(value)
     }
 }
+
+impl_convert!(uuid::Uuid, u128);
 
 #[cfg(test)]
 mod tests {
@@ -30,5 +32,5 @@ mod tests {
             .map(|n: u128| Uuid::from_u128(n))
             .collect()
     }
-    crate::bench_encode_decode!(uuid_vec: Vec<_>);
+    crate::bench_encode_decode!(uuid_vec: Vec<Uuid>);
 }
