@@ -26,7 +26,8 @@ mod tests {
 
     #[test]
     fn test() {
-        assert!(crate::decode::<Uuid>(&crate::encode(&Uuid::new_v4())).is_ok());
+        let uuid = Uuid::new_v4();
+        assert_eq!(crate::decode::<Uuid>(&crate::encode(&uuid)).unwrap(), uuid);
     }
 
     // By running this test on architectures with different endianness,
