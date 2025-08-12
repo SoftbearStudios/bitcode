@@ -142,6 +142,16 @@ macro_rules! ranged_int {
                 ($lower..=$upper).contains(bits)
             }
         }
+        impl $type {
+            #[inline(always)]
+            pub fn hint_in_range(&self) {
+                // Safety: They have the same layout because of #[repr(transparent)].
+                if !Self::is_valid_bit_pattern(&unsafe { core::mem::transmute_copy(self) }) {
+                    // Safety: Validation performed during decoding.
+                    unsafe { core::hint::unreachable_unchecked() };
+                }
+            }
+        }
         impl ConvertFrom<&$type> for $int {
             fn convert_from(value: &$type) -> Self {
                 value.0

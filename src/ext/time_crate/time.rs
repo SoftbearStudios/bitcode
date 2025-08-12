@@ -16,9 +16,12 @@ impl ConvertFrom<&Time> for TimeConversion {
 
 impl ConvertFrom<TimeConversion> for Time {
     fn convert_from(value: (Hour, Minute, Second, Nanosecond)) -> Self {
-        let (Hour(hour), Minute(minute), Second(second), Nanosecond(nanosecond)) = value;
-        // Safety: should not fail because all input values are validated with CheckedBitPattern.
-        unsafe { Time::from_hms_nano(hour, minute, second, nanosecond).unwrap_unchecked() }
+        let (hour, minute, second, nanosecond) = value;
+        hour.hint_in_range();
+        minute.hint_in_range();
+        second.hint_in_range();
+        nanosecond.hint_in_range();
+        Time::from_hms_nano(hour.0, minute.0, second.0, nanosecond.0).unwrap()
     }
 }
 
