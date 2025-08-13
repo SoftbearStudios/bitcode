@@ -4,23 +4,28 @@ use crate::{
 };
 use bytemuck::CheckedBitPattern;
 use rust_decimal::Decimal;
-type DecimalConversion = (u32, u32, u32, Flags);
+type DecimalConversion = ([u8; 12], Flags);
 
 impl ConvertFrom<&Decimal> for DecimalConversion {
+    #[inline(always)]
     fn convert_from(value: &Decimal) -> Self {
         let unpacked = value.unpack();
-        (
+        let bytes = [
             unpacked.lo,
             unpacked.mid,
             unpacked.hi,
+        ].map(u32::to_le_bytes);
+        (
+            core::array::from_fn(|i| bytes[i / 4][i % 4]),
             Flags::new(unpacked.scale, unpacked.negative),
         )
     }
 }
 
 impl ConvertFrom<DecimalConversion> for Decimal {
+    #[inline(always)]
     fn convert_from(value: DecimalConversion) -> Self {
-        let scale = value.3.scale();
+        let scale = value.1.scale();
         // Should make Decimal::from_parts faster, once it can be inlined,
         // since it can skip division.
         // Safety: impl CheckedBitPattern for Flags guarantees this.
@@ -29,8 +34,9 @@ impl ConvertFrom<DecimalConversion> for Decimal {
                 core::hint::unreachable_unchecked();
             }
         }
-        let mut ret = Self::from_parts(value.0, value.1, value.2, false, scale);
-        ret.set_sign_negative(value.3.negative());
+        let [lo, mid, hi] = core::array::from_fn(|i| u32::from_le_bytes(value.0[i * 4..(i + 1) * 4].try_into().unwrap()));
+        let mut ret = Self::from_parts(lo, mid, hi, false, scale);
+        ret.set_sign_negative(value.1.negative());
         ret
     }
 }
@@ -38,6 +44,7 @@ impl ConvertFrom<DecimalConversion> for Decimal {
 impl_convert!(Decimal, DecimalConversion);
 
 impl ConvertFrom<&Flags> for u8 {
+    #[inline(always)]
     fn convert_from(flags: &Flags) -> Self {
         flags.0
     }
@@ -106,4 +113,15 @@ mod tests {
             assert_eq!(d.scale(), v.scale());
         }
     }
+
+    use alloc::vec::Vec;
+    fn bench_data() -> Vec<Decimal> {
+        crate::random_data(1000)
+            .into_iter()
+            .map(|(n, s): (i64, u32)| {
+                Decimal::new(n, s % (Decimal::MAX_SCALE + 1))
+            })
+            .collect()
+    }
+    crate::bench_encode_decode!(decimal_vec: Vec<_>);
 }
