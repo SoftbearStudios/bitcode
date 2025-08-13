@@ -130,12 +130,11 @@ where
 #[allow(unused)]
 macro_rules! ranged_int {
     ($type: ident, $int: ty, $lower: expr, $upper: expr) => {
-        #[doc = concat!("A ", stringify!($int), " which takes value from ", stringify!($lower), " to ", stringify!($upper))]
         #[derive(Copy, Clone)]
         #[repr(transparent)]
-        pub struct $type(pub $int);
+        pub struct $type($int);
         // Safety: They have the same layout because of #[repr(transparent)].
-        unsafe impl CheckedBitPattern for $type {
+        unsafe impl bytemuck::CheckedBitPattern for $type {
             type Bits = $int;
             #[inline(always)]
             fn is_valid_bit_pattern(bits: &Self::Bits) -> bool {
@@ -144,21 +143,20 @@ macro_rules! ranged_int {
         }
         impl $type {
             #[inline(always)]
-            pub fn hint_in_range(&self) {
-                // Safety: They have the same layout because of #[repr(transparent)].
-                if !Self::is_valid_bit_pattern(&unsafe { core::mem::transmute_copy(self) }) {
-                    // Safety: Validation performed during decoding.
+            pub(crate) fn hint_in_range(&self) {
+                if !<Self as bytemuck::CheckedBitPattern>::is_valid_bit_pattern(&self.0) {
+                    // Safety: only created subject to `CheckedBitPattern`.
                     unsafe { core::hint::unreachable_unchecked() };
                 }
             }
         }
-        impl ConvertFrom<&$type> for $int {
+        impl crate::convert::ConvertFrom<&$type> for $int {
             fn convert_from(value: &$type) -> Self {
                 value.0
             }
         }
         impl Encode for $type {
-            type Encoder = ConvertIntoEncoder<$int>;
+            type Encoder = crate::convert::ConvertIntoEncoder<$int>;
         }
         impl<'a> Decode<'a> for $type {
             type Decoder = crate::int::CheckedIntDecoder<'a, $type, $int>;

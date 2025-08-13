@@ -1,6 +1,15 @@
-use crate::convert::ConvertFrom;
-use crate::datetime::{Hour, Minute, Nanosecond, Second, TimeConversion};
+use crate::convert::{ConvertFrom, impl_convert};
+use crate::derive::{Encode, Decode};
+use crate::int::ranged_int;
 use time::Time;
+
+ranged_int!(Hour, u8, 0, 23);
+ranged_int!(Minute, u8, 0, 59);
+ranged_int!(Second, u8, 0, 59);
+ranged_int!(Nanosecond, u32, 0, 999_999_999);
+
+pub type TimeConversion = (Hour, Minute, Second, Nanosecond);
+impl_convert!(Time, TimeConversion);
 
 impl ConvertFrom<&Time> for TimeConversion {
     fn convert_from(value: &Time) -> Self {
@@ -15,7 +24,7 @@ impl ConvertFrom<&Time> for TimeConversion {
 }
 
 impl ConvertFrom<TimeConversion> for Time {
-    fn convert_from(value: (Hour, Minute, Second, Nanosecond)) -> Self {
+    fn convert_from(value: TimeConversion) -> Self {
         let (hour, minute, second, nanosecond) = value;
         hour.hint_in_range();
         minute.hint_in_range();

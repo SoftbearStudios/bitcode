@@ -1,10 +1,11 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
-use crate::datetime::Nanosecond;
+use crate::int::ranged_int;
 use crate::{Decode, Encode};
 use alloc::vec::Vec;
-use bytemuck::CheckedBitPattern;
 use core::num::NonZeroUsize;
 use core::time::Duration;
+
+ranged_int!(Nanosecond, u32, 0, 999_999_999);
 
 #[derive(Default)]
 pub struct DurationEncoder {
@@ -49,15 +50,10 @@ impl<'a> Decoder<'a, Duration> for DurationDecoder<'a> {
     #[inline(always)]
     fn decode(&mut self) -> Duration {
         let secs = self.secs.decode();
-        let Nanosecond(subsec_nanos) = self.subsec_nanos.decode();
+        let subsec_nanos = self.subsec_nanos.decode();
         // Makes Duration::new 4x faster since it can skip checks and division.
-        // Safety: impl CheckedBitPattern for Nanoseconds guarantees this.
-        unsafe {
-            if !Nanosecond::is_valid_bit_pattern(&subsec_nanos) {
-                core::hint::unreachable_unchecked();
-            }
-        }
-        Duration::new(secs, subsec_nanos)
+        subsec_nanos.hint_in_range();
+        Duration::new(secs, subsec_nanos.0)
     }
 }
 impl<'a> Decode<'a> for Duration {

@@ -6,7 +6,6 @@ use core::num::NonZeroUsize;
 
 mod array;
 pub(crate) mod convert;
-pub(crate) mod datetime;
 mod duration;
 mod empty;
 mod impls;
