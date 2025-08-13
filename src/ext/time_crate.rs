@@ -1,5 +1,5 @@
-use crate::convert::{ConvertFrom, impl_convert};
-use crate::derive::{Encode, Decode};
+use crate::convert::{impl_convert, ConvertFrom};
+use crate::derive::{Decode, Encode};
 use crate::int::ranged_int;
 use time::Time;
 
@@ -8,29 +8,26 @@ ranged_int!(Minute, u8, 0, 59);
 ranged_int!(Second, u8, 0, 59);
 ranged_int!(Nanosecond, u32, 0, 999_999_999);
 
-pub type TimeConversion = (Hour, Minute, Second, Nanosecond);
-impl_convert!(Time, TimeConversion);
+pub type TimeEncode = (u8, u8, u8, u32);
+pub type TimeDecode = (Hour, Minute, Second, Nanosecond);
+impl_convert!(Time, TimeEncode, TimeDecode);
 
-impl ConvertFrom<&Time> for TimeConversion {
+impl ConvertFrom<&Time> for TimeEncode {
     fn convert_from(value: &Time) -> Self {
-        let (hour, minute, second, nanosecond) = value.as_hms_nano();
-        (
-            Hour(hour),
-            Minute(minute),
-            Second(second),
-            Nanosecond(nanosecond),
-        )
+        value.as_hms_nano()
     }
 }
 
-impl ConvertFrom<TimeConversion> for Time {
-    fn convert_from(value: TimeConversion) -> Self {
+impl ConvertFrom<TimeDecode> for Time {
+    fn convert_from(value: TimeDecode) -> Self {
         let (hour, minute, second, nanosecond) = value;
-        hour.hint_in_range();
-        minute.hint_in_range();
-        second.hint_in_range();
-        nanosecond.hint_in_range();
-        Time::from_hms_nano(hour.0, minute.0, second.0, nanosecond.0).unwrap()
+        Time::from_hms_nano(
+            hour.into_inner(),
+            minute.into_inner(),
+            second.into_inner(),
+            nanosecond.into_inner(),
+        )
+        .unwrap()
     }
 }
 

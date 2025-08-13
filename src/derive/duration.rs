@@ -1,64 +1,28 @@
-use crate::coder::{Buffer, Decoder, Encoder, Result, View};
+use super::convert::{impl_convert, ConvertFrom};
 use crate::int::ranged_int;
 use crate::{Decode, Encode};
-use alloc::vec::Vec;
-use core::num::NonZeroUsize;
 use core::time::Duration;
 
 ranged_int!(Nanosecond, u32, 0, 999_999_999);
 
-#[derive(Default)]
-pub struct DurationEncoder {
-    secs: <u64 as Encode>::Encoder,
-    subsec_nanos: <u32 as Encode>::Encoder,
-}
-impl Encoder<Duration> for DurationEncoder {
-    #[inline(always)]
-    fn encode(&mut self, t: &Duration) {
-        self.secs.encode(&t.as_secs());
-        self.subsec_nanos.encode(&t.subsec_nanos());
-    }
-}
-impl Buffer for DurationEncoder {
-    fn collect_into(&mut self, out: &mut Vec<u8>) {
-        self.secs.collect_into(out);
-        self.subsec_nanos.collect_into(out);
-    }
+type DurationEncode = (u64, u32);
+type DurationDecode = (u64, Nanosecond);
 
-    fn reserve(&mut self, additional: NonZeroUsize) {
-        self.secs.reserve(additional);
-        self.subsec_nanos.reserve(additional);
+impl ConvertFrom<&Duration> for DurationEncode {
+    #[inline(always)]
+    fn convert_from(value: &Duration) -> Self {
+        (value.as_secs(), value.subsec_nanos())
     }
-}
-impl Encode for Duration {
-    type Encoder = DurationEncoder;
 }
 
-#[derive(Default)]
-pub struct DurationDecoder<'a> {
-    secs: <u64 as Decode<'a>>::Decoder,
-    subsec_nanos: <Nanosecond as Decode<'a>>::Decoder,
-}
-impl<'a> View<'a> for DurationDecoder<'a> {
-    fn populate(&mut self, input: &mut &'a [u8], length: usize) -> Result<()> {
-        self.secs.populate(input, length)?;
-        self.subsec_nanos.populate(input, length)?;
-        Ok(())
-    }
-}
-impl<'a> Decoder<'a, Duration> for DurationDecoder<'a> {
+impl ConvertFrom<DurationDecode> for Duration {
     #[inline(always)]
-    fn decode(&mut self) -> Duration {
-        let secs = self.secs.decode();
-        let subsec_nanos = self.subsec_nanos.decode();
-        // Makes Duration::new 4x faster since it can skip checks and division.
-        subsec_nanos.hint_in_range();
-        Duration::new(secs, subsec_nanos.0)
+    fn convert_from(value: DurationDecode) -> Self {
+        Duration::new(value.0, value.1.into_inner())
     }
 }
-impl<'a> Decode<'a> for Duration {
-    type Decoder = DurationDecoder<'a>;
-}
+
+impl_convert!(Duration, DurationEncode, DurationDecode);
 
 #[cfg(test)]
 mod tests {
