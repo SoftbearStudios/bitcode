@@ -4,8 +4,9 @@ use crate::{
 };
 use rust_decimal::Decimal;
 
-type DecimalEncode = ([u8; 12], u8, bool);
-type DecimalDecode = ([u8; 12], Scale, bool);
+type Mantissa = [u8; 12];
+type DecimalEncode = (Mantissa, bool, u8);
+type DecimalDecode = (Mantissa, bool, Scale);
 
 impl ConvertFrom<&Decimal> for DecimalEncode {
     #[inline(always)]
@@ -16,8 +17,8 @@ impl ConvertFrom<&Decimal> for DecimalEncode {
         let [c0, c1, c2, c3] = unpacked.hi.to_le_bytes();
         (
             [a0, a1, a2, a3, b0, b1, b2, b3, c0, c1, c2, c3],
-            unpacked.scale as u8,
             unpacked.negative,
+            unpacked.scale as u8,
         )
     }
 }
@@ -29,8 +30,8 @@ impl ConvertFrom<DecimalDecode> for Decimal {
         let lo = u32::from_le_bytes([a0, a1, a2, a3]);
         let mid = u32::from_le_bytes([b0, b1, b2, b3]);
         let hi = u32::from_le_bytes([c0, c1, c2, c3]);
-        let mut ret = Self::from_parts(lo, mid, hi, false, value.1.into_inner() as u32);
-        ret.set_sign_negative(value.2);
+        let mut ret = Self::from_parts(lo, mid, hi, false, value.2.into_inner() as u32);
+        ret.set_sign_negative(value.1);
         ret
     }
 }
