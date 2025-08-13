@@ -1,7 +1,8 @@
+use crate::attribute::BitcodeAttrs;
 use crate::private;
 use crate::shared::{remove_lifetimes, replace_lifetimes, variant_index};
 use proc_macro2::{Ident, Span, TokenStream};
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::{
     parse_quote, GenericParam, Generics, Lifetime, LifetimeParam, Path, PredicateLifetime, Type,
     WherePredicate,
@@ -40,10 +41,14 @@ impl crate::shared::Item for Item {
         global_field_name: TokenStream,
         real_field_name: TokenStream,
         field_type: &Type,
+        field_attrs: &BitcodeAttrs,
     ) -> TokenStream {
         match self {
             Self::Type => {
-                let de_type = replace_lifetimes(field_type, DE_LIFETIME);
+                let mut de_type = replace_lifetimes(field_type, DE_LIFETIME).to_token_stream();
+                if field_attrs.skip {
+                    de_type = quote! { ::core::marker::PhantomData<#de_type> };
+                }
                 let private = private(crate_name);
                 let de = de_lifetime();
                 quote! {
@@ -57,14 +62,34 @@ impl crate::shared::Item for Item {
                 self.#global_field_name.populate(input, __length)?;
             },
             // Only used by enum variants.
-            Self::Decode => quote! {
-                let #field_name = self.#global_field_name.decode();
-            },
+            Self::Decode => {
+                let value = if field_attrs.skip {
+                    quote! {
+                        Default::default()
+                    }
+                } else {
+                    quote! {
+                        self.#global_field_name.decode()
+                    }
+                };
+                quote! {
+                    let #field_name = #value;
+                }
+            }
             Self::DecodeInPlace => {
                 let de_type = replace_lifetimes(field_type, DE_LIFETIME);
                 let private = private(crate_name);
-                quote! {
-                    self.#global_field_name.decode_in_place(#private::uninit_field!(out.#real_field_name: #de_type));
+                let target = quote! {
+                    #private::uninit_field!(out.#real_field_name: #de_type)
+                };
+                if field_attrs.skip {
+                    quote! {{
+                        (#target).write(Default::default());
+                    }}
+                } else {
+                    quote! {
+                        self.#global_field_name.decode_in_place(#target);
+                    }
                 }
             }
         }
@@ -165,7 +190,7 @@ impl crate::shared::Item for Item {
                 if never {
                     return quote! {
                         // Safety: View::populate will error on length != 0 so decode won't be called.
-                        unsafe { core::hint::unreachable_unchecked() }
+                        unsafe { ::core::hint::unreachable_unchecked() }
                     };
                 }
                 let pattern = |i: usize| {
@@ -197,7 +222,7 @@ impl crate::shared::Item for Item {
                             match self.variants.decode() {
                                 #variants
                                 // Safety: VariantDecoder<N, _>::decode outputs numbers less than N.
-                                _ => unsafe { core::hint::unreachable_unchecked() }
+                                _ => unsafe { ::core::hint::unreachable_unchecked() }
                             }
                         }
                     })
@@ -228,12 +253,17 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
         parse_quote!(#private::Decode<#de>)
     }
 
+    fn skip_bound(&self) -> Option<Path> {
+        Some(parse_quote!(Default))
+    }
+
     fn derive_impl(
         &self,
         crate_name: &Path,
         output: [TokenStream; Item::COUNT],
         ident: Ident,
         mut generics: Generics,
+        any_static_borrow: bool,
     ) -> TokenStream {
         let input_generics = generics.clone();
         let (_, input_generics, _) = input_generics.split_for_impl();
@@ -254,6 +284,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
                         None
                     }
                 })
+                .chain(any_static_borrow.then(|| Lifetime::new("'static", Span::call_site())))
                 .collect(),
         });
 
@@ -276,7 +307,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
 
         let [mut type_body, mut default_body, populate_body, decode_in_place_body] = output;
         if type_body.is_empty() {
-            type_body = quote! { __spooky: core::marker::PhantomData<&#de ()>, };
+            type_body = quote! { __spooky: ::core::marker::PhantomData<&#de ()>, };
         }
         if default_body.is_empty() {
             default_body = quote! { __spooky: Default::default(), };
@@ -298,7 +329,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
                 }
 
                 // Avoids bounding #impl_generics: Default.
-                impl #decoder_impl_generics core::default::Default for #decoder_ty #decoder_where_clause {
+                impl #decoder_impl_generics ::core::default::Default for #decoder_ty #decoder_where_clause {
                     fn default() -> Self {
                         Self {
                             #default_body
@@ -315,7 +346,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
 
                 impl #impl_generics #private::Decoder<#de, #input_ty> for #decoder_ty #where_clause {
                     #[cfg_attr(not(debug_assertions), inline(always))]
-                    fn decode_in_place(&mut self, out: &mut core::mem::MaybeUninit<#input_ty>) {
+                    fn decode_in_place(&mut self, out: &mut ::core::mem::MaybeUninit<#input_ty>) {
                         #decode_in_place_body
                     }
                 }

@@ -127,6 +127,56 @@ where
     }
 }
 
+/// Prevents callers of `ranged_int` from accessing `.0` in the same source file.
+#[derive(Copy, Clone)]
+#[repr(transparent)]
+pub struct Private<T>(T);
+
+impl<T> Private<T> {
+    #[inline(always)]
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+}
+
+#[allow(unused)]
+macro_rules! ranged_int {
+    ($type: ident, $int: ty, $lower: expr, $upper: expr) => {
+        #[derive(Copy, Clone)]
+        #[repr(transparent)]
+        pub struct $type(crate::int::Private<$int>);
+        // Safety: They have the same layout because of #[repr(transparent)].
+        unsafe impl bytemuck::CheckedBitPattern for $type {
+            type Bits = $int;
+            #[inline(always)]
+            fn is_valid_bit_pattern(bits: &Self::Bits) -> bool {
+                const LOWER: $int = $lower;
+                const UPPER: $int = $upper;
+                (LOWER..=UPPER).contains(bits)
+            }
+        }
+        impl $type {
+            #[inline(always)]
+            pub fn into_inner(self) -> $int {
+                if !<Self as bytemuck::CheckedBitPattern>::is_valid_bit_pattern(
+                    &self.0.into_inner(),
+                ) {
+                    // Safety: only created subject to `CheckedBitPattern`.
+                    unsafe { core::hint::unreachable_unchecked() };
+                }
+                self.0.into_inner()
+            }
+        }
+
+        impl<'a> crate::derive::Decode<'a> for $type {
+            type Decoder = crate::int::CheckedIntDecoder<'a, $type, $int>;
+        }
+    };
+}
+
+#[allow(unused)]
+pub(crate) use ranged_int;
+
 #[cfg(test)]
 mod tests {
     use crate::{decode, encode};

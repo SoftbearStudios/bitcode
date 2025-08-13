@@ -1,7 +1,8 @@
+use crate::attribute::BitcodeAttrs;
 use crate::private;
 use crate::shared::{remove_lifetimes, replace_lifetimes, variant_index};
 use proc_macro2::{Ident, Span, TokenStream};
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::{parse_quote, Generics, Path, Type};
 
 #[derive(Copy, Clone)]
@@ -32,10 +33,14 @@ impl crate::shared::Item for Item {
         global_field_name: TokenStream,
         real_field_name: TokenStream,
         field_type: &Type,
+        field_attrs: &BitcodeAttrs,
     ) -> TokenStream {
         match self {
             Self::Type => {
-                let static_type = replace_lifetimes(field_type, "static");
+                let mut static_type = replace_lifetimes(field_type, "static").to_token_stream();
+                if field_attrs.skip {
+                    static_type = quote! { ::core::marker::PhantomData<#static_type> };
+                }
                 let private = private(crate_name);
                 quote! {
                     #global_field_name: <#static_type as #private::Encode>::Encoder,
@@ -46,14 +51,21 @@ impl crate::shared::Item for Item {
             },
             Self::Encode | Self::EncodeVectored => {
                 let static_type = replace_lifetimes(field_type, "static");
-                let value = if &static_type != field_type {
+                let value = if field_attrs.skip {
+                    quote! {
+                        {
+                            let _ = #field_name;
+                            &::core::marker::PhantomData::<#static_type>
+                        }
+                    }
+                } else if &static_type != field_type {
                     let underscore_type = replace_lifetimes(field_type, "_");
 
                     // HACK: Since encoders don't have lifetimes we can't reference <T<'a> as Encode>::Encoder since 'a
                     // does not exist. Instead we replace this with <T<'static> as Encode>::Encoder and transmute it to
                     // T<'a>. No encoder actually encodes T<'static> any differently from T<'a> so this is sound.
                     quote! {
-                        unsafe { core::mem::transmute::<&#underscore_type, &#static_type>(#field_name) }
+                        unsafe { ::core::mem::transmute::<&#underscore_type, &#static_type>(#field_name) }
                     }
                 } else {
                     quote! { #field_name }
@@ -159,7 +171,7 @@ impl crate::shared::Item for Item {
                             .then(|| {
                                 let reserve = inner(Self::Reserve, i);
                                 quote! {
-                                    let __additional = core::num::NonZeroUsize::MIN;
+                                    let __additional = ::core::num::NonZeroUsize::MIN;
                                     #reserve
                                 }
                             })
@@ -231,12 +243,17 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
         parse_quote!(#private::Encode)
     }
 
+    fn skip_bound(&self) -> Option<Path> {
+        None
+    }
+
     fn derive_impl(
         &self,
         crate_name: &Path,
         output: [TokenStream; Item::COUNT],
         ident: Ident,
         mut generics: Generics,
+        _any_static_borrow: bool,
     ) -> TokenStream {
         let input_generics = generics.clone();
         let (impl_generics, input_generics, where_clause) = input_generics.split_for_impl();
@@ -265,7 +282,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
                 }
 
                 // Avoids bounding #impl_generics: Default.
-                impl #encoder_impl_generics core::default::Default for #encoder_ty #encoder_where_clause {
+                impl #encoder_impl_generics ::core::default::Default for #encoder_ty #encoder_where_clause {
                     fn default() -> Self {
                         Self {
                             #default_body
@@ -291,11 +308,11 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
                 }
 
                 impl #encoder_impl_generics #private::Buffer for #encoder_ty #encoder_where_clause {
-                    fn collect_into(&mut self, out: &mut Vec<u8>) {
+                    fn collect_into(&mut self, out: &mut #private::Vec<u8>) {
                         #collect_into_body
                     }
 
-                    fn reserve(&mut self, __additional: core::num::NonZeroUsize) {
+                    fn reserve(&mut self, __additional: ::core::num::NonZeroUsize) {
                         #reserve_body
                     }
                 }
