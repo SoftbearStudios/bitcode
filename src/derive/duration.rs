@@ -1,83 +1,27 @@
-use crate::coder::{Buffer, Decoder, Encoder, Result, View};
-use crate::{Decode, Encode};
-use alloc::vec::Vec;
-use bytemuck::CheckedBitPattern;
-use core::num::NonZeroUsize;
+use super::convert::{impl_convert, ConvertFrom};
+use crate::int::ranged_int;
 use core::time::Duration;
 
-#[derive(Default)]
-pub struct DurationEncoder {
-    secs: <u64 as Encode>::Encoder,
-    subsec_nanos: <u32 as Encode>::Encoder,
-}
-impl Encoder<Duration> for DurationEncoder {
-    #[inline(always)]
-    fn encode(&mut self, t: &Duration) {
-        self.secs.encode(&t.as_secs());
-        self.subsec_nanos.encode(&t.subsec_nanos());
-    }
-}
-impl Buffer for DurationEncoder {
-    fn collect_into(&mut self, out: &mut Vec<u8>) {
-        self.secs.collect_into(out);
-        self.subsec_nanos.collect_into(out);
-    }
+ranged_int!(Nanosecond, u32, 0, 999_999_999);
 
-    fn reserve(&mut self, additional: NonZeroUsize) {
-        self.secs.reserve(additional);
-        self.subsec_nanos.reserve(additional);
+type DurationEncode = (u64, u32);
+type DurationDecode = (u64, Nanosecond);
+
+impl ConvertFrom<&Duration> for DurationEncode {
+    #[inline(always)]
+    fn convert_from(value: &Duration) -> Self {
+        (value.as_secs(), value.subsec_nanos())
     }
-}
-impl Encode for Duration {
-    type Encoder = DurationEncoder;
 }
 
-/// A u32 guaranteed to be < 1 billion. Prevents Duration::new from panicking.
-#[derive(Copy, Clone)]
-#[repr(transparent)]
-struct Nanoseconds(u32);
-// Safety: u32 and Nanoseconds have the same layout since Nanoseconds is #[repr(transparent)].
-unsafe impl CheckedBitPattern for Nanoseconds {
-    type Bits = u32;
+impl ConvertFrom<DurationDecode> for Duration {
     #[inline(always)]
-    fn is_valid_bit_pattern(bits: &Self::Bits) -> bool {
-        *bits < 1_000_000_000
+    fn convert_from(value: DurationDecode) -> Self {
+        Duration::new(value.0, value.1.into_inner())
     }
-}
-impl<'a> Decode<'a> for Nanoseconds {
-    type Decoder = crate::int::CheckedIntDecoder<'a, Nanoseconds, u32>;
 }
 
-#[derive(Default)]
-pub struct DurationDecoder<'a> {
-    secs: <u64 as Decode<'a>>::Decoder,
-    subsec_nanos: <Nanoseconds as Decode<'a>>::Decoder,
-}
-impl<'a> View<'a> for DurationDecoder<'a> {
-    fn populate(&mut self, input: &mut &'a [u8], length: usize) -> Result<()> {
-        self.secs.populate(input, length)?;
-        self.subsec_nanos.populate(input, length)?;
-        Ok(())
-    }
-}
-impl<'a> Decoder<'a, Duration> for DurationDecoder<'a> {
-    #[inline(always)]
-    fn decode(&mut self) -> Duration {
-        let secs = self.secs.decode();
-        let Nanoseconds(subsec_nanos) = self.subsec_nanos.decode();
-        // Makes Duration::new 4x faster since it can skip checks and division.
-        // Safety: impl CheckedBitPattern for Nanoseconds guarantees this.
-        unsafe {
-            if !Nanoseconds::is_valid_bit_pattern(&subsec_nanos) {
-                core::hint::unreachable_unchecked();
-            }
-        }
-        Duration::new(secs, subsec_nanos)
-    }
-}
-impl<'a> Decode<'a> for Duration {
-    type Decoder = DurationDecoder<'a>;
-}
+impl_convert!(Duration, DurationEncode, DurationDecode);
 
 #[cfg(test)]
 mod tests {
@@ -95,5 +39,5 @@ mod tests {
             .map(|(s, n): (_, u32)| Duration::new(s, n % 1_000_000_000))
             .collect()
     }
-    crate::bench_encode_decode!(duration_vec: Vec<_>);
+    crate::bench_encode_decode!(duration_vec: Vec<Duration>);
 }
