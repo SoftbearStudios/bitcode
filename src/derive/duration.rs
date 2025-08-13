@@ -39,5 +39,5 @@ mod tests {
             .map(|(s, n): (_, u32)| Duration::new(s, n % 1_000_000_000))
             .collect()
     }
-    crate::bench_encode_decode!(duration_vec: Vec<Duration>);
+    crate::bench_encode_decode!(duration_vec: Vec<_>);
 }

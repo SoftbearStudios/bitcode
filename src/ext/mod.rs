@@ -4,7 +4,7 @@ mod arrayvec;
 #[rustfmt::skip] // Makes impl_struct! calls way longer.
 mod glam;
 #[cfg(feature = "time")]
-mod time_crate;
+mod time;
 #[cfg(feature = "uuid")]
 mod uuid;
 
