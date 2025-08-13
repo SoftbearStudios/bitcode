@@ -12,12 +12,14 @@ type TimeDecode = (Hour, Minute, Second, Nanosecond);
 impl_convert!(Time, TimeEncode, TimeDecode);
 
 impl ConvertFrom<&Time> for TimeEncode {
+    #[inline(always)]
     fn convert_from(value: &Time) -> Self {
         value.as_hms_nano()
     }
 }
 
 impl ConvertFrom<TimeDecode> for Time {
+    #[inline(always)]
     fn convert_from(value: TimeDecode) -> Self {
         Time::from_hms_nano(
             value.0.into_inner(),
