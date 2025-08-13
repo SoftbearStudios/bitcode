@@ -35,25 +35,9 @@ let decoded: Foo<'_> = bitcode::decode(&encoded).unwrap();
 assert_eq!(original, decoded);
 ```
 
-## Library Example
+## Adding Support for Libraries
 
-Add bitcode to libraries without specifying the major version so binary crates can pick the version.
-This is a minimal stable subset of the bitcode API so avoid using any other functionality.
-```toml
-bitcode = { version = "0", features = ["derive"], default-features = false, optional = true }
-```
-```rust
-#[cfg_attr(feature = "bitcode", derive(bitcode::Encode, bitcode::Decode))]
-pub struct Vec2 {
-    x: f32,
-    y: f32,
-}
-```
-
-## Tuple vs Array
-If you have multiple values of the same type:
-- Use a tuple or struct when the values are semantically different: `x: u32, y: u32`
-- Use an array when all values are semantically similar: `pixels: [u8; 16]`
+See the instructions [here](https://github.com/SoftbearStudios/bitcode/wiki/Adding-library-support)!
 
 ## Implementation Details
 - Heavily inspired by <https://github.com/That3Percent/tree-buf>
@@ -63,15 +47,7 @@ If you have multiple values of the same type:
 - Code is designed to be auto-vectorized by LLVM
 
 ## `serde`
-A `serde` integration is gated behind the `"serde"` feature flag. It is slower, produces
-slightly larger output, and (by extension) is not compatible with the native
-`bitcode::{Encode, Decode}`. Note that:
-- the `serde` version does not support types like
-`serde_json::Value`, which internally serialize different types (numbers, arrays, etc.)
-without a normal enum discriminant.
-- the `serde` version omits
-the `flowinfo` and `scope_id` fields of `std::net::SocketAddrV6`, but native `bitcode`
-keeps them.
+A `serde` integration is gated behind the `"serde"` feature flag. Click [here](https://github.com/SoftbearStudios/bitcode/wiki/Serde) to learn more.
 
 ## `#![no_std]`
 All `std`-only functionality is gated behind the (default) `"std"` feature.

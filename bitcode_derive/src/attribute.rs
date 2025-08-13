@@ -8,6 +8,7 @@ use syn::{parse2, Attribute, Expr, ExprLit, Lit, Meta, Path, Result, Token, Type
 enum BitcodeAttr {
     BoundType(Type),
     CrateAlias(Path),
+    Skip,
 }
 
 impl BitcodeAttr {
@@ -52,6 +53,7 @@ impl BitcodeAttr {
                 }
                 _ => err(&nested, "expected name value"),
             },
+            "skip" => Ok(Self::Skip),
             _ => err(&nested, "unknown attribute"),
         }
     }
@@ -77,6 +79,14 @@ impl BitcodeAttr {
                     err(nested, "can only apply crate rename to derives")
                 }
             }
+            Self::Skip => {
+                if let AttrType::Field { .. } = &attrs.attr_type {
+                    attrs.skip = true;
+                    Ok(())
+                } else {
+                    err(nested, "can only apply skip to fields")
+                }
+            }
         }
     }
 }
@@ -86,6 +96,8 @@ pub struct BitcodeAttrs {
     attr_type: AttrType,
     /// The crate name to use for the generated code, defaults to "bitcode".
     pub crate_name: Path,
+    /// Whether to skip this field during (de)serialisation.
+    pub skip: bool,
 }
 
 #[derive(Clone)]
@@ -100,6 +112,7 @@ impl BitcodeAttrs {
         Self {
             attr_type,
             crate_name: syn::parse_str("bitcode").expect("invalid crate name"),
+            skip: false,
         }
     }
 

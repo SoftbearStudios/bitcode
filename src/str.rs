@@ -205,7 +205,72 @@ mod tests {
         ("a", "b", "c", "d", "e", "f", "g")
     }
     crate::bench_encode_decode!(str_tuple: (&str, &str, &str, &str, &str, &str, &str));
+
+    // Don't do this in miri since it leaks memory.
+    #[test]
+    #[cfg(all(feature = "derive", not(miri)))]
+    fn decode_static_from_static_buffer() {
+        #[derive(crate::Encode, crate::Decode)]
+        struct Test {
+            text: &'static str,
+        }
+
+        let _var = {
+            let bytes = encode(&Test { text: "hi" }).leak();
+            decode::<Test>(&*bytes).unwrap()
+        };
+    }
+
+    #[test]
+    #[cfg(feature = "derive")]
+    fn decode_phantom_static_from_non_static_buffer() {
+        use core::marker::PhantomData;
+
+        #[derive(crate::Encode, crate::Decode)]
+        struct Test {
+            text: PhantomData<&'static str>,
+        }
+
+        let _var = {
+            let bytes = encode(&Test { text: PhantomData });
+            decode::<Test>(&*bytes).unwrap()
+        };
+    }
 }
+
+/// ```compile_fail,E0597
+/// use bitcode::{encode, decode, Encode, Decode};
+///
+/// #[derive(Decode)]
+/// struct Test {
+///     text: &'static str,
+/// }
+///
+/// let _var = {
+///     let var = [0];
+///     decode::<Test>(&var).unwrap()
+/// };
+/// ```
+#[doc(hidden)]
+pub fn _cant_decode_static_from_non_static_buffer() {}
+
+/// ```compile_fail,E0495
+/// use bitcode::{encode, decode, Encode, Decode};
+///
+/// type StaticStr = &'static str;
+///
+/// #[derive(Decode)]
+/// struct Test {
+///     text: StaticStr,
+/// }
+///
+///
+/// let _var = {
+///     decode::<Test>(&[]).unwrap()
+/// };
+/// ```
+#[doc(hidden)]
+pub fn _cant_decode_static_alias_at_all() {}
 
 #[cfg(test)]
 mod tests2 {

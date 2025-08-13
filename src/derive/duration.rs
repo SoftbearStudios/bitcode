@@ -1,6 +1,5 @@
 use super::convert::{impl_convert, ConvertFrom};
 use crate::int::ranged_int;
-use crate::{Decode, Encode};
 use core::time::Duration;
 
 ranged_int!(Nanosecond, u32, 0, 999_999_999);

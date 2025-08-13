@@ -5,6 +5,8 @@ mod arrayvec;
 mod glam;
 #[cfg(feature = "time")]
 mod time_crate;
+#[cfg(feature = "uuid")]
+mod uuid;
 
 #[allow(unused)]
 macro_rules! impl_struct {
