@@ -7,8 +7,8 @@ ranged_int!(Minute, u8, 0, 59);
 ranged_int!(Second, u8, 0, 59);
 ranged_int!(Nanosecond, u32, 0, 999_999_999);
 
-pub type TimeEncode = (u8, u8, u8, u32);
-pub type TimeDecode = (Hour, Minute, Second, Nanosecond);
+type TimeEncode = (u8, u8, u8, u32);
+type TimeDecode = (Hour, Minute, Second, Nanosecond);
 impl_convert!(Time, TimeEncode, TimeDecode);
 
 impl ConvertFrom<&Time> for TimeEncode {
@@ -19,13 +19,12 @@ impl ConvertFrom<&Time> for TimeEncode {
 
 impl ConvertFrom<TimeDecode> for Time {
     fn convert_from(value: TimeDecode) -> Self {
-        let (hour, minute, second, nanosecond) = value;
         // TODO: ask for #[inline]
         Time::from_hms_nano(
-            hour.into_inner(),
-            minute.into_inner(),
-            second.into_inner(),
-            nanosecond.into_inner(),
+            value.0.into_inner(),
+            value.1.into_inner(),
+            value.2.into_inner(),
+            value.3.into_inner(),
         )
         .unwrap()
     }
