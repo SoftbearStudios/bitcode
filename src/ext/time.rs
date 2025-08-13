@@ -20,6 +20,7 @@ impl ConvertFrom<&Time> for TimeEncode {
 impl ConvertFrom<TimeDecode> for Time {
     fn convert_from(value: TimeDecode) -> Self {
         let (hour, minute, second, nanosecond) = value;
+        // TODO: ask for #[inline]
         Time::from_hms_nano(
             hour.into_inner(),
             minute.into_inner(),
