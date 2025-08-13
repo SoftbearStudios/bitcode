@@ -10,6 +10,7 @@ use std::fmt::Debug;
 use std::num::NonZeroU32;
 use std::time::Duration;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use rust_decimal::Decimal;
 
 #[inline(never)]
 fn test_derive<T: Debug + PartialEq + Encode + DecodeOwned>(data: &[u8]) {
@@ -209,6 +210,7 @@ fuzz_target!(|data: &[u8]| {
         ArrayString<70>,
         ArrayVec<u8, 5>,
         ArrayVec<u8, 70>,
+        Decimal,
         Duration,
         Ipv4Addr,
         Ipv6Addr,

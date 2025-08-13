@@ -150,7 +150,9 @@ macro_rules! ranged_int {
             type Bits = $int;
             #[inline(always)]
             fn is_valid_bit_pattern(bits: &Self::Bits) -> bool {
-                ($lower..=$upper).contains(bits)
+                const LOWER: $int = $lower;
+                const UPPER: $int = $upper;
+                (LOWER..=UPPER).contains(bits)
             }
         }
         impl $type {
