@@ -5,10 +5,10 @@ use core::num::NonZeroUsize;
 #[allow(unused)]
 macro_rules! impl_convert {
     ($want: path, $have: ty) => {
-        impl Encode for $want {
+        impl crate::derive::Encode for $want {
             type Encoder = crate::derive::convert::ConvertIntoEncoder<$have>;
         }
-        impl<'a> Decode<'a> for $want {
+        impl<'a> crate::derive::Decode<'a> for $want {
             type Decoder = crate::derive::convert::ConvertFromDecoder<'a, $have>;
         }
     };

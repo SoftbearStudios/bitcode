@@ -34,7 +34,7 @@ jobs:
       - name: Test (all-features)
         run: cargo test --all-features
       - name: Test (no_std)
-        run: cargo test --no-default-features --features derive,serde,glam,arrayvec
+        run: cargo test --no-default-features --features derive,serde,glam,arrayvec,uuid
       - name: Install i686 and GCC multilib
         run: rustup target add i686-unknown-linux-gnu && sudo apt update && sudo apt install -y gcc-multilib
       - name: Test (32-bit all-features)
@@ -42,7 +42,7 @@ jobs:
       - name: Install thumbv6m-none-eabi
         run: rustup target add thumbv6m-none-eabi
       - name: Check (no atomic ptr)
-        run: cargo check --target thumbv6m-none-eabi --no-default-features --features derive,serde,arrayvec
+        run: cargo check --target thumbv6m-none-eabi --no-default-features --features derive,serde,arrayvec,uuid
       - name: Setup Miri
         run: cargo miri setup
       - name: Test (miri all-features)
