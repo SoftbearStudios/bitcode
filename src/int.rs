@@ -127,6 +127,7 @@ where
     }
 }
 
+/// Prevents callers of `ranged_int` from accessing `.0` in the same source file.
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct Private<T>(T);

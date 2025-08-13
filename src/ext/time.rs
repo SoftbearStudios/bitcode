@@ -19,7 +19,6 @@ impl ConvertFrom<&Time> for TimeEncode {
 
 impl ConvertFrom<TimeDecode> for Time {
     fn convert_from(value: TimeDecode) -> Self {
-        // TODO: ask for #[inline]
         Time::from_hms_nano(
             value.0.into_inner(),
             value.1.into_inner(),
