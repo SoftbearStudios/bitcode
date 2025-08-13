@@ -5,6 +5,7 @@ use crate::{
 use rust_decimal::Decimal;
 
 type Mantissa = [u8; 12];
+ranged_int!(Scale, u8, 0, Decimal::MAX_SCALE as u8);
 type DecimalEncode = (Mantissa, bool, u8);
 type DecimalDecode = (Mantissa, bool, Scale);
 
@@ -37,8 +38,6 @@ impl ConvertFrom<DecimalDecode> for Decimal {
 }
 
 impl_convert!(Decimal, DecimalEncode, DecimalDecode);
-
-ranged_int!(Scale, u8, 0, Decimal::MAX_SCALE as u8);
 
 #[cfg(test)]
 mod tests {
