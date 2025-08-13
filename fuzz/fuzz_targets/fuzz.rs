@@ -106,6 +106,7 @@ fuzz_target!(|data: &[u8]| {
                                 ArrayVec<$typ, 0>,
                                 ArrayVec<$typ, 5>,
                                 Result<$typ, u32>,
+                                Struct<String, $typ>,
                             );
                         }
                         #[allow(unused)]
@@ -147,10 +148,23 @@ fuzz_target!(|data: &[u8]| {
         A,
         B,
         C(u16),
-        D { a: u8, b: u8 },
+        D { a: u8, b: u8, #[serde(skip)] #[bitcode(skip)] c: u8 },
         E(String),
         F,
+        G(#[bitcode(skip)] #[serde(skip)] i16),
         P(BTreeMap<u16, u8>),
+    }
+
+    #[derive(Serialize, Deserialize, Encode, Decode, Debug, PartialEq)]
+    struct Struct<D, T> {
+        foo: BitsEqualF32,
+        #[bitcode(skip)]
+        #[serde(skip)]
+        bar: f32,
+        baz: T,
+        #[bitcode(skip)]
+        #[serde(skip)]
+        def: D,
     }
 
     #[derive(Serialize, Deserialize, Encode, Decode, Debug)]
