@@ -65,6 +65,9 @@ mod tests {
             assert_eq!(d.is_sign_negative(), v.is_sign_negative());
             assert_eq!(d.scale(), v.scale());
         }
+
+        assert!(crate::decode::<Decimal>(&crate::encode(&([42u8; 12], false, 28u8))).is_ok());
+        assert!(crate::decode::<Decimal>(&crate::encode(&([42u8; 12], false, 29u8))).is_err());
     }
 
     use alloc::vec::Vec;
