@@ -11,13 +11,11 @@ impl ConvertFrom<&Decimal> for DecimalEncode {
     #[inline(always)]
     fn convert_from(value: &Decimal) -> Self {
         let unpacked = value.unpack();
-        let bytes = [
-            unpacked.lo,
-            unpacked.mid,
-            unpacked.hi,
-        ].map(u32::to_le_bytes);
+        let [a0, a1, a2, a3] = unpacked.lo.to_le_bytes();
+        let [b0, b1, b2, b3] = unpacked.mid.to_le_bytes();
+        let [c0, c1, c2, c3] = unpacked.hi.to_le_bytes();
         (
-            core::array::from_fn(|i| bytes[i / 4][i % 4]),
+            [a0, a1, a2, a3, b0, b1, b2, b3, c0, c1, c2, c3],
             unpacked.scale as u8,
             unpacked.negative,
         )
@@ -27,7 +25,10 @@ impl ConvertFrom<&Decimal> for DecimalEncode {
 impl ConvertFrom<DecimalDecode> for Decimal {
     #[inline(always)]
     fn convert_from(value: DecimalDecode) -> Self {
-        let [lo, mid, hi] = core::array::from_fn(|i| u32::from_le_bytes(value.0[i * 4..(i + 1) * 4].try_into().unwrap()));
+        let [a0, a1, a2, a3, b0, b1, b2, b3, c0, c1, c2, c3] = value.0;
+        let lo = u32::from_le_bytes([a0, a1, a2, a3]);
+        let mid = u32::from_le_bytes([b0, b1, b2, b3]);
+        let hi = u32::from_le_bytes([c0, c1, c2, c3]);
         let mut ret = Self::from_parts(lo, mid, hi, false, value.1.into_inner() as u32);
         ret.set_sign_negative(value.2);
         ret
@@ -69,9 +70,7 @@ mod tests {
     fn bench_data() -> Vec<Decimal> {
         crate::random_data(1000)
             .into_iter()
-            .map(|(n, s): (i64, u32)| {
-                Decimal::new(n, s % (Decimal::MAX_SCALE + 1))
-            })
+            .map(|(n, s): (i64, u32)| Decimal::new(n, s % (Decimal::MAX_SCALE + 1)))
             .collect()
     }
     crate::bench_encode_decode!(decimal_vec: Vec<_>);
