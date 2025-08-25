@@ -7,7 +7,7 @@ use core::mem::MaybeUninit;
 use core::num::NonZeroUsize;
 
 pub struct OptionEncoder<T: Encode> {
-    variants: VariantEncoder<2>,
+    variants: VariantEncoder<u8, 2>,
     some: T::Encoder,
 }
 
@@ -86,7 +86,7 @@ impl<T: Encode> Buffer for OptionEncoder<T> {
 }
 
 pub struct OptionDecoder<'a, T: Decode<'a>> {
-    variants: VariantDecoder<'a, 2, false>,
+    variants: VariantDecoder<'a, u8, 2, false>,
     some: T::Decoder,
 }
 
