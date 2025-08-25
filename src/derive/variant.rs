@@ -19,7 +19,7 @@ impl<T: Int, const N: usize> Encoder<T> for VariantEncoder<T, N> {
 impl<T: Int, const N: usize> Buffer for VariantEncoder<T, N> {
     fn collect_into(&mut self, out: &mut Vec<u8>) {
         assert!(N >= 2);
-        if std::mem::size_of::<T>() > 1 {
+        if core::mem::size_of::<T>() > 1 {
             pack_ints(self.0.as_mut_slice(), out);
         } else {
             pack_bytes_less_than::<N>(bytemuck::must_cast_slice::<T, u8>(self.0.as_slice()), out);
@@ -65,7 +65,7 @@ impl<'a, T: Int, const N: usize, const C_STYLE: bool> View<'a>
             // SAFETY: Checked the type above and [u8; 1] has the
             // same memory layout as `u8`.
             let out = unsafe {
-                std::mem::transmute::<&mut CowSlice<'a, T::Une>, &mut CowSlice<'a, u8>>(
+                core::mem::transmute::<&mut CowSlice<'a, T::Une>, &mut CowSlice<'a, u8>>(
                     &mut self.variants,
                 )
             };
