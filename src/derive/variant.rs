@@ -1,4 +1,5 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
+use crate::error::err;
 use crate::fast::{CowSlice, NextUnchecked, PushUnchecked, VecImpl};
 use crate::pack::{pack_bytes_less_than, unpack_bytes_less_than};
 use crate::pack_ints::{pack_ints, unpack_ints, Int};
@@ -54,13 +55,19 @@ impl<'a, T: Int, const N: usize> VariantDecoder<'a, T, N, false> {
     }
 }
 
-impl<'a, T: Int, const N: usize, const C_STYLE: bool> View<'a>
+impl<'a, T: Int + Into<usize>, const N: usize, const C_STYLE: bool> View<'a>
     for VariantDecoder<'a, T, N, C_STYLE>
 {
     fn populate(&mut self, input: &mut &'a [u8], length: usize) -> Result<()> {
         assert!(N >= 2);
         if TypeId::of::<T>() != TypeId::of::<u8>() {
             unpack_ints::<T>(input, length, &mut self.variants)?;
+            // TOOD: this uses extra memory bandwith to rescan.
+            for int in unsafe { self.variants.as_slice(length) } {
+                if T::from_unaligned(*int).into() >= N {
+                    return err("invalid enum variant index");
+                }
+            }
         } else {
             // SAFETY: Checked the type above and [u8; 1] has the
             // same memory layout as `u8`.
@@ -79,7 +86,7 @@ impl<'a, T: Int, const N: usize, const C_STYLE: bool> View<'a>
     }
 }
 
-impl<'a, T: Int, const N: usize, const C_STYLE: bool> Decoder<'a, T>
+impl<'a, T: Int + Into<usize>, const N: usize, const C_STYLE: bool> Decoder<'a, T>
     for VariantDecoder<'a, T, N, C_STYLE>
 {
     // Guaranteed to output numbers less than N.
