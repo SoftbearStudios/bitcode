@@ -240,6 +240,11 @@ impl<'a> EncoderWrapper<'a> {
     #[inline(always)]
     fn variant_index_u8(variant_index: u32) -> Result<u8> {
         if variant_index > u8::MAX as u32 {
+            // Properly optimizing the size of large enums would
+            // require `serde` to specify the variant count.
+            //
+            // Good news: the `derive` version of `bitcode` supports
+            // arbitrary-sized fieldless enums!
             err("enums with more than 256 variants are unsupported")
         } else {
             Ok(variant_index as u8)
