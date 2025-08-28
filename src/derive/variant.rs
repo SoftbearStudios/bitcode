@@ -139,13 +139,6 @@ mod tests {
 
     #[allow(unused)]
     #[test]
-    fn test_large_c_style_enum() {
-        assert!(matches!(decode(&encode(&Enum300::V42)), Ok(Enum300::V42)));
-        assert!(matches!(decode(&encode(&Enum300::V300)), Ok(Enum300::V300)));
-    }
-
-    #[allow(unused)]
-    #[test]
     fn test_rust_style_enum() {
         #[derive(Encode, Decode)]
         enum Enum1 {
@@ -182,6 +175,12 @@ mod tests {
             .collect()
     }
     crate::bench_encode_decode!(bool_enum_vec: Vec<_>);
+}
+
+#[cfg(test)]
+mod test2 {
+    use crate::{decode, encode, Decode, Encode};
+    use alloc::vec::Vec;
 
     #[cfg_attr(not(test), rustfmt::skip)]
     #[derive(Encode, Decode, Debug, PartialEq)]
@@ -217,11 +216,13 @@ mod tests {
         V281, V282, V283, V284, V285, V286, V287, V288, V289, V290,
         V291, V292, V293, V294, V295, V296, V297, V298, V299, V300,
     }
-}
 
-#[cfg(test)]
-mod test2 {
-    use crate::derive::variant::tests::Enum300;
+    #[allow(unused)]
+    #[test]
+    fn test_large_c_style_enum() {
+        assert!(matches!(decode(&encode(&Enum300::V42)), Ok(Enum300::V42)));
+        assert!(matches!(decode(&encode(&Enum300::V300)), Ok(Enum300::V300)));
+    }
 
     fn bench_data() -> Vec<Enum300> {
         crate::random_data(1000)
