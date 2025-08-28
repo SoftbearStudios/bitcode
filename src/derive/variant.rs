@@ -72,7 +72,7 @@ impl<'a, T: Int + Into<usize>, const N: usize, const HISTOGRAM: usize> View<'a>
             fn check_less_than<T: Int + Into<usize>, const N: usize>(
                 unpacked: &[T::Une],
             ) -> Result<()> {
-                if 2u64.pow(std::mem::size_of::<T>() as u32 * 8) - 1 > N as u64
+                if 2u64.pow(core::mem::size_of::<T>() as u32 * 8) - 1 > N as u64
                     && unpacked
                         .iter()
                         .copied()
