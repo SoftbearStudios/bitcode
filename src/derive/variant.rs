@@ -102,7 +102,7 @@ impl<'a, T: Int + Into<usize>, const N: usize, const HISTOGRAM: usize> Decoder<'
     // Guaranteed to output numbers less than N.
     #[inline(always)]
     fn decode(&mut self) -> T {
-        bytemuck::must_cast(unsafe { self.variants.mut_slice().next_unchecked() })
+        T::from_unaligned(unsafe { self.variants.mut_slice().next_unchecked() })
     }
 }
 

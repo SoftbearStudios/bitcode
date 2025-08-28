@@ -69,11 +69,14 @@ impl VariantIndex {
 impl ToTokens for VariantIndex {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         use quote::TokenStreamExt;
-        tokens.append(match self {
-            Self::U8 => Ident::new("u8", Span::call_site()),
-            Self::U16 => Ident::new("u16", Span::call_site()),
-            Self::U32 => Ident::new("u32", Span::call_site()),
-        });
+        tokens.append(Ident::new(
+            match self {
+                Self::U8 => "u8",
+                Self::U16 => "u16",
+                Self::U32 => "u32",
+            },
+            Span::call_site(),
+        ));
     }
 }
 
