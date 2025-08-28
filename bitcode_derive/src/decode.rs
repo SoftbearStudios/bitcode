@@ -127,7 +127,12 @@ impl crate::shared::Item for Item {
                     .then(|| {
                         let private = private(crate_name);
                         let c_style = inners.is_empty();
-                        quote! { variants: #private::VariantDecoder<#de, #variant_index, #variant_count, #c_style>, }
+                        let histogram = if c_style {
+                            0
+                        } else {
+                            variant_count
+                        };
+                        quote! { variants: #private::VariantDecoder<#de, #variant_index, #variant_count, #histogram>, }
                     })
                     .unwrap_or_default();
                 quote! {

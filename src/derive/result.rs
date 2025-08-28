@@ -55,7 +55,7 @@ impl<T: Encode, E: Encode> Buffer for ResultEncoder<T, E> {
 }
 
 pub struct ResultDecoder<'a, T: Decode<'a>, E: Decode<'a>> {
-    variants: VariantDecoder<'a, u8, 2, false>,
+    variants: VariantDecoder<'a, u8, 2, 2>,
     ok: T::Decoder,
     err: E::Decoder,
 }

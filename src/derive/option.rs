@@ -86,7 +86,7 @@ impl<T: Encode> Buffer for OptionEncoder<T> {
 }
 
 pub struct OptionDecoder<'a, T: Decode<'a>> {
-    variants: VariantDecoder<'a, u8, 2, false>,
+    variants: VariantDecoder<'a, u8, 2, 2>,
     some: T::Decoder,
 }
 

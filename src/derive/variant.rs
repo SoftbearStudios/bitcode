@@ -33,13 +33,16 @@ impl<T: Int, const N: usize> Buffer for VariantEncoder<T, N> {
     }
 }
 
-pub struct VariantDecoder<'a, T: Int, const N: usize, const C_STYLE: bool> {
+pub struct VariantDecoder<'a, T: Int, const N: usize, const HISTOGRAM: usize> {
     variants: CowSlice<'a, T::Une>,
-    histogram: [usize; N], // Not required if C_STYLE. TODO don't reserve space for it.
+    // `HISTOGRAM` is 0 for C style (fieldless) enums.
+    histogram: [usize; HISTOGRAM],
 }
 
 // [(); N] doesn't implement Default.
-impl<T: Int, const N: usize, const C_STYLE: bool> Default for VariantDecoder<'_, T, N, C_STYLE> {
+impl<T: Int, const N: usize, const HISTOGRAM: usize> Default
+    for VariantDecoder<'_, T, N, HISTOGRAM>
+{
     fn default() -> Self {
         Self {
             variants: Default::default(),
@@ -48,15 +51,16 @@ impl<T: Int, const N: usize, const C_STYLE: bool> Default for VariantDecoder<'_,
     }
 }
 
-// C style enums don't require length, so we can skip making a histogram for them.
-impl<'a, T: Int, const N: usize> VariantDecoder<'a, T, N, false> {
+// C style enums (`HISTOGRAM` = 0) don't require length, so we
+// can skip making a histogram for them.
+impl<'a, T: Int, const N: usize> VariantDecoder<'a, T, N, N> {
     pub fn length(&self, variant_index: u8) -> usize {
         self.histogram[variant_index as usize]
     }
 }
 
-impl<'a, T: Int + Into<usize>, const N: usize, const C_STYLE: bool> View<'a>
-    for VariantDecoder<'a, T, N, C_STYLE>
+impl<'a, T: Int + Into<usize>, const N: usize, const HISTOGRAM: usize> View<'a>
+    for VariantDecoder<'a, T, N, HISTOGRAM>
 {
     fn populate(&mut self, input: &mut &'a [u8], length: usize) -> Result<()> {
         assert!(N >= 2);
@@ -86,18 +90,14 @@ impl<'a, T: Int + Into<usize>, const N: usize, const C_STYLE: bool> View<'a>
             check_less_than::<T, N>(unsafe { self.variants.as_slice(length) })?;
         } else {
             let out = self.variants.cast_mut::<u8>();
-            if C_STYLE {
-                unpack_bytes_less_than::<N, 0>(input, length, out)?;
-            } else {
-                self.histogram = unpack_bytes_less_than::<N, N>(input, length, out)?;
-            }
+            self.histogram = unpack_bytes_less_than::<N, HISTOGRAM>(input, length, out)?;
         }
         Ok(())
     }
 }
 
-impl<'a, T: Int + Into<usize>, const N: usize, const C_STYLE: bool> Decoder<'a, T>
-    for VariantDecoder<'a, T, N, C_STYLE>
+impl<'a, T: Int + Into<usize>, const N: usize, const HISTOGRAM: usize> Decoder<'a, T>
+    for VariantDecoder<'a, T, N, HISTOGRAM>
 {
     // Guaranteed to output numbers less than N.
     #[inline(always)]
