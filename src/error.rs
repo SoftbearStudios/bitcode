@@ -53,5 +53,6 @@ impl Display for Error {
     }
 }
 #[cfg(feature = "std")]
-// TODO expose to no_std when error_in_core stabilized (https://github.com/rust-lang/rust/issues/103765)
 impl std::error::Error for Error {}
+#[cfg(not(feature = "std"))]
+impl core::error::Error for Error {}
