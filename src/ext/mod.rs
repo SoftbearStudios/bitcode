@@ -7,8 +7,6 @@ mod glam;
 mod chrono;
 #[cfg(feature = "rust_decimal")]
 mod rust_decimal;
-#[cfg(feature = "time")]
-mod time;
 #[cfg(feature = "uuid")]
 mod uuid;
 
