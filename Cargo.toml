@@ -44,6 +44,7 @@ zstd = "0.13.0"
 derive = [ "dep:bitcode_derive" ]
 std = [ "serde?/std", "glam?/std", "arrayvec?/std" ]
 default = [ "derive", "std" ]
+chrono_datetime_fixedoffset = ["dep:chrono"]
 
 [package.metadata.docs.rs]
 features = [ "derive", "serde", "std" ]
