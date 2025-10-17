@@ -19,7 +19,7 @@ jobs:
           # Nightly toolchain must ship the `rust-std` component for
           # `i686-unknown-linux-gnu` and powerpc64-unknown-linux-gnu (or `mips64-unknown-linux-gnuabi64`).
           # In practice, `rust-std` almost always ships for
-          # `i686-unknown-linux-gnu` so we just need to check either of these page for a
+          # `i686-unknown-linux-gnu` so we just need to check either of these pages for a
           # compatible nightly:
           # https://rust-lang.github.io/rustup-components-history/powerpc64-unknown-linux-gnu
           # https://rust-lang.github.io/rustup-components-history/mips64-unknown-linux-gnuabi64.html

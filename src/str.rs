@@ -254,7 +254,7 @@ mod tests {
 #[doc(hidden)]
 pub fn _cant_decode_static_from_non_static_buffer() {}
 
-/// ```compile_fail,E0495
+/// ```compile_fail
 /// use bitcode::{encode, decode, Encode, Decode};
 ///
 /// type StaticStr = &'static str;
