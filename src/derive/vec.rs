@@ -77,6 +77,7 @@ macro_rules! unsafe_wild_copy {
         }
     }
 }
+#[allow(unused_imports)]
 pub(crate) use unsafe_wild_copy;
 
 impl<T: Encode> VecEncoder<T> {

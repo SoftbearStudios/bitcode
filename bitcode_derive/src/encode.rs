@@ -156,7 +156,7 @@ impl crate::shared::Item for Item {
                             })
                             .collect();
                         quote! {
-                            #[allow(unused_variables)]
+                            #[allow(unused_variables, unused_assignments)]
                             self.variants.encode(&match v {
                                 #variants
                             });
@@ -300,7 +300,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
 
                     // #[cfg_attr(not(debug_assertions), inline(always))]
                     // #[inline(never)]
-                    fn encode_vectored<'__v>(&mut self, i: impl Iterator<Item = &'__v #input_ty> + Clone) where #input_ty: '__v {
+                    fn encode_vectored<'__v>(&mut self, #[allow(unused)] i: impl Iterator<Item = &'__v #input_ty> + Clone) where #input_ty: '__v {
                         #[allow(unused_imports)]
                         use #private::Buffer as _;
                         #encode_vectored_body
@@ -308,7 +308,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
                 }
 
                 impl #encoder_impl_generics #private::Buffer for #encoder_ty #encoder_where_clause {
-                    fn collect_into(&mut self, out: &mut #private::Vec<u8>) {
+                    fn collect_into(&mut self, #[allow(unused)] out: &mut #private::Vec<u8>) {
                         #collect_into_body
                     }
 
