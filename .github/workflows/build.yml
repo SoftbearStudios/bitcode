@@ -17,12 +17,13 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           # Nightly toolchain must ship the `rust-std` component for
-          # `i686-unknown-linux-gnu` and `mips64-unknown-linux-gnuabi64`.
+          # `i686-unknown-linux-gnu` and powerpc64-unknown-linux-gnu (or `mips64-unknown-linux-gnuabi64`).
           # In practice, `rust-std` almost always ships for
-          # `i686-unknown-linux-gnu` so we just need to check this page for a
+          # `i686-unknown-linux-gnu` so we just need to check either of these pages for a
           # compatible nightly:
+          # https://rust-lang.github.io/rustup-components-history/powerpc64-unknown-linux-gnu
           # https://rust-lang.github.io/rustup-components-history/mips64-unknown-linux-gnuabi64.html
-          toolchain: nightly-2023-04-25
+          toolchain: nightly-2025-10-10
           override: true
           components: rustfmt, miri
       - name: Lint
@@ -48,9 +49,9 @@ jobs:
       - name: Test (miri all-features)
         run: cargo miri test --all-features
       - name: Setup Miri (big-endian)
-        run: rustup target add mips64-unknown-linux-gnuabi64 && cargo miri setup --target mips64-unknown-linux-gnuabi64
+        run: rustup target add powerpc64-unknown-linux-gnu && cargo miri setup --target powerpc64-unknown-linux-gnu
       - name: Test (miri big-endian)
-        run: cargo miri test --target mips64-unknown-linux-gnuabi64
+        run: cargo miri test --target powerpc64-unknown-linux-gnu
   msrv:
     runs-on: ubuntu-latest
     steps:

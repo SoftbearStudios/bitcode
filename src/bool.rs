@@ -42,7 +42,7 @@ impl<'a> View<'a> for BoolDecoder<'a> {
 
 impl<'a> Decoder<'a, bool> for BoolDecoder<'a> {
     #[inline(always)]
-    fn as_primitive(&mut self) -> Option<&mut SliceImpl<Unaligned<bool>>> {
+    fn as_primitive(&mut self) -> Option<&mut SliceImpl<'_, Unaligned<bool>>> {
         // Safety: `Unaligned<bool>` is equivalent to bool since it's a `#[repr(C, packed)]` wrapper
         // around bool and both have size/align of 1.
         unsafe { Some(core::mem::transmute(self.0.mut_slice())) }
