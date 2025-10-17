@@ -61,7 +61,7 @@ impl<'a, T: Int> View<'a> for IntDecoder<'a, T> {
 // Makes IntDecoder<u32> able to decode i32/f32 (but not char since it can fail).
 impl<'a, T: Int, P: Pod> Decoder<'a, P> for IntDecoder<'a, T> {
     #[inline(always)]
-    fn as_primitive(&mut self) -> Option<&mut SliceImpl<Unaligned<P>>> {
+    fn as_primitive(&mut self) -> Option<&mut SliceImpl<'_, Unaligned<P>>> {
         Some(self.0.mut_slice().cast())
     }
 
@@ -107,7 +107,7 @@ where
     <C as CheckedBitPattern>::Bits: Pod,
 {
     #[inline(always)]
-    fn as_primitive(&mut self) -> Option<&mut SliceImpl<Unaligned<C>>> {
+    fn as_primitive(&mut self) -> Option<&mut SliceImpl<'_, Unaligned<C>>> {
         self.0
             .as_primitive()
             .map(|p: &mut SliceImpl<'_, Unaligned<I>>| {

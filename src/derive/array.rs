@@ -76,7 +76,7 @@ impl<'a, T: Decode<'a>, const N: usize> View<'a> for ArrayDecoder<'a, T, N> {
 }
 
 impl<'a, T: Decode<'a>, const N: usize> Decoder<'a, [T; N]> for ArrayDecoder<'a, T, N> {
-    fn as_primitive(&mut self) -> Option<&mut FastSlice<Unaligned<[T; N]>>> {
+    fn as_primitive(&mut self) -> Option<&mut FastSlice<'_, Unaligned<[T; N]>>> {
         self.0.as_primitive().map(|s| {
             // Safety: FastSlice doesn't have a length unlike slice, so casting to FastSlice<[T; N]>
             // is safe. N == 0 case is also safe for the same reason.
