@@ -332,10 +332,17 @@ impl<'a, T: Copy> NextUnchecked<'a, T> for &'a [T] {
 }
 
 /// Maybe owned [`FastSlice`]. Saves its allocation even if borrowing something.
-#[derive(Default)]
 pub struct CowSlice<'borrowed, T> {
     slice: SliceImpl<'borrowed, T>, // Lifetime is min of 'borrowed and &'me self.
     vec: Vec<T>,
+}
+impl<'borrowed, T> Default for CowSlice<'borrowed, T> {
+    fn default() -> Self {
+        Self {
+            slice: Default::default(),
+            vec: Default::default(),
+        }
+    }
 }
 impl<'borrowed, T> CowSlice<'borrowed, T> {
     /// Creates a [`CowSlice`] with an allocation of `vec`. None of `vec`'s elements are kept.
