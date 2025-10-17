@@ -3,10 +3,10 @@ mod arrayvec;
 #[cfg(feature = "glam")]
 #[rustfmt::skip] // Makes impl_struct! calls way longer.
 mod glam;
+#[cfg(any(feature = "chrono", feature = "time"))]
+mod date;
 #[cfg(feature = "rust_decimal")]
 mod rust_decimal;
-#[cfg(feature = "time")]
-mod time;
 #[cfg(feature = "uuid")]
 mod uuid;
 
