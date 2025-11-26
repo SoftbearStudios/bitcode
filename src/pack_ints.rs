@@ -236,19 +236,21 @@ macro_rules! impl_smaller {
 // Scratch space to bridge gap between pack_ints and pack_bytes.
 // In theory, we could avoid this intermediate step, but it would result in a lot of generated code.
 #[cfg(feature = "std")]
-fn with_scratch<T>(f: impl FnOnce(&mut Vec<u8>) -> T) -> T {
+fn with_scratch<T>(mut f: impl FnMut(&mut Vec<u8>) -> T) -> T {
     thread_local! {
         static SCRATCH: core::cell::RefCell<Vec<u8>> = const { core::cell::RefCell::new(Vec::new()) }
     }
-    SCRATCH.with(|s| {
-        let s = &mut s.borrow_mut();
-        s.clear();
-        f(s)
-    })
+    SCRATCH
+        .try_with(|s| {
+            let s = &mut s.borrow_mut();
+            s.clear();
+            f(s)
+        })
+        .unwrap_or_else(|_| f(&mut Vec::new()))
 }
 // Resort to allocation.
 #[cfg(not(feature = "std"))]
-fn with_scratch<T>(f: impl FnOnce(&mut Vec<u8>) -> T) -> T {
+fn with_scratch<T>(mut f: impl FnMut(&mut Vec<u8>) -> T) -> T {
     f(&mut Vec::new())
 }
 
