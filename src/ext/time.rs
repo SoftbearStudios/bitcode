@@ -1,9 +1,14 @@
-use crate::{
-    convert::{impl_convert, ConvertFrom},
-    ext::date::{TimeDecode, TimeEncode},
-};
+use crate::convert::{impl_convert, ConvertFrom};
+use crate::int::ranged_int;
 use time::Time;
 
+ranged_int!(Hour, u8, 0, 23);
+ranged_int!(Minute, u8, 0, 59);
+ranged_int!(Second, u8, 0, 59);
+ranged_int!(Nanosecond, u32, 0, 999_999_999);
+
+type TimeEncode = (u8, u8, u8, u32);
+type TimeDecode = (Hour, Minute, Second, Nanosecond);
 impl_convert!(Time, TimeEncode, TimeDecode);
 
 impl ConvertFrom<&Time> for TimeEncode {
