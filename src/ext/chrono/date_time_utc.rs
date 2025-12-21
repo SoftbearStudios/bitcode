@@ -2,7 +2,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 
 use crate::{
     convert::{impl_convert, ConvertFrom},
-    ext::date::{DateTimeDecode, DateTimeEncode},
+    ext::chrono::{DateTimeDecode, DateTimeEncode},
 };
 
 impl_convert!(DateTime<Utc>, DateTimeEncode, DateTimeDecode);
@@ -13,8 +13,8 @@ impl ConvertFrom<&DateTime<Utc>> for DateTimeEncode {
     }
 }
 
-impl ConvertFrom<DateTimeEncode> for DateTime<Utc> {
-    fn convert_from(enc: DateTimeEncode) -> Self {
+impl ConvertFrom<DateTimeDecode> for DateTime<Utc> {
+    fn convert_from(enc: DateTimeDecode) -> Self {
         let naive = NaiveDateTime::convert_from(enc);
 
         DateTime::from_naive_utc_and_offset(naive, Utc)

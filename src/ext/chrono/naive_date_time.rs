@@ -2,12 +2,13 @@ use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 
 use crate::{
     convert::{impl_convert, ConvertFrom},
-    ext::date::{DateEncode, DateTimeDecode, DateTimeEncode, TimeEncode},
+    ext::chrono::{DateEncode, DateTimeDecode, DateTimeEncode, TimeEncode},
 };
 
 impl_convert!(NaiveDateTime, DateTimeEncode, DateTimeDecode);
 
 impl ConvertFrom<&NaiveDateTime> for DateTimeEncode {
+    #[inline(always)]
     fn convert_from(x: &NaiveDateTime) -> Self {
         (
             DateEncode::convert_from(&x.date()),
@@ -16,13 +17,10 @@ impl ConvertFrom<&NaiveDateTime> for DateTimeEncode {
     }
 }
 
-impl ConvertFrom<DateTimeEncode> for NaiveDateTime {
-    fn convert_from((date, time): DateTimeEncode) -> Self {
-        NaiveDateTime::new(
-            NaiveDate::convert_from(date),
-            NaiveTime::from_hms_nano_opt(time.0 as u32, time.1 as u32, time.2 as u32, time.3)
-                .unwrap(),
-        )
+impl ConvertFrom<DateTimeDecode> for NaiveDateTime {
+    #[inline(always)]
+    fn convert_from((date, time): DateTimeDecode) -> Self {
+        NaiveDateTime::new(NaiveDate::convert_from(date), NaiveTime::convert_from(time))
     }
 }
 

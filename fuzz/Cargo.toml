@@ -10,7 +10,7 @@ cargo-fuzz = true
 
 [dependencies]
 arrayvec = { version = "0.7", features = ["serde"] }
-bitcode = { path = "..", features = [ "arrayvec", "rust_decimal", "serde", "time" ] }
+bitcode = { path = "..", features = [ "arrayvec", "rust_decimal", "serde", "time" ,"chrono"] }
 libfuzzer-sys = "0.4"
 rust_decimal = "1.36.0"
 serde = { version ="1.0", features = [ "derive" ] }

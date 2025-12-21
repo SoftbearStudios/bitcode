@@ -2,20 +2,20 @@ use chrono::{Datelike, NaiveDate};
 
 use crate::{
     convert::{impl_convert, ConvertFrom},
-    ext::date::{DateDecode, DateEncode},
+    ext::chrono::{DateDecode, DateEncode},
 };
 
 impl_convert!(NaiveDate, DateEncode, DateDecode);
 
 impl ConvertFrom<&NaiveDate> for DateEncode {
     fn convert_from(days: &NaiveDate) -> Self {
-        days.num_days_from_ce() - 719_163 // 1970-1-1
+        days.num_days_from_ce()
     }
 }
 
 impl ConvertFrom<DateDecode> for NaiveDate {
     fn convert_from(days: DateDecode) -> Self {
-        NaiveDate::from_num_days_from_ce_opt(days + 719_163).unwrap() // 1970-1-1
+        NaiveDate::from_num_days_from_ce_opt(days).unwrap()
     }
 }
 
@@ -27,6 +27,7 @@ mod tests {
             NaiveDate::from_ymd_opt(1970, 1, 1).unwrap(), // epoch
             NaiveDate::from_ymd_opt(2025, 10, 6).unwrap(),
             NaiveDate::from_ymd_opt(1, 1, 1).unwrap(),
+            NaiveDate::from_ymd_opt(-44, 3, 15).unwrap(), // BCE
             NaiveDate::from_ymd_opt(-44, 3, 15).unwrap(), // BCE
             NaiveDate::from_ymd_opt(9999, 12, 31).unwrap(),
         ];

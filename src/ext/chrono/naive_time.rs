@@ -1,12 +1,13 @@
 use crate::{
     convert::{impl_convert, ConvertFrom},
-    ext::date::{TimeDecode, TimeEncode},
+    ext::chrono::{TimeDecode, TimeEncode},
 };
 use chrono::{NaiveTime, Timelike};
 
 impl_convert!(NaiveTime, TimeEncode, TimeDecode);
 
 impl ConvertFrom<&NaiveTime> for TimeEncode {
+    #[inline(always)]
     fn convert_from(value: &NaiveTime) -> Self {
         (
             value.hour() as u8,
@@ -18,12 +19,15 @@ impl ConvertFrom<&NaiveTime> for TimeEncode {
 }
 
 impl ConvertFrom<TimeDecode> for NaiveTime {
+    #[inline(always)]
     fn convert_from(value: TimeDecode) -> Self {
+        let (hour, min, sec, nano) = value;
+
         NaiveTime::from_hms_nano_opt(
-            value.0.into_inner() as u32,
-            value.1.into_inner() as u32,
-            value.2.into_inner() as u32,
-            value.3.into_inner(),
+            hour.into_inner() as u32,
+            min.into_inner() as u32,
+            sec.into_inner() as u32,
+            nano.into_inner(),
         )
         .unwrap()
     }
