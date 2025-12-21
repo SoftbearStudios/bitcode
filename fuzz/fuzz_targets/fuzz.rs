@@ -246,6 +246,6 @@ fuzz_target!(|data: &[u8]| {
         chrono::NaiveTime,
         chrono::NaiveDate,
         chrono::NaiveDateTime,
-        chrono::DateTime<Utc>,
+        chrono::DateTime<chrono::Utc>,
     );
 });
