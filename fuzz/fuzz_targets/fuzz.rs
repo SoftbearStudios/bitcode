@@ -3,14 +3,14 @@ use libfuzzer_sys::fuzz_target;
 extern crate bitcode;
 use arrayvec::{ArrayString, ArrayVec};
 use bitcode::{Decode, DecodeOwned, Encode};
+use rust_decimal::Decimal;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Debug;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::num::NonZeroU32;
 use std::time::Duration;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
-use rust_decimal::Decimal;
 
 #[inline(never)]
 fn test_derive<T: Debug + PartialEq + Encode + DecodeOwned>(data: &[u8]) {
@@ -148,10 +148,20 @@ fuzz_target!(|data: &[u8]| {
         A,
         B,
         C(u16),
-        D { a: u8, b: u8, #[serde(skip)] #[bitcode(skip)] c: u8 },
+        D {
+            a: u8,
+            b: u8,
+            #[serde(skip)]
+            #[bitcode(skip)]
+            c: u8,
+        },
         E(String),
         F,
-        G(#[bitcode(skip)] #[serde(skip)] i16),
+        G(
+            #[bitcode(skip)]
+            #[serde(skip)]
+            i16,
+        ),
         P(BTreeMap<u16, u8>),
     }
 
@@ -233,5 +243,9 @@ fuzz_target!(|data: &[u8]| {
         SocketAddrV6,
         SocketAddr,
         time::Time,
+        chrono::NaiveTime,
+        chrono::NaiveDate,
+        chrono::NaiveDateTime,
+        chrono::DateTime<chrono::Utc>,
     );
 });
