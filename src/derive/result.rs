@@ -7,7 +7,7 @@ use core::mem::MaybeUninit;
 use core::num::NonZeroUsize;
 
 pub struct ResultEncoder<T: Encode, E: Encode> {
-    variants: VariantEncoder<2>,
+    variants: VariantEncoder<u8, 2>,
     ok: T::Encoder,
     err: E::Encoder,
 }
@@ -55,7 +55,7 @@ impl<T: Encode, E: Encode> Buffer for ResultEncoder<T, E> {
 }
 
 pub struct ResultDecoder<'a, T: Decode<'a>, E: Decode<'a>> {
-    variants: VariantDecoder<'a, 2, false>,
+    variants: VariantDecoder<'a, u8, 2, 2>,
     ok: T::Decoder,
     err: E::Decoder,
 }

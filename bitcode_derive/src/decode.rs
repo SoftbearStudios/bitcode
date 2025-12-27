@@ -1,6 +1,6 @@
 use crate::attribute::BitcodeAttrs;
 use crate::private;
-use crate::shared::{remove_lifetimes, replace_lifetimes, variant_index};
+use crate::shared::{remove_lifetimes, replace_lifetimes, VariantIndex};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};
 use syn::{
@@ -111,6 +111,7 @@ impl crate::shared::Item for Item {
         self,
         crate_name: &Path,
         variant_count: usize,
+        variant_index: VariantIndex,
         pattern: impl Fn(usize) -> TokenStream,
         inner: impl Fn(Self, usize) -> TokenStream,
     ) -> TokenStream {
@@ -126,7 +127,12 @@ impl crate::shared::Item for Item {
                     .then(|| {
                         let private = private(crate_name);
                         let c_style = inners.is_empty();
-                        quote! { variants: #private::VariantDecoder<#de, #variant_count, #c_style>, }
+                        let histogram = if c_style {
+                            0
+                        } else {
+                            variant_count
+                        };
+                        quote! { variants: #private::VariantDecoder<#de, #variant_index, #variant_count, #histogram>, }
                     })
                     .unwrap_or_default();
                 quote! {
@@ -165,7 +171,7 @@ impl crate::shared::Item for Item {
                         if inner.is_empty() {
                             quote! {}
                         } else {
-                            let i = variant_index(i);
+                            let i = variant_index.instance_to_tokens(i);
                             let length = decode_variants
                                 .then(|| {
                                     quote! {
@@ -209,7 +215,7 @@ impl crate::shared::Item for Item {
                             .map(|i| {
                                 let inner = inner(i);
                                 let pattern = pattern(i);
-                                let i = variant_index(i);
+                                let i = variant_index.instance_to_tokens(i);
                                 quote! {
                                     #i => {
                                         #inner
@@ -221,7 +227,7 @@ impl crate::shared::Item for Item {
                         quote! {
                             match self.variants.decode() {
                                 #variants
-                                // Safety: VariantDecoder<N, _>::decode outputs numbers less than N.
+                                // Safety: VariantDecoder<_, N, _>::decode outputs numbers less than N.
                                 _ => unsafe { ::core::hint::unreachable_unchecked() }
                             }
                         }
