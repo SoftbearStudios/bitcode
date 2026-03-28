@@ -59,6 +59,10 @@ mod tests {
         );
         assert!(
             crate::decode::<NaiveTime>(&crate::encode(&(23u8, 59u8, 59u8, 1_000_000_000u32)))
+                .is_ok()
+        );
+        assert!(
+            crate::decode::<NaiveTime>(&crate::encode(&(23u8, 59u8, 58u8, 1_000_000_000u32)))
                 .is_err()
         );
     }
