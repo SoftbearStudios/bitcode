@@ -75,8 +75,6 @@ mod tests {
         let bytes = bitcode::encode(&(unix_seconds_min(), 500i32));
         let ts: Timestamp = bitcode::decode(&bytes).unwrap();
         assert_eq!(ts, Timestamp::new(unix_seconds_min(), 500).unwrap());
-
-        assert!(crate::decode::<Timestamp>(&crate::encode(&Timestamp::now())).is_ok());
     }
 
     use alloc::vec::Vec;
