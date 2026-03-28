@@ -6,7 +6,7 @@ members = [
 [package]
 name = "bitcode"
 authors = [ "Cai Bear", "Finn Bear" ]
-version = "0.6.9"
+version = "0.7.0"
 edition = "2021"
 rust-version = "1.70"
 license = "MIT OR Apache-2.0"
@@ -20,7 +20,7 @@ bitcode_derive = { version = "=0.6.9", path = "./bitcode_derive", optional = tru
 bytemuck = { version = "1.14", features = [ "min_const_generics", "must_cast" ] }
 chrono = { version = ">=0.4", default-features = false, optional = true }
 glam = { version = ">=0.21", default-features = false, optional = true }
-jiff = { version = "0.2.23", optional = true }
+jiff = { version = ">=0.2.0", optional = true }
 rust_decimal = { version = "1.36", default-features = false, optional = true }
 serde = { version = "1.0", default-features = false, features = [ "alloc" ], optional = true }
 time = { version = "0.3", default-features = false, optional = true }
