@@ -5,6 +5,8 @@ mod arrayvec;
 mod glam;
 #[cfg(feature = "chrono")]
 mod chrono;
+#[cfg(feature = "jiff")]
+mod jiff;
 #[cfg(feature = "rust_decimal")]
 mod rust_decimal;
 #[cfg(feature = "time")]
