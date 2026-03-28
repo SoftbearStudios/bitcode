@@ -1,11 +1,12 @@
 use chrono::{Datelike, NaiveDate};
 
 use crate::{
-    convert::{impl_convert, ConvertFrom},
+    convert::ConvertFrom,
     ext::chrono::{DateDecode, DateEncode},
+    try_convert::{impl_try_convert, TryConvertFrom},
 };
 
-impl_convert!(NaiveDate, DateEncode, DateDecode);
+impl_try_convert!(NaiveDate, DateEncode, DateDecode);
 
 impl ConvertFrom<&NaiveDate> for DateEncode {
     fn convert_from(days: &NaiveDate) -> Self {
@@ -13,9 +14,10 @@ impl ConvertFrom<&NaiveDate> for DateEncode {
     }
 }
 
-impl ConvertFrom<DateDecode> for NaiveDate {
-    fn convert_from(days: DateDecode) -> Self {
-        NaiveDate::from_num_days_from_ce_opt(days).unwrap()
+impl TryConvertFrom<DateDecode> for NaiveDate {
+    fn try_convert_from(days: DateDecode) -> Result<Self, crate::Error> {
+        NaiveDate::from_num_days_from_ce_opt(days)
+            .ok_or_else(|| crate::error::error("Failed to convert DateDecode to chrono::NaiveDate"))
     }
 }
 

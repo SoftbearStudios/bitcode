@@ -1,10 +1,11 @@
 use crate::{
-    convert::{impl_convert, ConvertFrom},
+    convert::ConvertFrom,
     ext::chrono::{TimeDecode, TimeEncode},
+    try_convert::{impl_try_convert, TryConvertFrom},
 };
 use chrono::{NaiveTime, Timelike};
 
-impl_convert!(NaiveTime, TimeEncode, TimeDecode);
+impl_try_convert!(NaiveTime, TimeEncode, TimeDecode);
 
 impl ConvertFrom<&NaiveTime> for TimeEncode {
     #[inline(always)]
@@ -18,9 +19,9 @@ impl ConvertFrom<&NaiveTime> for TimeEncode {
     }
 }
 
-impl ConvertFrom<TimeDecode> for NaiveTime {
+impl TryConvertFrom<TimeDecode> for NaiveTime {
     #[inline(always)]
-    fn convert_from(value: TimeDecode) -> Self {
+    fn try_convert_from(value: TimeDecode) -> Result<Self, crate::Error> {
         let (hour, min, sec, nano) = value;
 
         NaiveTime::from_hms_nano_opt(
@@ -29,7 +30,7 @@ impl ConvertFrom<TimeDecode> for NaiveTime {
             sec.into_inner() as u32,
             nano.into_inner(),
         )
-        .unwrap()
+        .ok_or_else(|| crate::error::error("Failed to convert TimeDecode to NaiveTime"))
     }
 }
 
@@ -64,12 +65,11 @@ mod tests {
 
     use alloc::vec::Vec;
     use chrono::NaiveTime;
-    use time::Time;
-    fn bench_data() -> Vec<Time> {
+    fn bench_data() -> Vec<NaiveTime> {
         crate::random_data(1000)
             .into_iter()
-            .map(|(h, m, s, n): (u8, u8, u8, u32)| {
-                Time::from_hms_nano(h % 24, m % 60, s % 60, n % 1_000_000_000).unwrap()
+            .map(|(h, m, s, n): (u32, u32, u32, u32)| {
+                NaiveTime::from_hms_nano_opt(h % 24, m % 60, s % 60, n % 1_000_000_000).unwrap()
             })
             .collect()
     }
