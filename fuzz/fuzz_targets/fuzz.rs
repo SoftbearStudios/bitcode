@@ -247,5 +247,9 @@ fuzz_target!(|data: &[u8]| {
         chrono::NaiveDate,
         chrono::NaiveDateTime,
         chrono::DateTime<chrono::Utc>,
+        jiff::civil::Date,
+        jiff::civil::Time,
+        jiff::Timestamp,
+        jiff::Zoned,
     );
 });
