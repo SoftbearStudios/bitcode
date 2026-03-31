@@ -52,11 +52,15 @@ impl<'a, F: From<T>, T: Decode<'a>> Decoder<'a, F> for FromDecoder<'a, T> {
     }
 }
 
+pub type PinEncoder<P> = DerefEncoder<<P as Deref>::Target>;
+pub type PinDecoder<'a, P> = FromDecoder<'a, P>;
+
 #[cfg(test)]
 mod tests {
     use crate::{decode, encode};
     use alloc::boxed::Box;
     use alloc::string::ToString;
+    use core::pin::Pin;
 
     #[test]
     fn box_() {
@@ -74,5 +78,11 @@ mod tests {
     fn box_str() {
         let v = "box".to_string().into_boxed_str();
         assert_eq!(decode::<Box<str>>(&encode(&v)).unwrap(), v);
+    }
+
+    #[test]
+    fn pin_box_i32() {
+        let v = Box::pin(7i32);
+        assert_eq!(decode::<Pin<Box<i32>>>(&encode(&v)).unwrap(), v);
     }
 }

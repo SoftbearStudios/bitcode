@@ -5,7 +5,7 @@ use crate::derive::empty::EmptyCoder;
 use crate::derive::map::{MapDecoder, MapEncoder};
 use crate::derive::option::{OptionDecoder, OptionEncoder};
 use crate::derive::result::{ResultDecoder, ResultEncoder};
-use crate::derive::smart_ptr::{DerefEncoder, FromDecoder};
+use crate::derive::smart_ptr::{DerefEncoder, FromDecoder, PinDecoder, PinEncoder};
 use crate::derive::vec::{VecDecoder, VecEncoder};
 use crate::derive::{Decode, Encode};
 use crate::f32::{F32Decoder, F32Encoder};
@@ -17,6 +17,8 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::num::*;
+use core::ops::Deref;
+use core::pin::Pin;
 
 macro_rules! impl_both {
     ($t:ty, $encoder:ident, $decoder:ident) => {
@@ -110,6 +112,19 @@ impl_smart_ptr!(::alloc::boxed::Box);
 impl_smart_ptr!(::alloc::rc::Rc);
 #[cfg(target_has_atomic = "ptr")]
 impl_smart_ptr!(::alloc::sync::Arc);
+
+impl<P: Deref + Encode> Encode for Pin<P>
+where
+    P::Target: Encode,
+{
+    type Encoder = PinEncoder<P>;
+}
+impl<'a, P: Decode<'a>> Decode<'a> for Pin<P>
+where
+    Pin<P>: From<P>,
+{
+    type Decoder = PinDecoder<'a, P>;
+}
 
 impl<T: Encode, const N: usize> Encode for [T; N] {
     type Encoder = ArrayEncoder<T, N>;
