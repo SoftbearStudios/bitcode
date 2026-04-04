@@ -21,6 +21,7 @@ bytemuck = { version = "1.14", features = [ "min_const_generics", "must_cast" ] 
 glam = { version = ">=0.21", default-features = false, optional = true }
 rust_decimal = { version = "1.36", default-features = false, optional = true }
 serde = { version = "1.0", default-features = false, features = [ "alloc" ], optional = true }
+smol_str = { version = "0.3", default-features = false, optional = true }
 time = { version = "0.3", default-features = false, optional = true }
 uuid = { version = "1.10", default-features = false, optional = true }
 
@@ -45,7 +46,7 @@ std = [ "serde?/std", "glam?/std", "arrayvec?/std" ]
 default = [ "derive", "std" ]
 
 [package.metadata.docs.rs]
-features = [ "derive", "serde", "std" ]
+features = [ "derive", "serde", "smol_str", "std" ]
 
 # TODO halfs speed of benches_borrowed::bench_bitcode_decode
 #[profile.bench]

@@ -5,6 +5,8 @@ mod arrayvec;
 mod glam;
 #[cfg(feature = "rust_decimal")]
 mod rust_decimal;
+#[cfg(feature = "smol_str")]
+mod smol_str;
 #[cfg(feature = "time")]
 mod time;
 #[cfg(feature = "uuid")]
