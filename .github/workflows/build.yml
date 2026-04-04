@@ -65,7 +65,7 @@ jobs:
           crate: cargo-msrv
           locked: false
       - name: Verify MSRV
-        run: cargo msrv verify --ignore-lockfile
+        run: cargo msrv verify
   fuzz:
     runs-on: ubuntu-latest
     steps:
