@@ -17,7 +17,7 @@ mod ip_addr;
 mod map;
 mod option;
 mod result;
-pub(crate) mod smart_ptr;
+mod smart_ptr;
 mod variant;
 pub(crate) mod vec;
 

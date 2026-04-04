@@ -5,7 +5,6 @@ use crate::error::err;
 use crate::fast::{NextUnchecked, SliceImpl};
 use crate::length::LengthDecoder;
 use crate::u8_char::U8Char;
-use alloc::borrow::ToOwned;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::num::NonZeroUsize;
@@ -57,20 +56,36 @@ impl<'b> Encoder<&'b str> for StrEncoder {
     }
 }
 
-impl Encoder<String> for StrEncoder {
-    #[inline(always)]
-    fn encode(&mut self, t: &String) {
-        self.encode(t.as_str());
-    }
+macro_rules! impl_string {
+    ($t:ty) => {
+        impl crate::coder::Encoder<$t> for crate::str::StrEncoder {
+            #[inline(always)]
+            fn encode(&mut self, t: &$t) {
+                self.encode(t.as_str());
+            }
 
-    #[inline(always)]
-    fn encode_vectored<'a>(&mut self, i: impl Iterator<Item = &'a String> + Clone)
-    where
-        String: 'a,
-    {
-        self.encode_vectored(i.map(String::as_str));
-    }
+            #[inline(always)]
+            fn encode_vectored<'a>(&mut self, i: impl Iterator<Item = &'a $t> + Clone)
+            where
+                $t: 'a,
+            {
+                self.encode_vectored(i.map(|s| s.as_str()));
+            }
+        }
+
+        impl<'a> crate::coder::Decoder<'a, $t> for crate::str::StrDecoder<'a> {
+            #[inline(always)]
+            fn decode(&mut self) -> $t {
+                let v: &str = self.decode();
+                <$t>::from(v)
+            }
+        }
+    };
 }
+
+impl_string!(String);
+#[cfg(feature = "smol_str")]
+impl_string!(smol_str::SmolStr);
 
 // Doesn't use VecDecoder because can't decode &[u8].
 #[derive(Default)]
@@ -128,14 +143,6 @@ impl<'a> Decoder<'a, &'a str> for StrDecoder<'a> {
         // Safety: `bytes` is valid UTF-8 because populate checked that `self.strings` is valid UTF-8
         // and that every sub string starts and ends on char boundaries.
         unsafe { from_utf8_unchecked(bytes) }
-    }
-}
-
-impl<'a> Decoder<'a, String> for StrDecoder<'a> {
-    #[inline(always)]
-    fn decode(&mut self) -> String {
-        let v: &str = self.decode();
-        v.to_owned()
     }
 }
 
@@ -287,4 +294,27 @@ mod tests2 {
             .collect()
     }
     crate::bench_encode_decode!(str_vec: Vec<String>);
+}
+
+#[cfg(all(test, feature = "smol_str"))]
+mod smol_str_tests {
+    use smol_str::SmolStr;
+
+    /// Short strings stay inline after decode (no heap allocation).
+    #[test]
+    fn decoded_short_string_is_not_heap_allocated() {
+        let s = SmolStr::new("hello");
+        assert!(!s.is_heap_allocated());
+        let decoded: SmolStr = crate::decode(&crate::encode(&s)).unwrap();
+        assert!(!decoded.is_heap_allocated());
+    }
+
+    /// Long strings are heap-allocated after decode.
+    #[test]
+    fn decoded_long_string_is_heap_allocated() {
+        let s = SmolStr::new("this is a longer string that exceeds inline storage");
+        assert!(s.is_heap_allocated());
+        let decoded: SmolStr = crate::decode(&crate::encode(&s)).unwrap();
+        assert!(decoded.is_heap_allocated());
+    }
 }
