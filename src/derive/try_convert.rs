@@ -69,13 +69,6 @@ impl<'a, T: Decode<'a>, F: TryConvertFrom<T> + Send + Sync> Decoder<'a, F>
 
     #[inline(always)]
     fn decode(&mut self) -> F {
-        let slice = self.data.mut_slice();
-        let ptr = slice.as_ptr();
-        unsafe {
-            let val = ptr.read();
-            slice.advance(1);
-
-            val
-        }
+        unsafe { self.data.mut_slice().next_unchecked_as_ptr().read() }
     }
 }
