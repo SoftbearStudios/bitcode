@@ -61,7 +61,6 @@ mod tests {
                 Timestamp::new(-100_000_000, -500_000_000).unwrap(),
                 TimeZone::UTC,
             ),
-            Zoned::now(),
         ];
 
         for (i, original) in test_cases.iter().enumerate() {
