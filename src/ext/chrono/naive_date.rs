@@ -2,20 +2,22 @@ use chrono::{Datelike, NaiveDate};
 
 use crate::{
     convert::ConvertFrom,
-    ext::chrono::{DateDecode, DateEncode},
     try_convert::{impl_try_convert, TryConvertFrom},
 };
 
-impl_try_convert!(NaiveDate, DateEncode, DateDecode);
+// Number of days since the CE epoch(0001-01-01).
+type NaiveDateCoder = i32;
 
-impl ConvertFrom<&NaiveDate> for DateEncode {
+impl_try_convert!(NaiveDate, NaiveDateCoder, NaiveDateCoder);
+
+impl ConvertFrom<&NaiveDate> for NaiveDateCoder {
     fn convert_from(days: &NaiveDate) -> Self {
         days.num_days_from_ce()
     }
 }
 
-impl TryConvertFrom<DateDecode> for NaiveDate {
-    fn try_convert_from(days: DateDecode) -> Result<Self, crate::Error> {
+impl TryConvertFrom<NaiveDateCoder> for NaiveDate {
+    fn try_convert_from(days: NaiveDateCoder) -> Result<Self, crate::Error> {
         NaiveDate::from_num_days_from_ce_opt(days)
             .ok_or_else(|| crate::error::error("Failed to convert DateDecode to chrono::NaiveDate"))
     }

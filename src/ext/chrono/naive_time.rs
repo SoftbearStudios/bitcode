@@ -1,9 +1,17 @@
 use crate::{
     convert::ConvertFrom,
-    ext::chrono::{TimeDecode, TimeEncode},
+    int::ranged_int,
     try_convert::{impl_try_convert, TryConvertFrom},
 };
 use chrono::{NaiveTime, Timelike};
+
+ranged_int!(Hour, u8, 0, 23);
+ranged_int!(Minute, u8, 0, 59);
+ranged_int!(Second, u8, 0, 59);
+ranged_int!(Nanosecond, u32, 0, 1_999_999_999);
+
+type TimeEncode = (u8, u8, u8, u32);
+type TimeDecode = (Hour, Minute, Second, Nanosecond);
 
 impl_try_convert!(NaiveTime, TimeEncode, TimeDecode);
 
