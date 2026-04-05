@@ -11,12 +11,14 @@ type NaiveDateCoder = i32;
 impl_try_convert!(NaiveDate, NaiveDateCoder, NaiveDateCoder);
 
 impl ConvertFrom<&NaiveDate> for NaiveDateCoder {
+    #[inline(always)]
     fn convert_from(days: &NaiveDate) -> Self {
         days.num_days_from_ce()
     }
 }
 
 impl TryConvertFrom<NaiveDateCoder> for NaiveDate {
+    #[inline(always)]
     fn try_convert_from(days: NaiveDateCoder) -> Result<Self, crate::Error> {
         NaiveDate::from_num_days_from_ce_opt(days)
             .ok_or_else(|| crate::error::error("Failed to convert DateDecode to chrono::NaiveDate"))

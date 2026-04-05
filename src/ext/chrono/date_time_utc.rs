@@ -5,12 +5,14 @@ use crate::convert::{impl_convert, ConvertFrom};
 impl_convert!(DateTime<Utc>, NaiveDateTime, NaiveDateTime);
 
 impl ConvertFrom<&DateTime<Utc>> for NaiveDateTime {
+    #[inline(always)]
     fn convert_from(x: &DateTime<Utc>) -> Self {
         x.naive_utc()
     }
 }
 
 impl ConvertFrom<NaiveDateTime> for DateTime<Utc> {
+    #[inline(always)]
     fn convert_from(enc: NaiveDateTime) -> Self {
         DateTime::from_naive_utc_and_offset(enc, Utc)
     }

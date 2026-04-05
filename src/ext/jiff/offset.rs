@@ -14,12 +14,14 @@ ranged_int!(OffsetDecoder, i32, -93599, 93599);
 pub(super) type OffsetEncoder = i32;
 
 impl ConvertFrom<&Offset> for OffsetEncoder {
+    #[inline(always)]
     fn convert_from(value: &Offset) -> Self {
         value.seconds()
     }
 }
 
 impl TryConvertFrom<OffsetDecoder> for Offset {
+    #[inline(always)]
     fn try_convert_from(value: OffsetDecoder) -> Result<Self, crate::Error> {
         Offset::from_seconds(value.into_inner()).map_err(|_| error("Failed to decode offset"))
     }

@@ -20,6 +20,7 @@ type TimeEncode = (u8, u8, u8, u32);
 type TimeDecode = (Hour, Minute, Second, Nanosecond);
 
 impl ConvertFrom<&Time> for TimeEncode {
+    #[inline(always)]
     fn convert_from(value: &Time) -> Self {
         (
             value.hour() as u8,
@@ -31,6 +32,7 @@ impl ConvertFrom<&Time> for TimeEncode {
 }
 
 impl ConvertFrom<TimeDecode> for Time {
+    #[inline(always)]
     fn convert_from(value: TimeDecode) -> Self {
         Time::constant(
             value.0.into_inner() as i8,

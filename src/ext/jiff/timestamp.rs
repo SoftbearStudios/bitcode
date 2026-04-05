@@ -16,12 +16,14 @@ pub type TimestampDecoder = (UnixSecondTimestamp, UnixNanosecondTimestamp);
 impl_try_convert!(Timestamp, TimestampEncode, TimestampDecoder);
 
 impl ConvertFrom<&Timestamp> for TimestampEncode {
+    #[inline(always)]
     fn convert_from(value: &Timestamp) -> Self {
         (value.as_second(), value.subsec_nanosecond())
     }
 }
 
 impl TryConvertFrom<TimestampDecoder> for Timestamp {
+    #[inline(always)]
     fn try_convert_from(value: TimestampDecoder) -> Result<Self, crate::Error> {
         Timestamp::new(value.0.into_inner(), value.1.into_inner())
             .map_err(|_| crate::error::error("Failed to decode timestamp"))

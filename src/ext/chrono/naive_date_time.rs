@@ -14,6 +14,7 @@ impl ConvertFrom<&NaiveDateTime> for NaiveDateTimeCoder {
 }
 
 impl ConvertFrom<NaiveDateTimeCoder> for NaiveDateTime {
+    #[inline(always)]
     fn convert_from(value: (NaiveDate, NaiveTime)) -> Self {
         NaiveDateTime::new(value.0, value.1)
     }

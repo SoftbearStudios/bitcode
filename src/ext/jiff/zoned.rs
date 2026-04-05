@@ -11,12 +11,14 @@ type ZonedEncoder = (Timestamp, Offset);
 type ZonedDecoder = (Timestamp, Offset);
 
 impl ConvertFrom<&Zoned> for ZonedEncoder {
+    #[inline(always)]
     fn convert_from(value: &Zoned) -> Self {
         (value.timestamp(), value.offset())
     }
 }
 
 impl ConvertFrom<ZonedDecoder> for Zoned {
+    #[inline(always)]
     fn convert_from(value: ZonedDecoder) -> Self {
         Zoned::new(value.0, TimeZone::fixed(value.1))
     }

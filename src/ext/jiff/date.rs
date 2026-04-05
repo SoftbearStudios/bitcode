@@ -20,12 +20,14 @@ pub type DateEncode = (i16, u8, u8);
 pub type DateDecode = (Year, Month, Day);
 
 impl ConvertFrom<&Date> for DateEncode {
+    #[inline(always)]
     fn convert_from(value: &Date) -> Self {
         (value.year(), value.month() as u8, value.day() as u8)
     }
 }
 
 impl TryConvertFrom<DateDecode> for Date {
+    #[inline(always)]
     fn try_convert_from(value: DateDecode) -> Result<Self, crate::Error> {
         Date::new(
             value.0.into_inner(),
