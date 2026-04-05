@@ -34,7 +34,7 @@ dependencies = [
 
 [[package]]
 name = "bitcode"
-version = "0.7.0"
+version = "0.6.9"
 dependencies = [
  "arrayvec",
  "bincode",
