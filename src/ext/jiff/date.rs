@@ -13,7 +13,7 @@ impl_try_convert!(Date, DateEncode, DateDecode);
 ranged_int!(Year, i16, -9999, 9999);
 // The value is guaranteed to be in the range `1..=12`.
 ranged_int!(Month, u8, 1, 12);
-// The value is guaranteed to be in the range `0..=59`.
+// The value is guaranteed to be in the range `1..=31`.
 ranged_int!(Day, u8, 1, 31);
 
 pub type DateEncode = (i16, u8, u8);
