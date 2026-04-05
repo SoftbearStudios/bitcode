@@ -1,7 +1,7 @@
 use crate::{
     coder::{Decoder, View},
     derive::Decode,
-    fast::{CowSlice, PushUnchecked, SliceImpl, Unaligned},
+    fast::{CowSlice, NextUnchecked, PushUnchecked, SliceImpl, Unaligned},
 };
 
 #[allow(unused)]
@@ -59,7 +59,7 @@ impl<'a, T: Decode<'a>, F: TryConvertFrom<T>> View<'a> for TryConvertFromDecoder
     }
 }
 
-impl<'a, T: Decode<'a>, F: TryConvertFrom<T> + Send + Sync> Decoder<'a, F>
+impl<'a, T: Decode<'a>, F: TryConvertFrom<T> + Send + Sync + Copy> Decoder<'a, F>
     for TryConvertFromDecoder<'a, T, F>
 {
     #[inline(always)]
@@ -69,6 +69,6 @@ impl<'a, T: Decode<'a>, F: TryConvertFrom<T> + Send + Sync> Decoder<'a, F>
 
     #[inline(always)]
     fn decode(&mut self) -> F {
-        unsafe { self.data.mut_slice().next_unchecked_as_ptr().read() }
+        unsafe { self.data.mut_slice().next_unchecked() }
     }
 }
