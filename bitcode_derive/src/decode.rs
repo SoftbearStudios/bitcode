@@ -318,6 +318,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
         let private = private(crate_name);
 
         quote! {
+            #[allow(clippy::pedantic)]
             const _: () = {
                 impl #impl_generics #private::Decode<#de> for #input_ty #where_clause {
                     type Decoder = #decoder_ty;
