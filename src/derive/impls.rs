@@ -31,6 +31,8 @@ macro_rules! impl_both {
 impl_both!(bool, BoolEncoder, BoolDecoder);
 impl_both!(f32, F32Encoder, F32Decoder);
 impl_both!(String, StrEncoder, StrDecoder);
+#[cfg(feature = "smol_str")]
+impl_both!(smol_str::SmolStr, StrEncoder, StrDecoder);
 
 macro_rules! impl_int {
     ($($t:ty),+) => {
