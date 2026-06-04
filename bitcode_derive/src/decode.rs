@@ -331,6 +331,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
 
                 // Avoids bounding #impl_generics: Default.
                 impl #decoder_impl_generics ::core::default::Default for #decoder_ty #decoder_where_clause {
+                    #[cfg_attr(not(debug_assertions), inline(always))]
                     fn default() -> Self {
                         Self {
                             #default_body
@@ -339,6 +340,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
                 }
 
                 impl #decoder_impl_generics #private::View<#de> for #decoder_ty #decoder_where_clause {
+                    #[cfg_attr(not(debug_assertions), inline(always))]
                     fn populate(&mut self, input: &mut &#de [u8], __length: usize) -> #private::Result<()> {
                         #populate_body
                         Ok(())

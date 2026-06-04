@@ -284,6 +284,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
 
                 // Avoids bounding #impl_generics: Default.
                 impl #encoder_impl_generics ::core::default::Default for #encoder_ty #encoder_where_clause {
+                    #[cfg_attr(not(debug_assertions), inline(always))]
                     fn default() -> Self {
                         Self {
                             #default_body
@@ -309,10 +310,12 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
                 }
 
                 impl #encoder_impl_generics #private::Buffer for #encoder_ty #encoder_where_clause {
+                    #[cfg_attr(not(debug_assertions), inline(always))]
                     fn collect_into(&mut self, #[allow(unused)] out: &mut #private::Vec<u8>) {
                         #collect_into_body
                     }
 
+                    #[cfg_attr(not(debug_assertions), inline(always))]
                     fn reserve(&mut self, __additional: ::core::num::NonZeroUsize) {
                         #reserve_body
                     }
