@@ -7,6 +7,8 @@ use core::num::NonZeroUsize;
 mod array;
 mod atomic;
 pub(crate) mod convert;
+#[cfg(feature = "derive")]
+mod debug_box;
 mod duration;
 mod empty;
 mod impls;
@@ -27,6 +29,7 @@ pub(crate) mod vec;
 pub mod __private {
     extern crate alloc;
     pub use crate::coder::{uninit_field, Buffer, Decoder, Encoder, Result, View};
+    pub use crate::derive::debug_box::{BoxDecoder, BoxEncoder};
     pub use crate::derive::variant::{VariantDecoder, VariantEncoder};
     pub use crate::derive::{Decode, Encode};
     pub fn invalid_enum_variant<T>() -> Result<T> {

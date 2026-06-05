@@ -274,6 +274,9 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
             #[allow(clippy::pedantic)]
             const _: () = {
                 impl #impl_generics #private::Encode for #input_ty #where_clause {
+                    #[cfg(debug_assertions)]
+                    type Encoder = #private::BoxEncoder<#encoder_ty>;
+                    #[cfg(not(debug_assertions))]
                     type Encoder = #encoder_ty;
                 }
 
