@@ -10,12 +10,12 @@ use syn::{
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum VariantIndex {
+pub enum VariantIndexType {
     U8,
     U16,
 }
 
-impl VariantIndex {
+impl VariantIndexType {
     pub fn new(variant_count: usize, ident: &Ident) -> Result<Self> {
         for candidate in [Self::U8, Self::U16] {
             if variant_count <= candidate.max_variants() {
@@ -52,7 +52,7 @@ impl VariantIndex {
     }
 }
 
-impl ToTokens for VariantIndex {
+impl ToTokens for VariantIndexType {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         use quote::TokenStreamExt;
         tokens.append(Ident::new(
@@ -87,7 +87,7 @@ pub trait Item: Copy + Sized {
         self,
         crate_name: &Path,
         variant_count: usize,
-        variant_index: VariantIndex,
+        variant_index_type: VariantIndexType,
         pattern: impl Fn(usize) -> TokenStream,
         inner: impl Fn(Self, usize) -> TokenStream,
     ) -> TokenStream;
@@ -184,16 +184,16 @@ pub trait Derive<const ITEM_COUNT: usize> {
                 })
             }
             Data::Enum(data_enum) => {
-                let variant_index = VariantIndex::new(data_enum.variants.len(), &ident)?;
+                let variant_index_type = VariantIndexType::new(data_enum.variants.len(), &ident)?;
 
-                if variant_index != VariantIndex::U8 {
+                if variant_index_type != VariantIndexType::U8 {
                     for variant in &data_enum.variants {
                         if !variant.fields.is_empty() {
                             return err(
                                 &ident,
                                 &format!(
                                     "enums with more than {} variants must not have any variants with fields",
-                                    VariantIndex::U8.max_variants()
+                                    VariantIndexType::U8.max_variants()
                                 ),
                             );
                         }
@@ -214,7 +214,7 @@ pub trait Derive<const ITEM_COUNT: usize> {
                     item.enum_impl(
                         &attrs.crate_name,
                         data_enum.variants.len(),
-                        variant_index,
+                        variant_index_type,
                         |i| {
                             let variant = &data_enum.variants[i];
                             let variant_name = &variant.ident;

@@ -1,6 +1,6 @@
 use crate::attribute::BitcodeAttrs;
 use crate::private;
-use crate::shared::{remove_lifetimes, replace_lifetimes, VariantIndex};
+use crate::shared::{remove_lifetimes, replace_lifetimes, VariantIndexType};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};
 use syn::{
@@ -111,7 +111,7 @@ impl crate::shared::Item for Item {
         self,
         crate_name: &Path,
         variant_count: usize,
-        variant_index: VariantIndex,
+        variant_index_type: VariantIndexType,
         pattern: impl Fn(usize) -> TokenStream,
         inner: impl Fn(Self, usize) -> TokenStream,
     ) -> TokenStream {
@@ -132,7 +132,7 @@ impl crate::shared::Item for Item {
                         } else {
                             variant_count
                         };
-                        quote! { variants: #private::VariantDecoder<#de, #variant_index, #variant_count, #histogram>, }
+                        quote! { variants: #private::VariantDecoder<#de, #variant_index_type, #variant_count, #histogram>, }
                     })
                     .unwrap_or_default();
                 quote! {
@@ -171,7 +171,7 @@ impl crate::shared::Item for Item {
                         if inner.is_empty() {
                             quote! {}
                         } else {
-                            let i = variant_index.instance_to_tokens(i);
+                            let i = variant_index_type.instance_to_tokens(i);
                             let length = decode_variants
                                 .then(|| {
                                     quote! {
@@ -215,7 +215,7 @@ impl crate::shared::Item for Item {
                             .map(|i| {
                                 let inner = inner(i);
                                 let pattern = pattern(i);
-                                let i = variant_index.instance_to_tokens(i);
+                                let i = variant_index_type.instance_to_tokens(i);
                                 quote! {
                                     #i => {
                                         #inner

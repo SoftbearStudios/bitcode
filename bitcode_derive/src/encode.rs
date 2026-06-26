@@ -1,6 +1,6 @@
 use crate::attribute::BitcodeAttrs;
 use crate::private;
-use crate::shared::{remove_lifetimes, replace_lifetimes, VariantIndex};
+use crate::shared::{remove_lifetimes, replace_lifetimes, VariantIndexType};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};
 use syn::{parse_quote, Generics, Path, Type};
@@ -114,7 +114,7 @@ impl crate::shared::Item for Item {
         self,
         crate_name: &Path,
         variant_count: usize,
-        variant_index: VariantIndex,
+        variant_index_type: VariantIndexType,
         pattern: impl Fn(usize) -> TokenStream,
         inner: impl Fn(Self, usize) -> TokenStream,
     ) -> TokenStream {
@@ -125,7 +125,7 @@ impl crate::shared::Item for Item {
                 let variants = encode_variants
                     .then(|| {
                         let private = private(crate_name);
-                        quote! { variants: #private::VariantEncoder<#variant_index, #variant_count>, }
+                        quote! { variants: #private::VariantEncoder<#variant_index_type, #variant_count>, }
                     })
                     .unwrap_or_default();
                 let inners: TokenStream = (0..variant_count).map(|i| inner(self, i)).collect();
@@ -150,7 +150,7 @@ impl crate::shared::Item for Item {
                         let variants: TokenStream = (0..variant_count)
                             .map(|i| {
                                 let pattern = pattern(i);
-                                let i = variant_index.instance_to_tokens(i);
+                                let i = variant_index_type.instance_to_tokens(i);
                                 quote! {
                                     #pattern => #i,
                                 }
