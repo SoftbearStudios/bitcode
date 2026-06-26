@@ -9,7 +9,7 @@ use syn::{
     Result, Type, WherePredicate,
 };
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum VariantIndex {
     U8,
     U16,
@@ -36,14 +36,6 @@ impl VariantIndex {
             Self::U8 => u8::MAX as usize,
             Self::U16 => u16::MAX as usize,
         }) + 1
-    }
-
-    /// If returns `false`, only C-style enums are supported.
-    pub fn supports_fields(self) -> bool {
-        match self {
-            Self::U8 => true,
-            _ => false,
-        }
     }
 
     pub fn instance_to_tokens(self, index: usize) -> TokenStream {
@@ -194,7 +186,7 @@ pub trait Derive<const ITEM_COUNT: usize> {
             Data::Enum(data_enum) => {
                 let variant_index = VariantIndex::new(data_enum.variants.len(), &ident)?;
 
-                if !variant_index.supports_fields() {
+                if variant_index != VariantIndex::U8 {
                     for variant in &data_enum.variants {
                         if !variant.fields.is_empty() {
                             return err(
