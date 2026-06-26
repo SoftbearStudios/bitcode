@@ -71,7 +71,7 @@ pub trait Decoder<'a, T>: View<'a> + Default + Send + Sync {
     /// Returns a `&mut SliceImpl<Unaligned<T>>` if `T` is a type that can be decoded by copying.
     /// Uses `Unaligned<T>` so `IntDecoder` can borrow from input `[u8]`.
     #[inline(always)]
-    fn as_primitive(&mut self) -> Option<&mut SliceImpl<Unaligned<T>>> {
+    fn as_primitive(&mut self) -> Option<&mut SliceImpl<'_, Unaligned<T>>> {
         None
     }
 

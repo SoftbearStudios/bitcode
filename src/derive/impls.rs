@@ -28,7 +28,6 @@ macro_rules! impl_both {
         }
     };
 }
-pub(crate) use impl_both;
 impl_both!(bool, BoolEncoder, BoolDecoder);
 impl_both!(f32, F32Encoder, F32Decoder);
 impl_both!(String, StrEncoder, StrDecoder);
@@ -217,7 +216,7 @@ impl<'a, T> Decode<'a> for PhantomData<T> {
 macro_rules! impl_tuples {
     ($(($($n:tt $name:ident)*))+) => {
         $(
-            #[allow(unused, clippy::unused_unit)]
+            #[allow(unused, clippy::unused_unit, clippy::pedantic)]
             const _: () = {
                 impl<$($name: Encode,)*> Encode for ($($name,)*) {
                     type Encoder = TupleEncoder<$($name,)*>;
