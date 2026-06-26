@@ -67,7 +67,9 @@ impl<'a, T: Int + Into<usize>, const N: usize, const HISTOGRAM: usize> View<'a>
         if TypeId::of::<T>() != TypeId::of::<u8>() {
             unpack_ints::<T>(input, length, &mut self.variants)?;
 
-            check_less_than::<T, N, HISTOGRAM, { usize::MAX }>(unsafe { self.variants.as_slice(length) })?;
+            check_less_than::<T, N, HISTOGRAM, { usize::MAX }>(unsafe {
+                self.variants.as_slice(length)
+            })?;
         } else {
             assert!(HISTOGRAM == 0 || HISTOGRAM == N);
             let out = self.variants.cast_mut::<u8>();

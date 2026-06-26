@@ -254,6 +254,7 @@ mod tests {
 #[doc(hidden)]
 pub fn _cant_decode_static_from_non_static_buffer() {}
 
+/// TODO: specify error.
 /// ```compile_fail
 /// use bitcode::{encode, decode, Encode, Decode};
 ///

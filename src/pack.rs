@@ -201,23 +201,33 @@ pub fn pack_bytes_less_than<const N: usize>(bytes: &[u8], out: &mut Vec<u8>) {
     }
 }
 
-fn check_less_than_u8<const N: usize, const HISTOGRAM: usize, const FACTOR: usize>(unpacked: &[u8]) -> Result<[usize; HISTOGRAM]> {
+fn check_less_than_u8<const N: usize, const HISTOGRAM: usize, const FACTOR: usize>(
+    unpacked: &[u8],
+) -> Result<[usize; HISTOGRAM]> {
     check_less_than::<u8, N, HISTOGRAM, FACTOR>(bytemuck::must_cast_slice(unpacked))
 }
 
-pub fn check_less_than<T: Int + Into<usize>, const N: usize, const HISTOGRAM: usize, const FACTOR: usize>(
+pub fn check_less_than<
+    T: Int + Into<usize>,
+    const N: usize,
+    const HISTOGRAM: usize,
+    const FACTOR: usize,
+>(
     unpacked: &[T::Une],
 ) -> Result<[usize; HISTOGRAM]> {
     assert!(FACTOR >= N);
-    debug_assert!(unpacked.iter().all(|&v| T::from_unaligned(v).into() < FACTOR));
-    if FACTOR > N && unpacked
+    debug_assert!(unpacked
         .iter()
-        .copied()
-        .map(T::from_unaligned)
-        .max()
-        .map(Into::into)
-        .unwrap_or(0)
-        >= N
+        .all(|&v| T::from_unaligned(v).into() < FACTOR));
+    if FACTOR > N
+        && unpacked
+            .iter()
+            .copied()
+            .map(T::from_unaligned)
+            .max()
+            .map(Into::into)
+            .unwrap_or(0)
+            >= N
     {
         return invalid_packing();
     }
