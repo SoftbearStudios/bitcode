@@ -65,6 +65,7 @@ impl<'a, T: Int + Into<usize>, const N: usize, const HISTOGRAM: usize> View<'a>
     fn populate(&mut self, input: &mut &'a [u8], length: usize) -> Result<()> {
         assert!(N >= 2);
         if TypeId::of::<T>() != TypeId::of::<u8>() {
+            assert!(HISTOGRAM == 0);
             unpack_ints::<T>(input, length, &mut self.variants)?;
 
             /// Checks that `unpacked` ints are less than `N`, hopefully
@@ -89,6 +90,7 @@ impl<'a, T: Int + Into<usize>, const N: usize, const HISTOGRAM: usize> View<'a>
 
             check_less_than::<T, N>(unsafe { self.variants.as_slice(length) })?;
         } else {
+            assert!(HISTOGRAM == 0 || HISTOGRAM == N);
             let out = self.variants.cast_mut::<u8>();
             self.histogram = unpack_bytes_less_than::<N, HISTOGRAM>(input, length, out)?;
         }

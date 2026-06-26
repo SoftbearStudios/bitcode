@@ -13,12 +13,11 @@ use syn::{
 pub enum VariantIndex {
     U8,
     U16,
-    U32,
 }
 
 impl VariantIndex {
     pub fn new(variant_count: usize, ident: &Ident) -> Result<Self> {
-        for candidate in [Self::U8, Self::U16, Self::U32] {
+        for candidate in [Self::U8, Self::U16] {
             if variant_count <= candidate.max_variants() {
                 return Ok(candidate);
             }
@@ -27,7 +26,7 @@ impl VariantIndex {
             &ident,
             &format!(
                 "enums with more than {} variants are not supported",
-                Self::U32.max_variants()
+                Self::U16.max_variants()
             ),
         )
     }
@@ -36,7 +35,6 @@ impl VariantIndex {
         (match self {
             Self::U8 => u8::MAX as usize,
             Self::U16 => u16::MAX as usize,
-            Self::U32 => u32::MAX as usize,
         }) + 1
     }
 
@@ -58,10 +56,6 @@ impl VariantIndex {
                 let n: u16 = index.try_into().unwrap();
                 quote! {#n}
             }
-            Self::U32 => {
-                let n: u32 = index.try_into().unwrap();
-                quote! {#n}
-            }
         }
     }
 }
@@ -73,7 +67,6 @@ impl ToTokens for VariantIndex {
             match self {
                 Self::U8 => "u8",
                 Self::U16 => "u16",
-                Self::U32 => "u32",
             },
             Span::call_site(),
         ));
