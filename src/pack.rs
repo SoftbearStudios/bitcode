@@ -2,7 +2,7 @@ use crate::coder::Result;
 use crate::consume::{consume_byte, consume_byte_arrays, consume_bytes};
 use crate::error::err;
 use crate::fast::CowSlice;
-use crate::pack_ints::SizedInt;
+use crate::pack_ints::{Int, SizedInt};
 use alloc::vec::Vec;
 
 /// Possible states per byte in descending order. Each packed byte will use `log2(states)` bits.
@@ -201,6 +201,29 @@ pub fn pack_bytes_less_than<const N: usize>(bytes: &[u8], out: &mut Vec<u8>) {
     }
 }
 
+fn check_less_than_u8<const N: usize, const HISTOGRAM: usize, const FACTOR: usize>(unpacked: &[u8]) -> Result<[usize; HISTOGRAM]> {
+    check_less_than::<u8, N, HISTOGRAM, FACTOR>(bytemuck::must_cast_slice(unpacked))
+}
+
+pub fn check_less_than<T: Int + Into<usize>, const N: usize, const HISTOGRAM: usize, const FACTOR: usize>(
+    unpacked: &[T::Une],
+) -> Result<[usize; HISTOGRAM]> {
+    assert!(FACTOR >= N);
+    debug_assert!(unpacked.iter().all(|&v| T::from_unaligned(v).into() < FACTOR));
+    if FACTOR > N && unpacked
+        .iter()
+        .copied()
+        .map(T::from_unaligned)
+        .max()
+        .map(Into::into)
+        .unwrap_or(0)
+        >= N
+    {
+        return invalid_packing();
+    }
+    Ok(core::array::from_fn(|_| unreachable!("HISTOGRAM not 0")))
+}
+
 /// Like `unpack_bytes` but all values are less than `N` so it can avoid encoding the packing.
 /// Bytes returned by this function are guaranteed less than `N`.
 ///
@@ -214,19 +237,6 @@ pub fn unpack_bytes_less_than<'a, const N: usize, const HISTOGRAM: usize>(
     out: &mut CowSlice<'a, u8>,
 ) -> Result<[usize; HISTOGRAM]> {
     assert!(HISTOGRAM == N || HISTOGRAM == 0);
-
-    /// Checks that `unpacked` bytes are less than `N`. All of `unpacked` is assumed to be < `FACTOR`.
-    /// `HISTOGRAM` must be 0.
-    fn check_less_than<const N: usize, const HISTOGRAM: usize, const FACTOR: usize>(
-        unpacked: &[u8],
-    ) -> Result<[usize; HISTOGRAM]> {
-        assert!(FACTOR >= N);
-        debug_assert!(unpacked.iter().all(|&v| (v as usize) < FACTOR));
-        if FACTOR > N && unpacked.iter().copied().max().unwrap_or(0) as usize >= N {
-            return invalid_packing();
-        }
-        Ok(core::array::from_fn(|_| unreachable!("HISTOGRAM not 0")))
-    }
 
     /// Returns `Ok(histogram)` if buckets after `OUT` are 0.
     fn check_histogram<const IN: usize, const OUT: usize>(
@@ -244,7 +254,7 @@ pub fn unpack_bytes_less_than<'a, const N: usize, const HISTOGRAM: usize>(
         let bytes = consume_bytes(input, length)?;
         out.set_borrowed(bytes);
         return if HISTOGRAM == 0 {
-            check_less_than::<N, HISTOGRAM, 256>(bytes)
+            check_less_than_u8::<N, HISTOGRAM, 256>(bytes)
         } else {
             check_histogram(crate::histogram::histogram(bytes))
         };
@@ -269,7 +279,7 @@ pub fn unpack_bytes_less_than<'a, const N: usize, const HISTOGRAM: usize>(
         let original_input = *input;
         unpack_arithmetic::<FACTOR>(input, length, out)?;
         if HISTOGRAM == 0 {
-            check_less_than::<N, HISTOGRAM, FACTOR>(out)
+            check_less_than_u8::<N, HISTOGRAM, FACTOR>(out)
         } else {
             let floor = length / divisor;
             let ceil = crate::nightly::div_ceil_usize(length, divisor);

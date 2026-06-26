@@ -1,7 +1,7 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::error::err;
 use crate::fast::{CowSlice, NextUnchecked, PushUnchecked, VecImpl};
-use crate::pack::{pack_bytes_less_than, unpack_bytes_less_than};
+use crate::pack::{check_less_than, pack_bytes_less_than, unpack_bytes_less_than};
 use crate::pack_ints::{pack_ints, unpack_ints, Int};
 use alloc::vec::Vec;
 use core::any::TypeId;
@@ -65,30 +65,9 @@ impl<'a, T: Int + Into<usize>, const N: usize, const HISTOGRAM: usize> View<'a>
     fn populate(&mut self, input: &mut &'a [u8], length: usize) -> Result<()> {
         assert!(N >= 2);
         if TypeId::of::<T>() != TypeId::of::<u8>() {
-            assert!(HISTOGRAM == 0);
             unpack_ints::<T>(input, length, &mut self.variants)?;
 
-            /// Checks that `unpacked` ints are less than `N`, hopefully
-            /// without a branch instruction for every int.
-            fn check_less_than<T: Int + Into<usize>, const N: usize>(
-                unpacked: &[T::Une],
-            ) -> Result<()> {
-                if 2u64.pow(core::mem::size_of::<T>() as u32 * 8) > N as u64
-                    && unpacked
-                        .iter()
-                        .copied()
-                        .map(T::from_unaligned)
-                        .max()
-                        .map(Into::into)
-                        .unwrap_or(0)
-                        >= N
-                {
-                    return err("invalid enum variant index");
-                }
-                Ok(())
-            }
-
-            check_less_than::<T, N>(unsafe { self.variants.as_slice(length) })?;
+            check_less_than::<T, N, HISTOGRAM, { usize::MAX }>(unsafe { self.variants.as_slice(length) })?;
         } else {
             assert!(HISTOGRAM == 0 || HISTOGRAM == N);
             let out = self.variants.cast_mut::<u8>();
