@@ -1,6 +1,6 @@
 #![allow(clippy::items_after_test_module, clippy::blocks_in_if_conditions)]
 #![warn(clippy::semicolon_if_nothing_returned)]
-#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(test, feature(test))]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![doc = include_str!("../README.md")]
