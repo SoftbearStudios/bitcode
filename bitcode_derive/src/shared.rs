@@ -9,9 +9,60 @@ use syn::{
     Result, Type, WherePredicate,
 };
 
-type VariantIndex = u8;
-pub fn variant_index(i: usize) -> VariantIndex {
-    i.try_into().unwrap()
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum VariantIndexType {
+    U8,
+    U16,
+}
+
+impl VariantIndexType {
+    pub fn new(variant_count: usize, ident: &Ident) -> Result<Self> {
+        for candidate in [Self::U8, Self::U16] {
+            if variant_count <= candidate.max_variants() {
+                return Ok(candidate);
+            }
+        }
+        err(
+            &ident,
+            &format!(
+                "enums with more than {} variants are not supported",
+                Self::U16.max_variants()
+            ),
+        )
+    }
+
+    fn max_variants(self) -> usize {
+        (match self {
+            Self::U8 => u8::MAX as usize,
+            Self::U16 => u16::MAX as usize,
+        }) + 1
+    }
+
+    pub fn instance_to_tokens(self, index: usize) -> TokenStream {
+        match self {
+            Self::U8 => {
+                let n: u8 = index.try_into().unwrap();
+                quote! {#n}
+            }
+            Self::U16 => {
+                let n: u16 = index.try_into().unwrap();
+                quote! {#n}
+            }
+        }
+    }
+}
+
+impl ToTokens for VariantIndexType {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        use quote::TokenStreamExt;
+        tokens.append(Ident::new(
+            match self {
+                Self::U8 => "u8",
+                Self::U16 => "u16",
+            },
+            Span::call_site(),
+        ));
+    }
 }
 
 pub trait Item: Copy + Sized {
@@ -36,6 +87,7 @@ pub trait Item: Copy + Sized {
         self,
         crate_name: &Path,
         variant_count: usize,
+        variant_index_type: VariantIndexType,
         pattern: impl Fn(usize) -> TokenStream,
         inner: impl Fn(Self, usize) -> TokenStream,
     ) -> TokenStream;
@@ -132,12 +184,20 @@ pub trait Derive<const ITEM_COUNT: usize> {
                 })
             }
             Data::Enum(data_enum) => {
-                let max_variants = VariantIndex::MAX as usize + 1;
-                if data_enum.variants.len() > max_variants {
-                    return err(
-                        &ident,
-                        &format!("enums with more than {max_variants} variants are not supported"),
-                    );
+                let variant_index_type = VariantIndexType::new(data_enum.variants.len(), &ident)?;
+
+                if variant_index_type != VariantIndexType::U8 {
+                    for variant in &data_enum.variants {
+                        if !variant.fields.is_empty() {
+                            return err(
+                                &ident,
+                                &format!(
+                                    "enums with more than {} variants must not have any variants with fields",
+                                    VariantIndexType::U8.max_variants()
+                                ),
+                            );
+                        }
+                    }
                 }
 
                 // Used for adding `bounds` and skipping fields. Would be used by `#[bitcode(with_serde)]`.
@@ -154,6 +214,7 @@ pub trait Derive<const ITEM_COUNT: usize> {
                     item.enum_impl(
                         &attrs.crate_name,
                         data_enum.variants.len(),
+                        variant_index_type,
                         |i| {
                             let variant = &data_enum.variants[i];
                             let variant_name = &variant.ident;
