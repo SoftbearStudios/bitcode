@@ -45,7 +45,9 @@ impl crate::shared::Item for Item {
     ) -> TokenStream {
         match self {
             Self::Type => {
-                let mut de_type = replace_lifetimes(field_type, DE_LIFETIME).to_token_stream();
+                // `#[bitcode(decode_with = "Local")]` stores the decoder for `Local`, not the field.
+                let base_type = field_attrs.decode_with().unwrap_or(field_type);
+                let mut de_type = replace_lifetimes(base_type, DE_LIFETIME).to_token_stream();
                 if field_attrs.skip {
                     de_type = quote! { ::core::marker::PhantomData<#de_type> };
                 }
@@ -63,9 +65,14 @@ impl crate::shared::Item for Item {
             },
             // Only used by enum variants.
             Self::Decode => {
+                let de_type = replace_lifetimes(field_type, DE_LIFETIME);
                 let value = if field_attrs.skip {
                     quote! {
                         Default::default()
+                    }
+                } else if field_attrs.decode_with().is_some() {
+                    quote! {
+                        ::core::convert::Into::<#de_type>::into(self.#global_field_name.decode())
                     }
                 } else {
                     quote! {
@@ -85,6 +92,11 @@ impl crate::shared::Item for Item {
                 if field_attrs.skip {
                     quote! {{
                         (#target).write(Default::default());
+                    }}
+                } else if field_attrs.decode_with().is_some() {
+                    quote! {{
+                        let __local = self.#global_field_name.decode();
+                        (#target).write(::core::convert::Into::into(__local));
                     }}
                 } else {
                     quote! {
@@ -261,6 +273,10 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
 
     fn skip_bound(&self) -> Option<Path> {
         Some(parse_quote!(Default))
+    }
+
+    fn with_type(&self, field_attrs: &BitcodeAttrs) -> Option<Type> {
+        field_attrs.decode_with().cloned()
     }
 
     fn derive_impl(

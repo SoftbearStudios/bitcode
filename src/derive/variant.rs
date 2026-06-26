@@ -1,5 +1,4 @@
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
-use crate::error::err;
 use crate::fast::{CowSlice, NextUnchecked, PushUnchecked, VecImpl};
 use crate::pack::{check_less_than, pack_bytes_less_than, unpack_bytes_less_than};
 use crate::pack_ints::{pack_ints, unpack_ints, Int};

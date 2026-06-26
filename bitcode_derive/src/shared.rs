@@ -130,6 +130,10 @@ pub trait Derive<const ITEM_COUNT: usize> {
     /// Bound for skipped fields, e.g. `Default`
     fn skip_bound(&self) -> Option<Path>;
 
+    /// For `#[bitcode(with)]` fields, the local type whose generic parameters should be bounded
+    /// instead of the field's own type (which need not implement `Encode`/`Decode`).
+    fn with_type(&self, field_attrs: &BitcodeAttrs) -> Option<Type>;
+
     /// Generates the derive implementation.
     fn derive_impl(
         &self,
@@ -157,7 +161,12 @@ pub trait Derive<const ITEM_COUNT: usize> {
                     Some(self.bound(crate_name))
                 };
                 if let Some(bound) = bound {
-                    bounds.add_bound_type(field.clone(), &field_attrs, bound);
+                    let mut field = field.clone();
+                    if let Some(with_type) = self.with_type(&field_attrs) {
+                        // Bound the local type instead of the field's own (remote) type.
+                        field.ty = with_type;
+                    }
+                    bounds.add_bound_type(field, &field_attrs, bound);
                 }
                 Ok(field_attrs)
             })

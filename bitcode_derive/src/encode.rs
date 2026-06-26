@@ -37,7 +37,9 @@ impl crate::shared::Item for Item {
     ) -> TokenStream {
         match self {
             Self::Type => {
-                let mut static_type = replace_lifetimes(field_type, "static").to_token_stream();
+                // `#[bitcode(encode_with = "Local")]` stores the encoder for `Local`, not the field.
+                let base_type = field_attrs.encode_with().unwrap_or(field_type);
+                let mut static_type = replace_lifetimes(base_type, "static").to_token_stream();
                 if field_attrs.skip {
                     static_type = quote! { ::core::marker::PhantomData<#static_type> };
                 }
@@ -50,6 +52,43 @@ impl crate::shared::Item for Item {
                 #global_field_name: Default::default(),
             },
             Self::Encode | Self::EncodeVectored => {
+                // `#[bitcode(encode_with = "Local")]`: convert `&Field` to `Local`, then encode `Local`.
+                // The conversion produces an owned `Local`, so we can't yield `&Local` into the
+                // vectored fast-path; instead the vectored case stamps out a loop calling `encode`.
+                if let Some(local) = field_attrs.encode_with().filter(|_| !field_attrs.skip) {
+                    let local_static = replace_lifetimes(local, "static");
+                    let needs_transmute = &local_static != local;
+                    let encode_one = |field_ref: TokenStream| {
+                        if needs_transmute {
+                            // HACK: Since encoders don't have lifetimes we can't reference <T<'a> as Encode>::Encoder since 'a
+                            // does not exist. Instead we replace this with <T<'static> as Encode>::Encoder and transmute it to
+                            // T<'a>. No encoder actually encodes T<'static> any differently from T<'a> so this is sound.
+                            let local_underscore = replace_lifetimes(local, "_");
+                            quote! {{
+                                let __local: #local_underscore = ::core::convert::From::from(#field_ref);
+                                self.#global_field_name.encode(unsafe {
+                                    ::core::mem::transmute::<&#local_underscore, &#local_static>(&__local)
+                                });
+                            }}
+                        } else {
+                            quote! {{
+                                let __local: #local_static = ::core::convert::From::from(#field_ref);
+                                self.#global_field_name.encode(&__local);
+                            }}
+                        }
+                    };
+                    return if matches!(self, Self::EncodeVectored) {
+                        let encode_one = encode_one(quote! { &__me.#real_field_name });
+                        quote! {
+                            for __me in i.clone() {
+                                #encode_one
+                            }
+                        }
+                    } else {
+                        encode_one(quote! { #field_name })
+                    };
+                }
+
                 let static_type = replace_lifetimes(field_type, "static");
                 let value = if field_attrs.skip {
                     quote! {
@@ -246,6 +285,10 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
 
     fn skip_bound(&self) -> Option<Path> {
         None
+    }
+
+    fn with_type(&self, field_attrs: &BitcodeAttrs) -> Option<Type> {
+        field_attrs.encode_with().cloned()
     }
 
     fn derive_impl(
