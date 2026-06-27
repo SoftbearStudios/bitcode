@@ -1,4 +1,5 @@
 use crate::pack_ints::{SizedInt, SizedUInt};
+use alloc::vec::Vec;
 
 pub trait PackingTrait: Copy + PartialOrd {
     fn new<T: SizedUInt>(max: T) -> Self;
@@ -25,7 +26,7 @@ pub fn basic_packing_and_signed_min_max_cast_to_unsigned<T: SizedInt, P: Packing
     // Note: This small sample is purely an optimization, it has no impact on the encoded result
     // because we only use it to bail from scanning the entire slice if the first 16-32 elements
     // cannot be packed.
-    let sample_size = (32 / std::mem::size_of::<T>()).max(16);
+    let sample_size = (32 / core::mem::size_of::<T>()).max(16);
     let (sample, remaining) = ints.split_at(ints.len().min(sample_size));
     let (min, max) = minmax(sample);
 

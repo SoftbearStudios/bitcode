@@ -34,7 +34,7 @@ impl PackingTrait for Packing {
 
     fn write<T: crate::pack_ints::SizedUInt>(self, out: &mut Vec<u8>, offset_by_min: bool) {
         // pack_ints::Packing needs generics, we only use this on u8 here.
-        assert_eq!(std::mem::size_of::<T>(), 1);
+        assert_eq!(core::mem::size_of::<T>(), 1);
         // Encoded in such a way such that 0 is `Self::_256` and higher numbers are smaller packing.
         // Also makes `Self::_256` with offset_by_min = true is unrepresentable.
         out.push(self as u8 * 2 - offset_by_min as u8);
