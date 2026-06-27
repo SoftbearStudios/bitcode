@@ -142,57 +142,71 @@ mod tests {
         test!([], [u8; 0]);
     }
 
+    #[allow(unused)]
     #[derive(Encode, Decode)]
     enum Never {}
 
+    #[allow(unused)]
     #[derive(Encode, Decode)]
     enum One {
         A(u8),
     }
 
     // cargo expand --lib --tests | grep -A15 Two
+    #[allow(unused)]
     #[derive(Encode, Decode)]
     enum Two {
         A(u8),
         B(i8),
     }
 
+    #[allow(unused)]
     #[derive(Encode, Decode)]
     struct TupleStruct(u8, i8);
 
+    #[allow(unused)]
     #[derive(Encode, Decode)]
     struct Generic<T>(T);
 
+    #[allow(unused)]
     #[derive(Encode, Decode)]
     struct GenericManual<T>(#[bitcode(bound_type = "T")] T);
 
+    #[allow(unused)]
     #[derive(Encode, Decode)]
     struct GenericWhere<A, B>(A, B)
     where
         A: From<B>;
 
+    #[allow(unused)]
     #[derive(Encode, Decode)]
     struct Lifetime<'a>(&'a str);
 
+    #[allow(unused)]
     #[derive(Encode, Decode)]
     struct LifetimeWhere<'a, 'b>(&'a str, &'b str)
     where
         'a: 'b;
 
+    #[allow(unused)]
     #[derive(Encode, Decode)]
     struct ConstGeneric<const N: usize>([u8; N]);
 
+    #[allow(unused)]
     #[derive(Encode, Decode)]
     struct Empty;
 
+    #[allow(unused)]
     #[derive(Encode, Decode)]
     struct AssociatedConst([u8; Self::N]);
     impl AssociatedConst {
         const N: usize = 1;
     }
 
+    #[allow(unused)]
     #[derive(Encode, Decode)]
     struct AssociatedConstTrait([u8; <Self as Trait>::N]);
+    #[allow(unused)]
     trait Trait {
         const N: usize;
     }
@@ -379,8 +393,10 @@ mod tests {
 
     #[test]
     fn skipped_fields_regression() {
+        #[allow(unused)]
         #[derive(Encode, Decode, Default, Debug, PartialEq)]
         pub struct Indirect<A>(A);
+        #[allow(unused)]
         #[derive(Encode, Decode, Debug, PartialEq)]
         struct SkipGeneric<A> {
             #[bitcode(bound_type = "Indirect<A>")]

@@ -46,7 +46,7 @@ impl<'a> From<&'a DataEnum> for DataEnum2<'a> {
     }
 }
 
-fn bench_data2(bench_data: &[Data]) -> Vec<Data2> {
+fn bench_data2(bench_data: &[Data]) -> Vec<Data2<'_>> {
     bench_data.iter().map(From::from).collect()
 }
 
