@@ -363,7 +363,7 @@ impl<'a, T: Decode<'a>> Decoder<'a, VecDeque<T>> for VecDecoder<'a, T> {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use alloc::collections::*;
     use alloc::vec::Vec;
 
@@ -386,10 +386,24 @@ mod test {
         type T = BinaryHeap<u8>;
         let data: T = bench_data();
         let encoded = crate::encode(&data);
+
+        let mut buffer = crate::Buffer::new();
         b.iter(|| {
-            let decoded: T = crate::decode::<T>(&encoded).unwrap();
+            let decoded: T = buffer.decode::<T>(&encoded).unwrap();
             debug_assert!(data.iter().eq(decoded.iter()));
             decoded
         })
     }
+}
+
+#[cfg(test)]
+mod tests2 {
+    type T = [[u8; 32]; 32];
+    fn bench_data() -> Vec<Vec<T>> {
+        crate::random_data(1000)
+            .into_iter()
+            .map(|t: T| if t[0][0] & 1 == 0 { vec![t] } else { vec![] })
+            .collect()
+    }
+    crate::bench_encode_decode!(vec_zero_or_one_large_array_vec: Vec<Vec<T>>);
 }

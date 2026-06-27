@@ -3,6 +3,7 @@ use crate::consume::{consume_byte, consume_byte_arrays, consume_bytes};
 use crate::error::err;
 use crate::fast::CowSlice;
 use crate::pack_ints::{Int, SizedInt};
+use crate::pack_shared::PackingTrait;
 use alloc::vec::Vec;
 
 /// Possible states per byte in descending order. Each packed byte will use `log2(states)` bits.
@@ -17,8 +18,9 @@ enum Packing {
     _2,
 }
 
-impl Packing {
-    fn new(max: u8) -> Self {
+impl PackingTrait for Packing {
+    fn new<T: crate::pack_ints::SizedUInt>(max: T) -> Self {
+        let max: u8 = bytemuck::must_cast(max);
         match max {
             // We could encode max 0 as nothing, but that could allocate unbounded memory when decoding.
             0..=1 => Self::_2,
@@ -30,12 +32,16 @@ impl Packing {
         }
     }
 
-    fn write(self, out: &mut Vec<u8>, offset_by_min: bool) {
+    fn write<T: crate::pack_ints::SizedUInt>(self, out: &mut Vec<u8>, offset_by_min: bool) {
+        // pack_ints::Packing needs generics, we only use this on u8 here.
+        assert_eq!(std::mem::size_of::<T>(), 1);
         // Encoded in such a way such that 0 is `Self::_256` and higher numbers are smaller packing.
         // Also makes `Self::_256` with offset_by_min = true is unrepresentable.
         out.push(self as u8 * 2 - offset_by_min as u8);
     }
+}
 
+impl Packing {
     fn read(input: &mut &[u8]) -> Result<(Self, bool)> {
         let v = consume_byte(input)?;
         let p_u8 = crate::nightly::div_ceil_u8(v, 2);
@@ -93,20 +99,16 @@ pub fn pack_bytes<T: Byte>(bytes: &mut [T], out: &mut Vec<u8>) {
         out.extend_from_slice(bytemuck::must_cast_slice(bytes));
         return;
     }
-    let (min, max) = crate::pack_ints::minmax(bytes);
 
-    // i8 packs as u8 if positive.
-    let basic_packing = if min >= T::default() {
-        Packing::new(bytemuck::must_cast(max))
-    } else {
-        Packing::_256 // Any negative i8 as u8 is > 15 and can't be packed without offset_packing.
-    };
-
-    // u8::wrapping_sub == i8::wrapping_sub, so we can use u8s from here onward.
-    let min: u8 = bytemuck::must_cast(min);
-    let max: u8 = bytemuck::must_cast(max);
+    let (basic_packing, min_max) =
+        crate::pack_shared::basic_packing_and_signed_min_max_cast_to_unsigned(bytes, out);
     let bytes: &mut [u8] = bytemuck::must_cast_slice_mut(bytes);
-    pack_bytes_unsigned(bytes, out, basic_packing, min, max);
+
+    // <T as SizedInt>::Unsigned for T: Byte is always u8, but we can't prove
+    // that here, so we perform this cast which doesn't change the underlying type.
+    let min_max = min_max.map(|(min, max)| (bytemuck::must_cast(min), bytemuck::must_cast(max)));
+
+    pack_bytes_unsigned(bytes, out, basic_packing, min_max);
 }
 
 /// [`pack_bytes`] but after i8s have been cast to u8s.
@@ -114,23 +116,9 @@ fn pack_bytes_unsigned(
     bytes: &mut [u8],
     out: &mut Vec<u8>,
     basic_packing: Packing,
-    min: u8,
-    max: u8,
+    min_max: Option<(u8, u8)>,
 ) {
-    // If subtracting min from all bytes results in a better packing do it, otherwise don't bother.
-    let offset_packing = Packing::new(max.wrapping_sub(min));
-    let p = if offset_packing > basic_packing && bytes.len() > 5 {
-        for b in bytes.iter_mut() {
-            *b = b.wrapping_sub(min);
-        }
-        offset_packing.write(out, true);
-        out.push(min);
-        offset_packing
-    } else {
-        basic_packing.write(out, false);
-        basic_packing
-    };
-
+    let p = crate::pack_shared::offset_packing(bytes, out, basic_packing, min_max);
     match p {
         Packing::_256 => out.extend_from_slice(bytes),
         Packing::_16 => pack_arithmetic::<16>(bytes, out),
