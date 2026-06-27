@@ -1,4 +1,4 @@
-use crate::attribute::BitcodeAttrs;
+use crate::attribute::BitcodeFieldAttrs;
 use std::collections::{HashMap, HashSet};
 use syn::punctuated::Pair;
 use syn::Token;
@@ -12,11 +12,11 @@ impl FieldBounds {
     pub fn add_bound_type(
         &mut self,
         field: syn::Field,
-        field_attrs: &BitcodeAttrs,
+        field_attrs: &BitcodeFieldAttrs,
         bound: syn::Path,
     ) {
         let bounds = self.bounds.entry(bound).or_default();
-        if let Some(bound_type) = field_attrs.bound_type() {
+        if let Some(bound_type) = field_attrs.bound_type.clone() {
             bounds.1.push(bound_type);
         } else {
             bounds.0.push(field);
