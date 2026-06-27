@@ -1,5 +1,6 @@
 use crate::{err, error};
 use proc_macro2::TokenStream;
+use quote::quote;
 use std::str::FromStr;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -7,7 +8,7 @@ use syn::{parse2, Attribute, Expr, ExprLit, Lit, Meta, Path, Result, Token, Type
 
 enum BitcodeAttr {
     BoundType(Type),
-    CrateAlias(Path),
+    CrateName(Path),
     Skip,
 }
 
@@ -49,7 +50,7 @@ impl BitcodeAttr {
                     // removed: https://github.com/SoftbearStudios/bitcode/pull/28#issuecomment-2227465515
                     // path.leading_colon = Some(Token![::](str_lit.span()));
 
-                    Ok(Self::CrateAlias(path))
+                    Ok(Self::CrateName(path))
                 }
                 _ => err(&nested, "expected name value"),
             },
@@ -58,89 +59,133 @@ impl BitcodeAttr {
         }
     }
 
-    fn apply(self, attrs: &mut BitcodeAttrs, nested: &Meta) -> Result<()> {
+    fn apply(self, attrs: &mut BitcodeAnyAttrs<'_, '_>, nested: &Meta) -> Result<()> {
+        fn set_if_not_duplicate<T: Default + PartialEq>(
+            v: &mut T,
+            new_value: T,
+            nested: &Meta,
+        ) -> Result<()> {
+            if new_value == Default::default() {
+                return err(nested, "cannot set to default value");
+            }
+            if &*v != &Default::default() {
+                return err(nested, "duplicate");
+            }
+            *v = new_value;
+            Ok(())
+        }
+
         match self {
             Self::BoundType(bound_type) => {
-                if let AttrType::Field { bound_type: b, .. } = &mut attrs.attr_type {
-                    if b.is_some() {
-                        return err(nested, "duplicate");
-                    }
-                    *b = Some(bound_type);
-                    Ok(())
+                if let BitcodeAnyAttrs::Field(field) = attrs {
+                    set_if_not_duplicate(&mut field.bound_type, Some(bound_type), nested)
                 } else {
-                    err(nested, "can only apply bound to fields")
+                    err(nested, r#"can only apply to fields"#)
                 }
             }
-            Self::CrateAlias(crate_name) => {
-                if let AttrType::Derive = attrs.attr_type {
-                    attrs.crate_name = crate_name;
-                    Ok(())
+            Self::CrateName(crate_name) => {
+                if let BitcodeAnyAttrs::Derive(derive) = attrs {
+                    set_if_not_duplicate(&mut derive.crate_name, Some(crate_name), nested)
                 } else {
-                    err(nested, "can only apply crate rename to derives")
+                    err(nested, r#"can only apply to struct/enum definition"#)
                 }
             }
             Self::Skip => {
-                if let AttrType::Field { .. } = &attrs.attr_type {
-                    attrs.skip = true;
-                    Ok(())
+                if let BitcodeAnyAttrs::Field(field) = attrs {
+                    set_if_not_duplicate(&mut field.skip, true, nested)
                 } else {
-                    err(nested, "can only apply skip to fields")
+                    err(nested, "can only apply to fields")
                 }
             }
         }
     }
 }
 
-#[derive(Clone)]
-pub struct BitcodeAttrs {
-    attr_type: AttrType,
-    /// The crate name to use for the generated code, defaults to "bitcode".
-    pub crate_name: Path,
-    /// Whether to skip this field during (de)serialisation.
+pub struct BitcodeDeriveAttrs {
+    crate_name: Option<Path>,
+    pub private: TokenStream,
+}
+impl BitcodeDeriveAttrs {
+    pub fn parse(attrs: &[Attribute]) -> Result<Self> {
+        let mut ret = Self {
+            crate_name: Default::default(),
+            private: quote! {},
+        };
+        BitcodeAnyAttrs::Derive(&mut ret).parse_inner(attrs)?;
+        let crate_name = ret
+            .crate_name
+            .clone()
+            .unwrap_or_else(|| syn::parse_str("bitcode").unwrap());
+
+        ret.private = quote! { #crate_name::__private };
+        Ok(ret)
+    }
+}
+
+pub struct BitcodeVariantAttrs<'a> {
+    parent: &'a BitcodeDeriveAttrs,
+}
+impl std::ops::Deref for BitcodeVariantAttrs<'_> {
+    type Target = BitcodeDeriveAttrs;
+    fn deref(&self) -> &Self::Target {
+        self.parent
+    }
+}
+
+impl<'a> BitcodeVariantAttrs<'a> {
+    pub fn parse(attrs: &[Attribute], parent: &'a BitcodeDeriveAttrs) -> Result<Self> {
+        let mut ret = Self { parent };
+        BitcodeAnyAttrs::Variant { _unused: &mut ret }.parse_inner(attrs)?;
+        Ok(ret)
+    }
+}
+
+#[derive(Copy, Clone)]
+pub enum BitcodeDeriveOrVariantAttrs<'a> {
+    Derive(&'a BitcodeDeriveAttrs),
+    Variant(&'a BitcodeVariantAttrs<'a>),
+}
+impl std::ops::Deref for BitcodeDeriveOrVariantAttrs<'_> {
+    type Target = BitcodeDeriveAttrs;
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Derive(v) => v,
+            Self::Variant(v) => v.parent,
+        }
+    }
+}
+
+pub struct BitcodeFieldAttrs<'a> {
+    parent: BitcodeDeriveOrVariantAttrs<'a>,
+    pub bound_type: Option<Type>,
     pub skip: bool,
 }
-
-#[derive(Clone)]
-enum AttrType {
-    Derive,
-    Variant,
-    Field { bound_type: Option<Type> },
+impl<'a> std::ops::Deref for BitcodeFieldAttrs<'a> {
+    type Target = BitcodeDeriveOrVariantAttrs<'a>;
+    fn deref(&self) -> &Self::Target {
+        &self.parent
+    }
+}
+impl<'a> BitcodeFieldAttrs<'a> {
+    pub fn parse(attrs: &[Attribute], parent: BitcodeDeriveOrVariantAttrs<'a>) -> Result<Self> {
+        let mut ret = Self {
+            parent,
+            bound_type: Default::default(),
+            skip: Default::default(),
+        };
+        BitcodeAnyAttrs::Field(&mut ret).parse_inner(attrs)?;
+        Ok(ret)
+    }
 }
 
-impl BitcodeAttrs {
-    fn new(attr_type: AttrType) -> Self {
-        Self {
-            attr_type,
-            crate_name: syn::parse_str("bitcode").expect("invalid crate name"),
-            skip: false,
-        }
-    }
-
-    pub fn bound_type(&self) -> Option<Type> {
-        match &self.attr_type {
-            AttrType::Field { bound_type, .. } => bound_type.as_ref().cloned(),
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn parse_derive(attrs: &[Attribute]) -> Result<Self> {
-        let mut ret = Self::new(AttrType::Derive);
-        ret.parse_inner(attrs)?;
-        Ok(ret)
-    }
-
-    pub fn parse_variant(attrs: &[Attribute], _derive_attrs: &Self) -> Result<Self> {
-        let mut ret = Self::new(AttrType::Variant);
-        ret.parse_inner(attrs)?;
-        Ok(ret)
-    }
-
-    pub fn parse_field(attrs: &[Attribute], _parent_attrs: &Self) -> Result<Self> {
-        let mut ret = Self::new(AttrType::Field { bound_type: None });
-        ret.parse_inner(attrs)?;
-        Ok(ret)
-    }
-
+enum BitcodeAnyAttrs<'a, 'b> {
+    Derive(&'a mut BitcodeDeriveAttrs),
+    Variant {
+        _unused: &'a mut BitcodeVariantAttrs<'b>,
+    },
+    Field(&'a mut BitcodeFieldAttrs<'b>),
+}
+impl BitcodeAnyAttrs<'_, '_> {
     fn parse_inner(&mut self, attrs: &[Attribute]) -> Result<()> {
         for attr in attrs {
             let path = path_ident_string(attr.path(), attr)?;

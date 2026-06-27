@@ -1,5 +1,4 @@
-use crate::attribute::BitcodeAttrs;
-use crate::private;
+use crate::attribute::{BitcodeDeriveAttrs, BitcodeFieldAttrs};
 use crate::shared::{remove_lifetimes, replace_lifetimes, VariantIndexType};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};
@@ -28,20 +27,19 @@ impl Item {
 impl crate::shared::Item for Item {
     fn field_impl(
         self,
-        crate_name: &Path,
+        attrs: &BitcodeFieldAttrs,
         field_name: TokenStream,
         global_field_name: TokenStream,
         real_field_name: TokenStream,
         field_type: &Type,
-        field_attrs: &BitcodeAttrs,
     ) -> TokenStream {
         match self {
             Self::Type => {
                 let mut static_type = replace_lifetimes(field_type, "static").to_token_stream();
-                if field_attrs.skip {
+                if attrs.skip {
                     static_type = quote! { ::core::marker::PhantomData<#static_type> };
                 }
-                let private = private(crate_name);
+                let private = &attrs.private;
                 quote! {
                     #global_field_name: <#static_type as #private::Encode>::Encoder,
                 }
@@ -51,7 +49,7 @@ impl crate::shared::Item for Item {
             },
             Self::Encode | Self::EncodeVectored => {
                 let static_type = replace_lifetimes(field_type, "static");
-                let value = if field_attrs.skip {
+                let value = if attrs.skip {
                     quote! {
                         {
                             let _ = #field_name;
@@ -112,7 +110,7 @@ impl crate::shared::Item for Item {
 
     fn enum_impl(
         self,
-        crate_name: &Path,
+        attrs: &BitcodeDeriveAttrs,
         variant_count: usize,
         variant_index_type: VariantIndexType,
         pattern: impl Fn(usize) -> TokenStream,
@@ -124,7 +122,7 @@ impl crate::shared::Item for Item {
             Self::Type => {
                 let variants = encode_variants
                     .then(|| {
-                        let private = private(crate_name);
+                        let private = &attrs.private;
                         quote! { variants: #private::VariantEncoder<#variant_index_type, #variant_count>, }
                     })
                     .unwrap_or_default();
@@ -239,8 +237,8 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
     type Item = Item;
     const ALL: [Self::Item; Item::COUNT] = Item::ALL;
 
-    fn bound(&self, crate_name: &Path) -> Path {
-        let private = private(crate_name);
+    fn bound(&self, attrs: &BitcodeDeriveAttrs) -> Path {
+        let private = &attrs.private;
         parse_quote!(#private::Encode)
     }
 
@@ -250,7 +248,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
 
     fn derive_impl(
         &self,
-        crate_name: &Path,
+        attrs: &BitcodeDeriveAttrs,
         output: [TokenStream; Item::COUNT],
         ident: Ident,
         mut generics: Generics,
@@ -269,7 +267,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Encode {
             output;
         let encoder_ident = Ident::new(&format!("{ident}Encoder"), Span::call_site());
         let encoder_ty = quote! { #encoder_ident #encoder_generics };
-        let private = private(crate_name);
+        let private = &attrs.private;
 
         quote! {
             #[allow(clippy::pedantic)]

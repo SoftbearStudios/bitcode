@@ -114,6 +114,28 @@ impl crate::buffer::Buffer {
     }
 }
 
+/// ```
+/// use bitcode::{Encode, Decode};
+/// #[derive(Encode, Decode)]
+/// struct Test {
+///     #[bitcode(skip)]
+///     x: u32,
+///     y: u32,
+/// }
+/// ```
+/// ```compile_fail
+/// use bitcode::{Encode, Decode};
+/// #[derive(Encode, Decode)]
+/// struct Test {
+///     #[bitcode(skip)]
+///     #[bitcode(skip)]
+///     x: u32,
+///     y: u32,
+/// }
+/// ```
+#[doc(hidden)]
+pub fn _cant_duplicate_skip() {}
+
 #[cfg(test)]
 mod tests {
     use crate::{Decode, Encode};
