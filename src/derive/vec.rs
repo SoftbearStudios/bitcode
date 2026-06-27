@@ -398,6 +398,7 @@ mod tests {
 
 #[cfg(test)]
 mod tests2 {
+    use alloc::vec::Vec;
     type T = [[u8; 32]; 32];
     fn bench_data() -> Vec<Vec<T>> {
         crate::random_data(1000)
