@@ -277,5 +277,13 @@ fuzz_target!(|data: &[u8]| {
         SocketAddrV6,
         SocketAddr,
         time::Time,
+        chrono::NaiveTime,
+        chrono::NaiveDate,
+        chrono::NaiveDateTime,
+        chrono::DateTime<chrono::Utc>,
+        jiff::civil::Date,
+        jiff::civil::Time,
+        jiff::Timestamp,
+        jiff::Zoned,
     );
 });

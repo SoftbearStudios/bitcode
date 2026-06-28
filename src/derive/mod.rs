@@ -10,6 +10,8 @@ pub(crate) mod convert;
 mod duration;
 mod empty;
 mod impls;
+#[cfg(any(feature = "chrono", feature = "jiff"))]
+pub(crate) mod try_convert;
 // TODO: When ip_in_core has been stable (https://github.com/rust-lang/rust/issues/108443)
 // for long enough, remove feature check.
 #[cfg(feature = "std")]
