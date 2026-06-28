@@ -1,5 +1,7 @@
 #[cfg(feature = "arrayvec")]
 mod arrayvec;
+#[cfg(feature = "compact_str")]
+mod compact_str;
 #[cfg(feature = "glam")]
 #[rustfmt::skip] // Makes impl_struct! calls way longer.
 mod glam;
