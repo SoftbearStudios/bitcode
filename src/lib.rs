@@ -26,7 +26,6 @@ mod fast;
 mod histogram;
 mod int;
 mod length;
-mod nightly;
 mod pack;
 mod pack_ints;
 mod pack_shared;

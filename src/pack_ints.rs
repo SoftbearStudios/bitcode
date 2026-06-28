@@ -43,7 +43,7 @@ impl PackingTrait for Packing {
 impl Packing {
     fn read<T: SizedUInt>(input: &mut &[u8]) -> Result<(Self, bool)> {
         let v = consume_byte(input)?;
-        let p_u8 = crate::nightly::div_ceil_u8(v, 2) + Self::new(T::MAX) as u8;
+        let p_u8 = v.div_ceil(2) + Self::new(T::MAX) as u8;
         let offset_by_min = v & 1 != 0;
         let p = match p_u8 {
             0 => Self::_128,

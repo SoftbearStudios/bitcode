@@ -44,7 +44,7 @@ impl PackingTrait for Packing {
 impl Packing {
     fn read(input: &mut &[u8]) -> Result<(Self, bool)> {
         let v = consume_byte(input)?;
-        let p_u8 = crate::nightly::div_ceil_u8(v, 2);
+        let p_u8 = v.div_ceil(2);
         let offset_by_min = v & 1 != 0;
         let p = match p_u8 {
             0 => Self::_256,
@@ -280,7 +280,7 @@ pub fn unpack_bytes_less_than<'a, const N: usize, const HISTOGRAM: usize>(
             check_less_than_u8::<N, HISTOGRAM, FACTOR>(out)
         } else {
             let floor = length / divisor;
-            let ceil = crate::nightly::div_ceil_usize(length, divisor);
+            let ceil = length.div_ceil(divisor);
             let whole = &original_input[..floor];
 
             // Can only `partial_with_garbage % FACTOR` partial_length times as the rest are undefined garbage.
@@ -335,6 +335,7 @@ pub fn unpack_bytes_less_than<'a, const N: usize, const HISTOGRAM: usize>(
                 })
             };
             if let Ok(h) = histogram {
+                debug_assert!(check_less_than_u8::<N, 0, FACTOR>(out).is_ok());
                 debug_assert_eq!(
                     h,
                     check_histogram(crate::histogram::histogram(out)).unwrap()
@@ -439,7 +440,7 @@ fn unpack_arithmetic<const FACTOR: usize>(
 
     // TODO STRICT: check that packed.all(|&b| b < FACTOR.powi(divisor)).
     let floor = unpacked_len / divisor;
-    let ceil = crate::nightly::div_ceil_usize(unpacked_len, divisor);
+    let ceil = unpacked_len.div_ceil(divisor);
     let packed = consume_bytes(input, ceil)?;
 
     debug_assert!(out.is_empty());
@@ -666,15 +667,18 @@ mod tests {
     bench_n!(bench_unpack_arithmetic, 2, 3, 4, 6, 16);
 
     fn test_pack_bytes_less_than_n<const N: usize, const FACTOR: usize>() {
-        for n in [1, 11, 97, 991, 10007].into_iter().flat_map(|n_prime| {
-            let divisor = if FACTOR == 256 {
-                1
-            } else {
-                super::factor_to_divisor::<FACTOR>()
-            };
-            let n_factor = crate::nightly::div_ceil_usize(n_prime, divisor) * divisor;
-            [n_factor, n_prime]
-        }) {
+        for n in [1usize, 11, 97, 991, 10007]
+            .into_iter()
+            .flat_map(|n_prime| {
+                let divisor = if FACTOR == 256 {
+                    1
+                } else {
+                    super::factor_to_divisor::<FACTOR>()
+                };
+                let n_factor = n_prime.div_ceil(divisor) * divisor;
+                [n_factor, n_prime]
+            })
+        {
             let bytes: Vec<_> = crate::random_data(n)
                 .into_iter()
                 .map(|v: usize| (v % N as usize) as u8)
