@@ -535,4 +535,42 @@ mod with_tests {
         };
         assert_eq!(encode(&user), encode(&direct));
     }
+
+    // A generic "remote" type that intentionally doesn't implement Encode/Decode.
+    #[derive(Debug, PartialEq)]
+    struct RemoteCell<A>(A);
+
+    #[derive(Encode, Decode)]
+    struct LocalCell<A>(A);
+
+    impl<A: Clone> From<&RemoteCell<A>> for LocalCell<A> {
+        fn from(v: &RemoteCell<A>) -> Self {
+            LocalCell(v.0.clone())
+        }
+    }
+    impl<A> From<LocalCell<A>> for RemoteCell<A> {
+        fn from(v: LocalCell<A>) -> Self {
+            RemoteCell(v.0)
+        }
+    }
+
+    #[derive(Encode, Decode, Debug, PartialEq)]
+    struct GenericContainer<A: Clone> {
+        // The proxy `LocalCell<A>` uses the struct's generic parameter `A`.
+        #[bitcode(with = "LocalCell<A>")]
+        value: RemoteCell<A>,
+        plain: u8,
+    }
+
+    #[test]
+    fn test_with_generic() {
+        let gc = GenericContainer {
+            value: RemoteCell(String::from("generic")),
+            plain: 9,
+        };
+        assert_eq!(
+            decode::<GenericContainer<String>>(&encode(&gc)).unwrap(),
+            gc
+        );
+    }
 }
