@@ -10,29 +10,40 @@ enum BitcodeAttr {
     BoundType(Type),
     CrateName(Path),
     Skip,
+    /// `#[bitcode(with = "LocalType")]`, shorthand for both `encode_with` and `decode_with`.
+    With(Type),
+    /// `#[bitcode(encode_with = "LocalType")]`.
+    EncodeWith(Type),
+    /// `#[bitcode(decode_with = "LocalType")]`.
+    DecodeWith(Type),
+}
+
+/// Parses a `#[bitcode(name = "Type")]` string literal value into a [`Type`].
+fn parse_type_attr(nested: &Meta) -> Result<Type> {
+    match nested {
+        Meta::NameValue(name_value) => {
+            let expr = &name_value.value;
+            let str_lit = match expr {
+                Expr::Lit(ExprLit {
+                    lit: Lit::Str(v), ..
+                }) => v,
+                _ => return err(&expr, "expected string e.g. \"LocalType\""),
+            };
+            let value = TokenStream::from_str(&str_lit.value()).unwrap();
+            parse2(value).map_err(|e| error(str_lit, &format!("{e}")))
+        }
+        _ => err(&nested, "expected name value"),
+    }
 }
 
 impl BitcodeAttr {
     fn new(nested: &Meta) -> Result<Self> {
         let path = path_ident_string(nested.path(), &nested)?;
         match path.as_str() {
-            "bound_type" => match nested {
-                Meta::NameValue(name_value) => {
-                    let expr = &name_value.value;
-                    let str_lit = match expr {
-                        Expr::Lit(ExprLit {
-                            lit: Lit::Str(v), ..
-                        }) => v,
-                        _ => return err(&expr, "expected string e.g. \"T\""),
-                    };
-
-                    let value = TokenStream::from_str(&str_lit.value()).unwrap();
-                    Ok(Self::BoundType(
-                        parse2(value).map_err(|e| error(str_lit, &format!("{e}")))?,
-                    ))
-                }
-                _ => err(&nested, "expected name value"),
-            },
+            "bound_type" => Ok(Self::BoundType(parse_type_attr(nested)?)),
+            "with" => Ok(Self::With(parse_type_attr(nested)?)),
+            "encode_with" => Ok(Self::EncodeWith(parse_type_attr(nested)?)),
+            "decode_with" => Ok(Self::DecodeWith(parse_type_attr(nested)?)),
             "crate" => match nested {
                 Meta::NameValue(name_value) => {
                     let expr = &name_value.value;
@@ -93,6 +104,28 @@ impl BitcodeAttr {
             Self::Skip => {
                 if let BitcodeAnyAttrs::Field(field) = attrs {
                     set_if_not_duplicate(&mut field.skip, true, nested)
+                } else {
+                    err(nested, "can only apply to fields")
+                }
+            }
+            Self::With(ty) => {
+                if let BitcodeAnyAttrs::Field(field) = attrs {
+                    set_if_not_duplicate(&mut field.encode_with, Some(ty.clone()), nested)?;
+                    set_if_not_duplicate(&mut field.decode_with, Some(ty), nested)
+                } else {
+                    err(nested, "can only apply to fields")
+                }
+            }
+            Self::EncodeWith(ty) => {
+                if let BitcodeAnyAttrs::Field(field) = attrs {
+                    set_if_not_duplicate(&mut field.encode_with, Some(ty), nested)
+                } else {
+                    err(nested, "can only apply to fields")
+                }
+            }
+            Self::DecodeWith(ty) => {
+                if let BitcodeAnyAttrs::Field(field) = attrs {
+                    set_if_not_duplicate(&mut field.decode_with, Some(ty), nested)
                 } else {
                     err(nested, "can only apply to fields")
                 }
@@ -159,6 +192,10 @@ pub struct BitcodeFieldAttrs<'a> {
     parent: BitcodeDeriveOrVariantAttrs<'a>,
     pub bound_type: Option<Type>,
     pub skip: bool,
+    /// Encode this field as a different (local) type via `From`/`Into`.
+    pub encode_with: Option<Type>,
+    /// Decode this field as a different (local) type via `From`/`Into`.
+    pub decode_with: Option<Type>,
 }
 impl<'a> std::ops::Deref for BitcodeFieldAttrs<'a> {
     type Target = BitcodeDeriveOrVariantAttrs<'a>;
@@ -172,6 +209,8 @@ impl<'a> BitcodeFieldAttrs<'a> {
             parent,
             bound_type: Default::default(),
             skip: Default::default(),
+            encode_with: Default::default(),
+            decode_with: Default::default(),
         };
         BitcodeAnyAttrs::Field(&mut ret).parse_inner(attrs)?;
         Ok(ret)

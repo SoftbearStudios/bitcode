@@ -426,3 +426,151 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod with_tests {
+    use crate::{decode, encode, Decode, Encode};
+    use alloc::string::String;
+
+    // "Remote" types that intentionally don't implement Encode/Decode themselves.
+    #[derive(Debug, PartialEq, Clone)]
+    struct RemoteStr(String);
+
+    #[derive(Debug, PartialEq, Clone, Copy)]
+    struct Meters(f32);
+
+    // Local proxy types used via `#[bitcode(with = ...)]`.
+    #[derive(Encode, Decode)]
+    struct LocalStr<'a>(&'a str);
+
+    #[derive(Encode, Decode)]
+    struct LocalMeters(f32);
+
+    impl<'a> From<&'a RemoteStr> for LocalStr<'a> {
+        fn from(v: &'a RemoteStr) -> Self {
+            LocalStr(v.0.as_str())
+        }
+    }
+    impl From<LocalStr<'_>> for RemoteStr {
+        fn from(v: LocalStr<'_>) -> Self {
+            RemoteStr(String::from(v.0))
+        }
+    }
+    impl From<&Meters> for LocalMeters {
+        fn from(v: &Meters) -> Self {
+            LocalMeters(v.0)
+        }
+    }
+    impl From<LocalMeters> for Meters {
+        fn from(v: LocalMeters) -> Self {
+            Meters(v.0)
+        }
+    }
+
+    #[derive(Encode, Decode, Debug, PartialEq)]
+    struct User {
+        // Borrowing proxy via the `with` shorthand.
+        #[bitcode(with = "LocalStr<'a>")]
+        first_name: RemoteStr,
+        // Same, but with the encode/decode sides spelled separately.
+        #[bitcode(encode_with = "LocalStr<'a>", decode_with = "LocalStr<'a>")]
+        last_name: RemoteStr,
+        // Non-borrowing proxy (no lifetime, so no transmute on encode).
+        #[bitcode(with = "LocalMeters")]
+        height: Meters,
+    }
+
+    #[derive(Encode, Decode, Debug, PartialEq)]
+    enum Shape {
+        Point,
+        Line(#[bitcode(with = "LocalMeters")] Meters),
+        Named {
+            #[bitcode(with = "LocalStr<'a>")]
+            name: RemoteStr,
+        },
+    }
+
+    #[test]
+    fn test_with_struct() {
+        let user = User {
+            first_name: RemoteStr("Ada".into()),
+            last_name: RemoteStr("Lovelace".into()),
+            height: Meters(1.7),
+        };
+        assert_eq!(decode::<User>(&encode(&user)).unwrap(), user);
+    }
+
+    #[test]
+    fn test_with_enum() {
+        for shape in [
+            Shape::Point,
+            Shape::Line(Meters(42.0)),
+            Shape::Named {
+                name: RemoteStr("triangle".into()),
+            },
+        ] {
+            assert_eq!(decode::<Shape>(&encode(&shape)).unwrap(), shape);
+        }
+    }
+
+    /// Encoding via a `with` proxy must be wire-identical to encoding the proxy type directly.
+    #[test]
+    fn test_with_wire_compatible() {
+        #[derive(Encode)]
+        struct Direct<'a> {
+            first_name: LocalStr<'a>,
+            last_name: LocalStr<'a>,
+            height: LocalMeters,
+        }
+
+        let user = User {
+            first_name: RemoteStr("Ada".into()),
+            last_name: RemoteStr("Lovelace".into()),
+            height: Meters(1.7),
+        };
+        let direct = Direct {
+            first_name: LocalStr("Ada"),
+            last_name: LocalStr("Lovelace"),
+            height: LocalMeters(1.7),
+        };
+        assert_eq!(encode(&user), encode(&direct));
+    }
+
+    // A generic "remote" type that intentionally doesn't implement Encode/Decode.
+    #[derive(Debug, PartialEq)]
+    struct RemoteCell<A>(A);
+
+    #[derive(Encode, Decode)]
+    struct LocalCell<A>(A);
+
+    impl<A: Clone> From<&RemoteCell<A>> for LocalCell<A> {
+        fn from(v: &RemoteCell<A>) -> Self {
+            LocalCell(v.0.clone())
+        }
+    }
+    impl<A> From<LocalCell<A>> for RemoteCell<A> {
+        fn from(v: LocalCell<A>) -> Self {
+            RemoteCell(v.0)
+        }
+    }
+
+    #[derive(Encode, Decode, Debug, PartialEq)]
+    struct GenericContainer<A: Clone> {
+        // The proxy `LocalCell<A>` uses the struct's generic parameter `A`.
+        #[bitcode(with = "LocalCell<A>")]
+        value: RemoteCell<A>,
+        plain: u8,
+    }
+
+    #[test]
+    fn test_with_generic() {
+        let gc = GenericContainer {
+            value: RemoteCell(String::from("generic")),
+            plain: 9,
+        };
+        assert_eq!(
+            decode::<GenericContainer<String>>(&encode(&gc)).unwrap(),
+            gc
+        );
+    }
+}
