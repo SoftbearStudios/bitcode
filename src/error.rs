@@ -52,6 +52,4 @@ impl Display for Error {
         f.write_str("bitcode error")
     }
 }
-#[cfg(feature = "std")]
-// TODO expose to no_std when error_in_core stabilized (https://github.com/rust-lang/rust/issues/103765)
-impl std::error::Error for Error {}
+impl core::error::Error for Error {}

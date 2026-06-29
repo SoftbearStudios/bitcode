@@ -1,5 +1,4 @@
-use crate::attribute::BitcodeAttrs;
-use crate::private;
+use crate::attribute::{BitcodeDeriveAttrs, BitcodeFieldAttrs};
 use crate::shared::{remove_lifetimes, replace_lifetimes, VariantIndexType};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};
@@ -36,22 +35,21 @@ impl Item {
 impl crate::shared::Item for Item {
     fn field_impl(
         self,
-        crate_name: &Path,
+        attrs: &BitcodeFieldAttrs,
         field_name: TokenStream,
         global_field_name: TokenStream,
         real_field_name: TokenStream,
         field_type: &Type,
-        field_attrs: &BitcodeAttrs,
     ) -> TokenStream {
         match self {
             Self::Type => {
                 // `#[bitcode(decode_with = "Local")]` stores the decoder for `Local`, not the field.
-                let base_type = field_attrs.decode_with().unwrap_or(field_type);
+                let base_type = attrs.decode_with.as_ref().unwrap_or(field_type);
                 let mut de_type = replace_lifetimes(base_type, DE_LIFETIME).to_token_stream();
-                if field_attrs.skip {
+                if attrs.skip {
                     de_type = quote! { ::core::marker::PhantomData<#de_type> };
                 }
-                let private = private(crate_name);
+                let private = &attrs.private;
                 let de = de_lifetime();
                 quote! {
                     #global_field_name: <#de_type as #private::Decode<#de>>::Decoder,
@@ -66,11 +64,11 @@ impl crate::shared::Item for Item {
             // Only used by enum variants.
             Self::Decode => {
                 let de_type = replace_lifetimes(field_type, DE_LIFETIME);
-                let value = if field_attrs.skip {
+                let value = if attrs.skip {
                     quote! {
                         Default::default()
                     }
-                } else if field_attrs.decode_with().is_some() {
+                } else if attrs.decode_with.is_some() {
                     quote! {
                         ::core::convert::Into::<#de_type>::into(self.#global_field_name.decode())
                     }
@@ -85,15 +83,15 @@ impl crate::shared::Item for Item {
             }
             Self::DecodeInPlace => {
                 let de_type = replace_lifetimes(field_type, DE_LIFETIME);
-                let private = private(crate_name);
+                let private = &attrs.private;
                 let target = quote! {
                     #private::uninit_field!(out.#real_field_name: #de_type)
                 };
-                if field_attrs.skip {
+                if attrs.skip {
                     quote! {{
                         (#target).write(Default::default());
                     }}
-                } else if field_attrs.decode_with().is_some() {
+                } else if attrs.decode_with.is_some() {
                     quote! {{
                         let __local = self.#global_field_name.decode();
                         (#target).write(::core::convert::Into::into(__local));
@@ -121,7 +119,7 @@ impl crate::shared::Item for Item {
 
     fn enum_impl(
         self,
-        crate_name: &Path,
+        attrs: &BitcodeDeriveAttrs,
         variant_count: usize,
         variant_index_type: VariantIndexType,
         pattern: impl Fn(usize) -> TokenStream,
@@ -137,7 +135,7 @@ impl crate::shared::Item for Item {
                 let inners: TokenStream = (0..variant_count).map(|i| inner(self, i)).collect();
                 let variants = decode_variants
                     .then(|| {
-                        let private = private(crate_name);
+                        let private = &attrs.private;
                         let c_style = inners.is_empty();
                         let histogram = if c_style {
                             0
@@ -164,7 +162,7 @@ impl crate::shared::Item for Item {
             }
             Self::Populate => {
                 if never {
-                    let private = private(crate_name);
+                    let private = &attrs.private;
                     return quote! {
                         if __length != 0 {
                             return #private::invalid_enum_variant();
@@ -265,8 +263,8 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
     type Item = Item;
     const ALL: [Self::Item; Item::COUNT] = Item::ALL;
 
-    fn bound(&self, crate_name: &Path) -> Path {
-        let private = private(crate_name);
+    fn bound(&self, attrs: &BitcodeDeriveAttrs) -> Path {
+        let private = &attrs.private;
         let de = de_lifetime();
         parse_quote!(#private::Decode<#de>)
     }
@@ -275,13 +273,13 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
         Some(parse_quote!(Default))
     }
 
-    fn with_type(&self, field_attrs: &BitcodeAttrs) -> Option<Type> {
-        field_attrs.decode_with().cloned()
+    fn with_type(&self, field_attrs: &BitcodeFieldAttrs) -> Option<Type> {
+        field_attrs.decode_with.clone()
     }
 
     fn derive_impl(
         &self,
-        crate_name: &Path,
+        attrs: &BitcodeDeriveAttrs,
         output: [TokenStream; Item::COUNT],
         ident: Ident,
         mut generics: Generics,
@@ -337,7 +335,7 @@ impl crate::shared::Derive<{ Item::COUNT }> for Decode {
 
         let decoder_ident = Ident::new(&format!("{ident}Decoder"), Span::call_site());
         let decoder_ty = quote! { #decoder_ident #decoder_generics };
-        let private = private(crate_name);
+        let private = &attrs.private;
 
         quote! {
             #[allow(clippy::pedantic)]
