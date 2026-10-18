@@ -6,6 +6,7 @@ use core::num::NonZeroUsize;
 
 mod array;
 mod atomic;
+mod bound;
 pub(crate) mod convert;
 mod duration;
 mod empty;

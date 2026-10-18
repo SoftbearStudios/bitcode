@@ -1,6 +1,7 @@
 use crate::bool::{BoolDecoder, BoolEncoder};
 use crate::coder::{Buffer, Decoder, Encoder, Result, View};
 use crate::derive::array::{ArrayDecoder, ArrayEncoder};
+use crate::derive::bound::{BoundDecoder, BoundEncoder};
 use crate::derive::empty::EmptyCoder;
 use crate::derive::map::{MapDecoder, MapEncoder};
 use crate::derive::option::{OptionDecoder, OptionEncoder};
@@ -17,6 +18,7 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::num::*;
+use core::ops::Bound;
 
 macro_rules! impl_both {
     ($t:ty, $encoder:ident, $decoder:ident) => {
@@ -80,6 +82,7 @@ macro_rules! impl_t {
         }
     };
 }
+impl_t!(Bound, BoundEncoder, BoundDecoder);
 impl_t!(LinkedList, VecEncoder, VecDecoder);
 impl_t!(Option, OptionEncoder, OptionDecoder);
 impl_t!(Vec, VecEncoder, VecDecoder);
